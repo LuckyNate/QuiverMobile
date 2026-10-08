@@ -6,6 +6,8 @@ import android.content.Intent
 import android.net.Uri
 import android.opengl.GLSurfaceView
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.MotionEvent
 import androidx.core.content.FileProvider
 import org.json.JSONObject
@@ -22,6 +24,15 @@ class MainActivity : Activity() {
     external fun nativeOrbit(dx: Float, dy: Float, zoom: Float)
     external fun nativeMove(x: Float, y: Float)
 
+    private val updateHandler = Handler(Looper.getMainLooper())
+    private var checkingUpdates = false
+    private var promptedVersion = 0
+    private val updateTicker = object : Runnable {
+        override fun run() {
+            checkUpdates()
+            updateHandler.postDelayed(this, 5 * 60 * 1000L)
+        }
+    }
     private lateinit var surface: GLSurfaceView
     private var lastX = 0f
     private var lastY = 0f
@@ -43,7 +54,6 @@ class MainActivity : Activity() {
             setOnTouchListener { _, event -> handleTouch(event) }
         }
         setContentView(surface)
-        checkUpdates()
     }
 
     private fun handleTouch(e: MotionEvent): Boolean {
@@ -92,6 +102,8 @@ class MainActivity : Activity() {
     }
 
     private fun checkUpdates() {
+        if (checkingUpdates) return
+        checkingUpdates = true
         Thread {
             try {
                 val connection = URL("https://api.github.com/repos/LuckyNate/QuiverMobile/releases/latest")
@@ -102,7 +114,7 @@ class MainActivity : Activity() {
                 val json = connection.inputStream.bufferedReader().use { JSONObject(it.readText()) }
                 connection.disconnect()
                 val available = json.optString("tag_name").removePrefix("v").toIntOrNull() ?: return@Thread
-                if (available <= BuildConfig.VERSION_CODE) return@Thread
+                if (available <= BuildConfig.VERSION_CODE || available <= promptedVersion) return@Thread
                 val assets = json.getJSONArray("assets")
                 var url: String? = null
                 for (i in 0 until assets.length()) {
@@ -114,15 +126,20 @@ class MainActivity : Activity() {
                 }
                 val download = url ?: return@Thread
                 runOnUiThread {
-                    if (!isFinishing) AlertDialog.Builder(this)
+                    if (!isFinishing && !isDestroyed && available > promptedVersion) {
+                        promptedVersion = available
+                        AlertDialog.Builder(this)
                         .setTitle("QuiverMobile update")
                         .setMessage("Version $available is available. Download and install?")
                         .setNegativeButton("Later", null)
                         .setPositiveButton("Update") { _, _ -> downloadUpdate(download) }
                         .show()
+                    }
                 }
             } catch (_: Exception) {
-                // No network or no releases yet: keep the current build working.
+                // Offline or no published update: continue playing.
+            } finally {
+                runOnUiThread { checkingUpdates = false }
             }
         }.start()
     }
@@ -154,8 +171,17 @@ class MainActivity : Activity() {
         }.start()
     }
 
-    override fun onResume() { super.onResume(); surface.onResume() }
-    override fun onPause() { surface.onPause(); super.onPause() }
+    override fun onResume() {
+        super.onResume()
+        surface.onResume()
+        updateHandler.removeCallbacks(updateTicker)
+        updateHandler.post(updateTicker)
+    }
+    override fun onPause() {
+        updateHandler.removeCallbacks(updateTicker)
+        surface.onPause()
+        super.onPause()
+    }
 
     companion object {
         init { System.loadLibrary("quivermobile") }
