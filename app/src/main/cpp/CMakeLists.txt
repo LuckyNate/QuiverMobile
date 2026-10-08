@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(QuiverMobile LANGUAGES CXX)
+add_library(quivermobile SHARED renderer.cpp)
+target_compile_features(quivermobile PRIVATE cxx_std_17)
+target_link_libraries(quivermobile GLESv3 log)
