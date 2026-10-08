@@ -101,27 +101,38 @@ void edge(Vec a,Vec b,float alpha){
  if(visibleLines.size()+2>MAX_LINE_VERTICES)return;
  visibleLines.push_back({a,alpha});visibleLines.push_back({b,alpha});
 }
-// A conservative spherical bound enables whole quadtree branches to be
-// rejected before creating any children. Coordinates here are radius units.
+// Conservative spherical patch bound, including curved edges and interior.
+// The extra chord allowance avoids dropping partially visible coarse patches.
+float patchRadius(Triangle tri,Vec center){
+ float chord=std::max({length(subtract(tri.a,center)),
+                       length(subtract(tri.b,center)),
+                       length(subtract(tri.c,center))});
+ return std::min(2.f,chord+chord*chord);
+}
+// Reject whole branches only when their conservative bound lies fully outside.
 bool visible(Triangle tri,Vec eye,Vec center,float radius){
- Vec towards=subtract(center,eye);
- float depth=dot(towards,cameraForward);
- if(depth+radius<=0.f)return false;
- float lateral=dot(towards,cameraRight);
- float vertical=dot(towards,cameraUp);
- // Plane distance in the normalized camera basis. Conservative radius
- // expansion prevents large root triangles being clipped too early.
- if(std::abs(lateral)>std::max(0.f,depth)*tanHalfHorizontal+radius*2.f)return false;
- if(std::abs(vertical)>std::max(0.f,depth)*tanHalfVertical+radius*2.f)return false;
- float eyeLength=length(eye);
- if(eyeLength>1.00001f && dot(center,scale(eye,1.f/eyeLength))+radius<1.f/eyeLength)return false;
+ (void)tri;
+ Vec delta=subtract(center,eye);
+ float depth=dot(delta,cameraForward);
+ // Signed frustum-plane distance; normals are scaled by plane length.
+ float sideAllowance=radius*std::sqrt(1.f+tanHalfHorizontal*tanHalfHorizontal);
+ float topAllowance=radius*std::sqrt(1.f+tanHalfVertical*tanHalfVertical);
+ if(depth+radius<0.f)return false;
+ if(std::abs(dot(delta,cameraRight))-depth*tanHalfHorizontal>sideAllowance)return false;
+ if(std::abs(dot(delta,cameraUp))-depth*tanHalfVertical>topAllowance)return false;
+ float cameraRadius=length(eye);
+ // A planet blocks a patch only when the complete angular bound is
+ // behind the tangent horizon. Keep everything when at/inside sea level.
+ if(cameraRadius>1.000001f){
+  float horizon=1.f/cameraRadius;
+  float facing=dot(center,scale(eye,1.f/cameraRadius));
+  if(facing+radius<horizon)return false;
+ }
  return true;
 }
 void traverse(Triangle tri,int level,Vec eye,float pixelsPerUnit){
  Vec center=normalize(add(add(tri.a,tri.b),tri.c));
- float radius=std::max({length(subtract(tri.a,center)),
-                        length(subtract(tri.b,center)),
-                        length(subtract(tri.c,center))});
+ float radius=patchRadius(tri,center);
  if(!visible(tri,eye,center,radius))return;
  float edgeLength=std::max({length(subtract(tri.a,tri.b)),
                             length(subtract(tri.b,tri.c)),
@@ -160,9 +171,7 @@ void rebuild(Vec eye){
  float pixelScale=height/(2.f*std::tan(55.f*PI/360.f));
  for(const auto &tri:roots()){
   Vec center=normalize(add(add(tri.a,tri.b),tri.c));
-  float radius=std::max({length(subtract(tri.a,center)),
-                         length(subtract(tri.b,center)),
-                         length(subtract(tri.c,center))});
+  float radius=patchRadius(tri,center);
   if(!visible(tri,eye,center,radius))continue;
   edge(tri.a,tri.b,.85f);edge(tri.b,tri.c,.85f);edge(tri.c,tri.a,.85f);
   traverse(tri,0,eye,pixelScale);
