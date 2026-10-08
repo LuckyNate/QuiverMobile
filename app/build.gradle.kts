@@ -27,6 +27,9 @@ android {
         }
     }
     buildTypes {
+        getByName("debug") {
+            if (!ksPath.isNullOrBlank()) signingConfig = signingConfigs.getByName("deployment")
+        }
         getByName("release") {
             isMinifyEnabled = false
             if (!ksPath.isNullOrBlank()) signingConfig = signingConfigs.getByName("deployment")
