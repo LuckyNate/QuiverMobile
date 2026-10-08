@@ -5,11 +5,12 @@
 #include <array>
 #include <cmath>
 #include <vector>
+#include <chrono>
 
 namespace {
 constexpr float PI=3.14159265358979323846f;
 constexpr double SEA_LEVEL_RADIUS_METERS=100000.0;
-constexpr int MAX_LOD=9;
+constexpr int MAX_LOD=18;
 constexpr float SPLIT_PIXELS=42.f;
 constexpr float FULL_OPACITY_PIXELS=105.f;
 constexpr size_t MAX_LINE_VERTICES=240000;
@@ -49,7 +50,12 @@ const std::array<Triangle,20>& roots(){
 
 GLuint program=0,vao=0,vbo=0;
 int width=1,height=1;
-float yaw=.42f,pitch=.28f,distance=2.7f;
+float yaw=.0f,pitch=.25f,distance=8.f,moveX=0.f,moveY=0.f;
+Vec position={0,0,1};
+Vec tangentEast(){return norm(cross({0,1,0},position));}
+Vec tangentNorth(){return norm(cross(position,tangentEast()));}
+Vec forward(){return {std::sin(yaw),0,std::cos(yaw)};}
+
 std::vector<LineVertex> visibleLines;
 int activeNodes=0, deepestLevel=0;
 
@@ -98,9 +104,9 @@ void traverse(Triangle tri,int level,Vec eye,float pixelsPerUnit){
  float edgeLength=std::max({length(subtract(tri.a,tri.b)),
                            length(subtract(tri.b,tri.c)),
                            length(subtract(tri.c,tri.a))});
- float cameraDistance=std::max(.035f,length(subtract(eye,center)));
+ float cameraDistance=std::max(.00001f,length(subtract(eye,center)));
  float projected=edgeLength*pixelsPerUnit/cameraDistance;
- if(level>=MAX_LOD || projected<=SPLIT_PIXELS ||
+ if(level>=MAX_LOD || (projected<=SPLIT_PIXELS && length(subtract(center,position)) > .001f) ||
     visibleLines.size()+6>=MAX_LINE_VERTICES)return;
  ++activeNodes;deepestLevel=std::max(deepestLevel,level+1);
  Vec ab=midpoint(tri.a,tri.b),bc=midpoint(tri.b,tri.c),ca=midpoint(tri.c,tri.a);
@@ -135,7 +141,8 @@ extern "C" JNIEXPORT void JNICALL Java_com_luckynate_quivermobile_MainActivity_n
  layout(location=1) in float aAlpha;
  uniform mat4 uMVP;
  out float opacity;
- void main(){opacity=aAlpha;gl_Position=uMVP*vec4(aPosition,1.0);}
+ uniform vec3 uOrigin;
+ void main(){opacity=aAlpha;gl_Position=uMVP*vec4(aPosition-uOrigin,1.0);}
  )";
  const char* fs=R"(#version 300 es
  precision mediump float;
@@ -161,20 +168,54 @@ extern "C" JNIEXPORT void JNICALL Java_com_luckynate_quivermobile_MainActivity_n
 extern "C" JNIEXPORT void JNICALL Java_com_luckynate_quivermobile_MainActivity_nativeResize(JNIEnv*,jobject,jint w,jint h){
  width=std::max(1,(int)w);height=std::max(1,(int)h);glViewport(0,0,width,height);
 }
+extern "C" JNIEXPORT void JNICALL Java_com_luckynate_quivermobile_MainActivity_nativeMove(JNIEnv*,jobject,jfloat x,jfloat y){
+ moveX=std::clamp(x,-1.f,1.f);moveY=std::clamp(y,-1.f,1.f);
+}
 extern "C" JNIEXPORT void JNICALL Java_com_luckynate_quivermobile_MainActivity_nativeDraw(JNIEnv*,jobject){
- glClear(GL_COLOR_BUFFER_BIT);
- Vec eye={distance*std::cos(pitch)*std::sin(yaw),distance*std::sin(pitch),
-          distance*std::cos(pitch)*std::cos(yaw)};
+ static auto before=std::chrono::steady_clock::now();
+ auto now=std::chrono::steady_clock::now();
+ float dt=std::min(.05f,std::chrono::duration<float>(now-before).count());before=now;
+ Vec up=position;
+ Vec east=tangentEast(),north=tangentNorth();
+ Vec movement=add(scale(east,moveX),scale(north,moveY));
+ if(length(movement)>.001f) position=norm(add(position,scale(movement,5.f*dt/100000.f)));
+ up=position;east=tangentEast();north=tangentNorth();
+ Vec eye=add(scale(up,1.f+distance/100000.f),scale(north,-distance*std::cos(pitch)/100000.f));
+ eye=add(eye,scale(up,distance*std::sin(pitch)/100000.f));
  rebuild(eye);
- float proj[16],camera[16],mvp[16];
- perspective(proj,55.f*PI/180.f,(float)width/height,.05f,20.f);
- view(camera,eye);multiply(mvp,proj,camera);
- glUseProgram(program);glUniformMatrix4fv(glGetUniformLocation(program,"uMVP"),1,GL_FALSE,mvp);
- glBindVertexArray(vao);glBindBuffer(GL_ARRAY_BUFFER,vbo);
+ // Display capsule as a wireframe ring and vertical silhouette on the sea-level reference sphere.
+ Vec right=east;
+ for(int j=0;j<12;j++){
+  float a=j*2*PI/12,b=(j+1)*2*PI/12;
+  Vec radial=add(scale(right,std::cos(a)),scale(north,std::sin(a)));
+  Vec next=add(scale(right,std::cos(b)),scale(north,std::sin(b)));
+  Vec bottom=add(up,scale(radial,.35f/100000.f));
+  Vec top=add(bottom,scale(up,1.8f/100000.f));
+  Vec other=add(up,scale(next,.35f/100000.f));
+  edge(bottom,top,1.f);edge(bottom,other,1.f);
+  edge(top,add(other,scale(up,1.8f/100000.f)),1.f);
+ }
+ float p[16],v[16],mvp[16];
+ perspective(p,55*PI/180.f,(float)width/height,.0000003f,20.f);
+ // Work in units of planetary radius, relative to player for floating-point precision.
+ Vec localEye=subtract(eye,position);
+ Vec localTarget=scale(up,.00001f);
+ Vec f=norm(subtract(localTarget,localEye)),r=norm(cross(f,up)),u=cross(r,f);
+ identity(v);
+ v[0]=r.x;v[4]=r.y;v[8]=r.z;
+ v[1]=u.x;v[5]=u.y;v[9]=u.z;
+ v[2]=-f.x;v[6]=-f.y;v[10]=-f.z;
+ v[12]=-dot(r,localEye);v[13]=-dot(u,localEye);v[14]=dot(f,localEye);
+ multiply(mvp,p,v);
+ glUseProgram(program);
+ glUniformMatrix4fv(glGetUniformLocation(program,"uMVP"),1,GL_FALSE,mvp);
+ glUniform3f(glGetUniformLocation(program,"uOrigin"),position.x,position.y,position.z);
+ glBindVertexArray(vao);
+ glBindBuffer(GL_ARRAY_BUFFER,vbo);
  glBufferSubData(GL_ARRAY_BUFFER,0,visibleLines.size()*sizeof(LineVertex),visibleLines.data());
  glDrawArrays(GL_LINES,0,(GLsizei)visibleLines.size());
 }
 extern "C" JNIEXPORT void JNICALL Java_com_luckynate_quivermobile_MainActivity_nativeOrbit(JNIEnv*,jobject,jfloat dx,jfloat dy,jfloat zoom){
- yaw+=dx;pitch=std::clamp(pitch+dy,-1.45f,1.45f);
- distance=std::clamp(distance*zoom,1.04f,10.f);
+ yaw+=dx;pitch=std::clamp(pitch+dy,-.1f,1.45f);
+ distance=std::clamp(distance*zoom,3.f,600000.f);
 }
