@@ -5,16 +5,18 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
+concurrency:
+  group: quivermobile-release
+  cancel-in-progress: false
 jobs:
   android:
     runs-on: ubuntu-latest
     env:
-      SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
-      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      SIGNING_PASSWORD: ${{ secrets.QUIVER_SIGNING_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -22,28 +24,47 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
-      - name: Require persistent release signing
+      - name: Initialize or restore persistent release key
+        shell: bash
         run: |
-          if [ -z "$SIGNING_KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
-            echo "::error::Configure SIGNING_KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, and KEY_PASSWORD repository secrets to enable consistently signed updates."
+          set -euo pipefail
+          if [ -z "$SIGNING_PASSWORD" ] || [ "${#SIGNING_PASSWORD}" -lt 16 ]; then
+            echo "::error::Set QUIVER_SIGNING_PASSWORD to a strong password of at least 16 characters under Settings > Secrets and variables > Actions."
             exit 1
           fi
-          printf '%s' "$SIGNING_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/quiver-signing.jks"
-          echo "KEYSTORE_FILE=$RUNNER_TEMP/quiver-signing.jks" >> "$GITHUB_ENV"
+          mkdir -p signing
+          if [ -f signing/QuiverMobile.jks.enc ]; then
+            openssl enc -d -aes-256-cbc -pbkdf2 -iter 250000 -in signing/QuiverMobile.jks.enc -out "$RUNNER_TEMP/QuiverMobile.jks" -pass env:SIGNING_PASSWORD
+          else
+            keytool -genkeypair -noprompt -keystore "$RUNNER_TEMP/QuiverMobile.jks" -alias quivermobile -keyalg RSA -keysize 3072 -validity 10000 -dname "CN=QuiverMobile, OU=Development, O=QuiverMobile, C=US" -storepass "$SIGNING_PASSWORD" -keypass "$SIGNING_PASSWORD"
+            openssl enc -aes-256-cbc -pbkdf2 -iter 250000 -salt -in "$RUNNER_TEMP/QuiverMobile.jks" -out signing/QuiverMobile.jks.enc -pass env:SIGNING_PASSWORD
+            git config user.name github-actions[bot]
+            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+            git add signing/QuiverMobile.jks.enc
+            git commit -m "Store encrypted QuiverMobile signing identity"
+            git push origin HEAD:main
+          fi
+          echo "KEYSTORE_FILE=$RUNNER_TEMP/QuiverMobile.jks" >> "$GITHUB_ENV"
+          echo "KEYSTORE_PASSWORD=$SIGNING_PASSWORD" >> "$GITHUB_ENV"
+          echo "KEY_PASSWORD=$SIGNING_PASSWORD" >> "$GITHUB_ENV"
+          echo "KEY_ALIAS=quivermobile" >> "$GITHUB_ENV"
       - name: Build signed release APK
+        shell: bash
         run: |
+          set -euo pipefail
           gradle :app:assembleRelease -PappVersionCode=${{ github.run_number }} --stacktrace
           cp app/build/outputs/apk/release/app-release.apk QuiverMobile.apk
-      - name: Upload release APK artifact
-        uses: actions/upload-artifact@v4
+          jarsigner -verify -certs QuiverMobile.apk >/dev/null
+      - uses: actions/upload-artifact@v4
         with:
           name: QuiverMobile-release
           path: QuiverMobile.apk
-      - name: Publish in-app update release
+      - name: Publish in-app update
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.run_number }}
           name: QuiverMobile v${{ github.run_number }}
+          target_commitish: main
           files: QuiverMobile.apk
           make_latest: true
           generate_release_notes: true
