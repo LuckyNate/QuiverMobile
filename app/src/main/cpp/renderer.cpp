@@ -14,6 +14,14 @@ constexpr int MAX_LOD=18;
 constexpr float SPLIT_PIXELS=42.f;
 constexpr float FULL_OPACITY_PIXELS=105.f;
 constexpr size_t MAX_LINE_VERTICES=240000;
+// Maximum distance in meters from player for each subdivision level.
+// Edit each entry independently to tune the hierarchy's extent.
+constexpr std::array<float,19> LOD_MAX_DISTANCE_METERS = {
+  1.0e9f,1.0e9f,1.0e9f,1.0e9f,1.0e9f,1.0e9f,
+  1.0e9f,1.0e9f,1.0e9f,1.0e9f,1.0e9f,1.0e9f,
+  1600.f,800.f,400.f,200.f,100.f,50.f,25.f
+};
+constexpr float LOD_FADE_FRACTION=.20f;
 
 struct Vec { float x,y,z; };
 struct LineVertex { Vec position; float alpha; };
@@ -121,18 +129,25 @@ void traverse(Triangle tri,int level,Vec eye,float pixelsPerUnit){
  float nearestDistance=std::max(.000003f,length(subtract(eye,center))-radius);
  float projected=edgeLength*pixelsPerUnit/nearestDistance;
  float edgeMeters=edgeLength*float(SEA_LEVEL_RADIUS_METERS);
- // One-meter geometry is needed only for nearby, screen-visible terrain.
- // Distant branches stop refining based on projected edge size.
- bool nearSurface=distance<150.f &&
-   (length(subtract(center,position))-radius)*SEA_LEVEL_RADIUS_METERS<160.f;
- bool subdivide=level<MAX_LOD && edgeMeters>1.f &&
-   (projected>SPLIT_PIXELS || nearSurface);
+ // Visibility decides what we draw; player distance caps how fine it gets.
+ // Nearest extent keeps a patch alive if it overlaps the radius.
+ const int childLevel=level+1;
+ float playerMinDistance=std::max(0.f,
+    (length(subtract(center,position))-radius)*float(SEA_LEVEL_RADIUS_METERS));
+ float maximumDistance=LOD_MAX_DISTANCE_METERS[childLevel];
+ bool insideRadius=playerMinDistance<maximumDistance;
+ bool nearSurface=distance<150.f && childLevel>=12 && insideRadius;
+ bool subdivide=childLevel<=MAX_LOD && insideRadius &&
+   edgeMeters>1.f && (projected>SPLIT_PIXELS || nearSurface);
  if(!subdivide || visibleLines.size()+16>=MAX_LINE_VERTICES)return;
- ++activeNodes;deepestLevel=std::max(deepestLevel,level+1);
+ ++activeNodes;deepestLevel=std::max(deepestLevel,childLevel);
  Vec ab=midpoint(tri.a,tri.b),bc=midpoint(tri.b,tri.c),ca=midpoint(tri.c,tri.a);
- // Newly exposed internal edges fade as their screen size shrinks.
  float alpha=clamp01((projected-SPLIT_PIXELS)/(FULL_OPACITY_PIXELS-SPLIT_PIXELS));
  if(nearSurface)alpha=std::max(alpha,.85f);
+ if(maximumDistance<1.0e8f){
+   float fadeStart=maximumDistance*(1.f-LOD_FADE_FRACTION);
+   alpha*=clamp01((maximumDistance-playerMinDistance)/(maximumDistance-fadeStart));
+ }
  if(alpha>.01f){edge(ab,bc,alpha);edge(bc,ca,alpha);edge(ca,ab,alpha);}
  traverse({tri.a,ab,ca},level+1,eye,pixelsPerUnit);
  traverse({tri.b,bc,ab},level+1,eye,pixelsPerUnit);
