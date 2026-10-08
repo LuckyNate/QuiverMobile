@@ -104,7 +104,7 @@ void traverse(Triangle tri,int level,Vec eye,float pixelsPerUnit){
  float edgeLength=std::max({length(subtract(tri.a,tri.b)),
                            length(subtract(tri.b,tri.c)),
                            length(subtract(tri.c,tri.a))});
- float cameraDistance=std::max(.00001f,length(subtract(eye,center)));
+ float cameraDistance=std::max(.00000001f,length(subtract(eye,center)));
  float projected=edgeLength*pixelsPerUnit/cameraDistance;
  if(level>=MAX_LOD || (projected<=SPLIT_PIXELS && length(subtract(center,position)) > .001f) ||
     visibleLines.size()+6>=MAX_LINE_VERTICES)return;
@@ -177,11 +177,14 @@ extern "C" JNIEXPORT void JNICALL Java_com_luckynate_quivermobile_MainActivity_n
  float dt=std::min(.05f,std::chrono::duration<float>(now-before).count());before=now;
  Vec up=position;
  Vec east=tangentEast(),north=tangentNorth();
- Vec movement=add(scale(east,moveX),scale(north,moveY));
+ Vec facing=add(scale(north,std::cos(yaw)),scale(east,std::sin(yaw)));
+ Vec side=add(scale(east,std::cos(yaw)),scale(north,-std::sin(yaw)));
+ Vec movement=add(scale(side,moveX),scale(facing,moveY));
  if(length(movement)>.001f) position=norm(add(position,scale(movement,5.f*dt/100000.f)));
  up=position;east=tangentEast();north=tangentNorth();
- Vec eye=add(scale(up,1.f+distance/100000.f),scale(north,-distance*std::cos(pitch)/100000.f));
- eye=add(eye,scale(up,distance*std::sin(pitch)/100000.f));
+ Vec cameraFacing=add(scale(north,std::cos(yaw)),scale(east,std::sin(yaw)));
+ Vec eye=add(scale(up,1.f),scale(cameraFacing,-distance*std::cos(pitch)/100000.f));
+ eye=add(eye,scale(up,(2.f+distance*std::sin(pitch))/100000.f));
  rebuild(eye);
  // Display capsule as a wireframe ring and vertical silhouette on the sea-level reference sphere.
  Vec right=east;
