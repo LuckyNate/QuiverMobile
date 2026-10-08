@@ -1,4 +1,4 @@
-name: Android APK
+name: Android Release APK
 on:
   push:
     branches: [main]
@@ -22,24 +22,24 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
-      - name: Restore permanent signing key
-        if: env.SIGNING_KEYSTORE_BASE64 != ''
+      - name: Require persistent release signing
         run: |
+          if [ -z "$SIGNING_KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "::error::Configure SIGNING_KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, and KEY_PASSWORD repository secrets to enable consistently signed updates."
+            exit 1
+          fi
           printf '%s' "$SIGNING_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/quiver-signing.jks"
           echo "KEYSTORE_FILE=$RUNNER_TEMP/quiver-signing.jks" >> "$GITHUB_ENV"
-      - name: Build versioned debug APK
-        run: gradle :app:assembleDebug -PappVersionCode=${{ github.run_number }} --stacktrace
-      - uses: actions/upload-artifact@v4
-        with:
-          name: QuiverMobile-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
       - name: Build signed release APK
-        if: env.SIGNING_KEYSTORE_BASE64 != ''
         run: |
           gradle :app:assembleRelease -PappVersionCode=${{ github.run_number }} --stacktrace
           cp app/build/outputs/apk/release/app-release.apk QuiverMobile.apk
+      - name: Upload release APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: QuiverMobile-release
+          path: QuiverMobile.apk
       - name: Publish in-app update release
-        if: env.SIGNING_KEYSTORE_BASE64 != ''
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.run_number }}
