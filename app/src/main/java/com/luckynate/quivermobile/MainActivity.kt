@@ -9,6 +9,10 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.MotionEvent
+import android.view.Gravity
+import android.widget.FrameLayout
+import android.widget.TextView
+import android.graphics.Color
 import androidx.core.content.FileProvider
 import org.json.JSONObject
 import java.io.File
@@ -53,7 +57,21 @@ class MainActivity : Activity() {
             renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
             setOnTouchListener { _, event -> handleTouch(event) }
         }
-        setContentView(surface)
+        val frame = FrameLayout(this)
+        frame.addView(surface)
+        val versionLabel = TextView(this).apply {
+            text = "QuiverMobile v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
+            setTextColor(Color.MAGENTA)
+            textSize = 12f
+            setPadding(12, 8, 12, 8)
+            setBackgroundColor(0x88000000.toInt())
+        }
+        frame.addView(versionLabel, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.TOP or Gravity.START
+        ))
+        setContentView(frame)
     }
 
     private fun handleTouch(e: MotionEvent): Boolean {
