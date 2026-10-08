@@ -1,39 +1,72 @@
 #include <jni.h>
 #include <GLES3/gl3.h>
-#include <vector>
-#include <cmath>
-#include <cstdint>
-#include <algorithm>
-#include <unordered_map>
 #include <android/log.h>
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <vector>
 
 namespace {
-constexpr float PI = 3.14159265358979323846f;
-constexpr double SEA_LEVEL_RADIUS_METERS = 100000.0;
+constexpr float PI=3.14159265358979323846f;
+constexpr double SEA_LEVEL_RADIUS_METERS=100000.0;
+constexpr int MAX_LOD=9;
+constexpr float SPLIT_PIXELS=42.f;
+constexpr float FULL_OPACITY_PIXELS=105.f;
+constexpr size_t MAX_LINE_VERTICES=240000;
+
 struct Vec { float x,y,z; };
-Vec norm(Vec a) { float l=std::sqrt(a.x*a.x+a.y*a.y+a.z*a.z); return {a.x/l,a.y/l,a.z/l}; }
-Vec sub(Vec a,Vec b){return {a.x-b.x,a.y-b.y,a.z-b.z};}
-Vec cross(Vec a,Vec b){return {a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x};}
+struct LineVertex { Vec position; float alpha; };
+struct Triangle { Vec a,b,c; };
+Vec add(Vec a,Vec b){return {a.x+b.x,a.y+b.y,a.z+b.z};}
+Vec subtract(Vec a,Vec b){return {a.x-b.x,a.y-b.y,a.z-b.z};}
+Vec scale(Vec v,float k){return {v.x*k,v.y*k,v.z*k};}
 float dot(Vec a,Vec b){return a.x*b.x+a.y*b.y+a.z*b.z;}
-std::vector<Vec> positions;
-std::vector<uint16_t> indices;
-GLuint program=0, vao=0, vbo=0, ebo=0;
+float length(Vec v){return std::sqrt(dot(v,v));}
+Vec normalize(Vec a){float l=length(a);return scale(a,1.f/l);}
+Vec cross(Vec a,Vec b){return {a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x};}
+Vec midpoint(Vec a,Vec b){return normalize(scale(add(a,b),.5f));}
+float clamp01(float v){return std::clamp(v,0.f,1.f);}
+
+const std::array<Triangle,20>& roots(){
+ static const std::array<Triangle,20> data=[]{
+  const float t=(1.f+std::sqrt(5.f))/2.f;
+  const std::array<Vec,12> p={
+   normalize({-1,t,0}),normalize({1,t,0}),normalize({-1,-t,0}),normalize({1,-t,0}),
+   normalize({0,-1,t}),normalize({0,1,t}),normalize({0,-1,-t}),normalize({0,1,-t}),
+   normalize({t,0,-1}),normalize({t,0,1}),normalize({-t,0,-1}),normalize({-t,0,1})
+  };
+  constexpr int ids[60]={
+   0,11,5,0,5,1,0,1,7,0,7,10,0,10,11,1,5,9,5,11,4,
+   11,10,2,10,7,6,7,1,8,3,9,4,3,4,2,3,2,6,3,6,8,
+   3,8,9,4,9,5,2,4,11,6,2,10,8,6,7,9,8,1
+  };
+  std::array<Triangle,20> tris{};
+  for(int i=0;i<20;i++)tris[i]={p[ids[i*3]],p[ids[i*3+1]],p[ids[i*3+2]]};
+  return tris;
+ }();
+ return data;
+}
+
+GLuint program=0,vao=0,vbo=0;
 int width=1,height=1;
 float yaw=.42f,pitch=.28f,distance=2.7f;
-void identity(float* m) {std::fill(m,m+16,0.f);for(int i=0;i<4;i++)m[i*5]=1;}
-void multiply(float* out,const float* a,const float* b) {
+std::vector<LineVertex> visibleLines;
+int activeNodes=0, deepestLevel=0;
+
+void identity(float* m){std::fill(m,m+16,0.f);for(int i=0;i<4;i++)m[i*5]=1.f;}
+void multiply(float* out,const float* a,const float* b){
  for(int col=0;col<4;col++)for(int row=0;row<4;row++){
- float v=0;for(int k=0;k<4;k++)v+=a[k*4+row]*b[col*4+k];out[col*4+row]=v;
+  float v=0;for(int k=0;k<4;k++)v+=a[k*4+row]*b[col*4+k];out[col*4+row]=v;
  }
 }
 void perspective(float* m,float fovy,float aspect,float nearZ,float farZ){
- std::fill(m,m+16,0.f);float f=1.f/std::tan(fovy/2);
+ std::fill(m,m+16,0.f);float f=1.f/std::tan(fovy/2.f);
  m[0]=f/aspect;m[5]=f;m[10]=(farZ+nearZ)/(nearZ-farZ);
  m[11]=-1;m[14]=(2*farZ*nearZ)/(nearZ-farZ);
 }
-void view(float* m, Vec eye) {
- Vec forward=norm({-eye.x,-eye.y,-eye.z});
- Vec worldUp={0,1,0};Vec right=norm(cross(forward,worldUp));
+void view(float* m,Vec eye){
+ Vec forward=normalize(scale(eye,-1.f));
+ Vec right=normalize(cross(forward,{0,1,0}));
  Vec up=cross(right,forward);
  identity(m);
  m[0]=right.x;m[4]=right.y;m[8]=right.z;
@@ -41,79 +74,105 @@ void view(float* m, Vec eye) {
  m[2]=-forward.x;m[6]=-forward.y;m[10]=-forward.z;
  m[12]=-dot(right,eye);m[13]=-dot(up,eye);m[14]=dot(forward,eye);
 }
-GLuint shader(GLenum type,const char* src){
- GLuint s=glCreateShader(type);glShaderSource(s,1,&src,nullptr);glCompileShader(s);
- GLint ok=0;glGetShaderiv(s,GL_COMPILE_STATUS,&ok);
- if(!ok){char log[1024]={};glGetShaderInfoLog(s,sizeof(log),nullptr,log);__android_log_print(ANDROID_LOG_ERROR,"QuiverMobile","Shader: %s",log);}
- return s;
+GLuint compile(GLenum kind,const char* source){
+ GLuint result=glCreateShader(kind);glShaderSource(result,1,&source,nullptr);glCompileShader(result);
+ GLint success=0;glGetShaderiv(result,GL_COMPILE_STATUS,&success);
+ if(!success){char log[1024]={};glGetShaderInfoLog(result,1024,nullptr,log);
+  __android_log_print(ANDROID_LOG_ERROR,"QuiverMobile","Shader compile failed: %s",log);}
+ return result;
 }
-void geometry(){
- const float t=(1.f+std::sqrt(5.f))/2.f;
- positions={
- norm({-1,t,0}),norm({1,t,0}),norm({-1,-t,0}),norm({1,-t,0}),
- norm({0,-1,t}),norm({0,1,t}),norm({0,-1,-t}),norm({0,1,-t}),
- norm({t,0,-1}),norm({t,0,1}),norm({-t,0,-1}),norm({-t,0,1})};
- indices={0,11,5,0,5,1,0,1,7,0,7,10,0,10,11,1,5,9,5,11,4,
- 11,10,2,10,7,6,7,1,8,3,9,4,3,4,2,3,2,6,3,6,8,
- 3,8,9,4,9,5,2,4,11,6,2,10,8,6,7,9,8,1};
- for(int level=0;level<4;level++){
- std::vector<uint16_t> next;next.reserve(indices.size()*4);
- // Shared edge midpoint cache prevents cracks and duplicate edge vertices.
- std::unordered_map<uint32_t,uint16_t> cache;
- auto mid=[&](uint16_t a,uint16_t b)->uint16_t{
- uint32_t lo=std::min(a,b),hi=std::max(a,b),key=(lo<<16)|hi;
- auto it=cache.find(key);if(it!=cache.end())return it->second;
- Vec p=norm({(positions[a].x+positions[b].x)*.5f,
- (positions[a].y+positions[b].y)*.5f,(positions[a].z+positions[b].z)*.5f});
- uint16_t id=static_cast<uint16_t>(positions.size());positions.push_back(p);
- cache[key]=id;return id;};
- for(size_t i=0;i<indices.size();i+=3){
- uint16_t a=indices[i],b=indices[i+1],c=indices[i+2];
- uint16_t ab=mid(a,b),bc=mid(b,c),ca=mid(c,a);
- next.insert(next.end(),{a,ab,ca,b,bc,ab,c,ca,bc,ab,bc,ca});
- }indices.swap(next);
+void edge(Vec a,Vec b,float alpha){
+ if(visibleLines.size()+2>MAX_LINE_VERTICES)return;
+ visibleLines.push_back({a,alpha});visibleLines.push_back({b,alpha});
+}
+// Each node stores only its three corners. Descendants are generated transiently
+// during traversal, and disappear immediately when their projected size is small.
+void traverse(Triangle tri,int level,Vec eye,float pixelsPerUnit){
+ Vec center=normalize(add(add(tri.a,tri.b),tri.c));
+ // Back-of-planet culling, with a conservative vertex test for horizon triangles.
+ float horizon=1.f/length(eye);
+ if(dot(tri.a,eye)/length(eye)<horizon &&
+    dot(tri.b,eye)/length(eye)<horizon &&
+    dot(tri.c,eye)/length(eye)<horizon &&
+    dot(center,eye)/length(eye)<horizon)return;
+ float edgeLength=std::max({length(subtract(tri.a,tri.b)),
+                           length(subtract(tri.b,tri.c)),
+                           length(subtract(tri.c,tri.a))});
+ float cameraDistance=std::max(.035f,length(subtract(eye,center)));
+ float projected=edgeLength*pixelsPerUnit/cameraDistance;
+ if(level>=MAX_LOD || projected<=SPLIT_PIXELS ||
+    visibleLines.size()+6>=MAX_LINE_VERTICES)return;
+ ++activeNodes;deepestLevel=std::max(deepestLevel,level+1);
+ Vec ab=midpoint(tri.a,tri.b),bc=midpoint(tri.b,tri.c),ca=midpoint(tri.c,tri.a);
+ // Only newly introduced interior edges are drawn; ancestor edges remain.
+ // Child edges fade before the subdivision branch unloads entirely.
+ float alpha=clamp01((projected-SPLIT_PIXELS)/(FULL_OPACITY_PIXELS-SPLIT_PIXELS));
+ if(alpha>0.f){edge(ab,bc,alpha);edge(bc,ca,alpha);edge(ca,ab,alpha);}
+ traverse({tri.a,ab,ca},level+1,eye,pixelsPerUnit);
+ traverse({tri.b,bc,ab},level+1,eye,pixelsPerUnit);
+ traverse({tri.c,ca,bc},level+1,eye,pixelsPerUnit);
+ traverse({ab,bc,ca},level+1,eye,pixelsPerUnit);
+}
+void rebuild(Vec eye){
+ visibleLines.clear();activeNodes=0;deepestLevel=0;
+ // For a 55-degree vertical field of view, pixels per world unit at depth 1.
+ float pixelScale=height/(2.f*std::tan(55.f*PI/360.f));
+ for(auto tri:roots()){
+  // Root edges define the permanent low-resolution reference ball.
+  float horizon=1.f/length(eye);
+  if(dot(tri.a,eye)/length(eye)<horizon &&
+     dot(tri.b,eye)/length(eye)<horizon &&
+     dot(tri.c,eye)/length(eye)<horizon)continue;
+  edge(tri.a,tri.b,.85f);edge(tri.b,tri.c,.85f);edge(tri.c,tri.a,.85f);
+  traverse(tri,0,eye,pixelScale);
  }
 }
 }
+
 extern "C" JNIEXPORT void JNICALL Java_com_luckynate_quivermobile_MainActivity_nativeInit(JNIEnv*,jobject){
  const char* vs=R"(#version 300 es
  layout(location=0) in vec3 aPosition;
+ layout(location=1) in float aAlpha;
  uniform mat4 uMVP;
- out vec3 normal;
- void main(){normal=aPosition;gl_Position=uMVP*vec4(aPosition,1.0);}
+ out float opacity;
+ void main(){opacity=aAlpha;gl_Position=uMVP*vec4(aPosition,1.0);}
  )";
  const char* fs=R"(#version 300 es
  precision mediump float;
- in vec3 normal;
+ in float opacity;
  out vec4 color;
- void main(){float light=0.48+0.52*max(dot(normalize(normal),normalize(vec3(0.5,0.9,1.0))),0.0);
- color=vec4(light,0.0,light,1.0);}
+ void main(){color=vec4(1.0,0.0,1.0,opacity);}
  )";
- GLuint vert=shader(GL_VERTEX_SHADER,vs),frag=shader(GL_FRAGMENT_SHADER,fs);
- program=glCreateProgram();glAttachShader(program,vert);glAttachShader(program,frag);
- glLinkProgram(program);glDeleteShader(vert);glDeleteShader(frag);
- if(positions.empty())geometry();
+ GLuint v=compile(GL_VERTEX_SHADER,vs),f=compile(GL_FRAGMENT_SHADER,fs);
+ program=glCreateProgram();glAttachShader(program,v);glAttachShader(program,f);
+ glLinkProgram(program);glDeleteShader(v);glDeleteShader(f);
  glGenVertexArrays(1,&vao);glBindVertexArray(vao);
  glGenBuffers(1,&vbo);glBindBuffer(GL_ARRAY_BUFFER,vbo);
- glBufferData(GL_ARRAY_BUFFER,positions.size()*sizeof(Vec),positions.data(),GL_STATIC_DRAW);
- glGenBuffers(1,&ebo);glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,ebo);
- glBufferData(GL_ELEMENT_ARRAY_BUFFER,indices.size()*sizeof(uint16_t),indices.data(),GL_STATIC_DRAW);
- glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,sizeof(Vec),(void*)0);
- glEnableVertexAttribArray(0);glBindVertexArray(0);
- glEnable(GL_DEPTH_TEST);
- glClearColor(0.035f,0.045f,0.075f,1.f);
- __android_log_print(ANDROID_LOG_INFO,"QuiverMobile","Reference radius %.0f m; triangles %zu",SEA_LEVEL_RADIUS_METERS,indices.size()/3);
+ glBufferData(GL_ARRAY_BUFFER,MAX_LINE_VERTICES*sizeof(LineVertex),nullptr,GL_DYNAMIC_DRAW);
+ glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,sizeof(LineVertex),(void*)0);
+ glEnableVertexAttribArray(0);
+ glVertexAttribPointer(1,1,GL_FLOAT,GL_FALSE,sizeof(LineVertex),(void*)sizeof(Vec));
+ glEnableVertexAttribArray(1);glBindVertexArray(0);
+ glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+ glDisable(GL_DEPTH_TEST);
+ glClearColor(.035f,.045f,.075f,1.f);
+ __android_log_print(ANDROID_LOG_INFO,"QuiverMobile","Reference sphere radius %.0f meters; dynamic wireframe LOD",SEA_LEVEL_RADIUS_METERS);
 }
 extern "C" JNIEXPORT void JNICALL Java_com_luckynate_quivermobile_MainActivity_nativeResize(JNIEnv*,jobject,jint w,jint h){
  width=std::max(1,(int)w);height=std::max(1,(int)h);glViewport(0,0,width,height);
 }
 extern "C" JNIEXPORT void JNICALL Java_com_luckynate_quivermobile_MainActivity_nativeDraw(JNIEnv*,jobject){
- glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
- Vec eye={distance*std::cos(pitch)*std::sin(yaw),distance*std::sin(pitch),distance*std::cos(pitch)*std::cos(yaw)};
- float p[16],v[16],mvp[16];perspective(p,55*PI/180.f,(float)width/height,.05f,20.f);
- view(v,eye);multiply(mvp,p,v);
+ glClear(GL_COLOR_BUFFER_BIT);
+ Vec eye={distance*std::cos(pitch)*std::sin(yaw),distance*std::sin(pitch),
+          distance*std::cos(pitch)*std::cos(yaw)};
+ rebuild(eye);
+ float proj[16],camera[16],mvp[16];
+ perspective(proj,55.f*PI/180.f,(float)width/height,.05f,20.f);
+ view(camera,eye);multiply(mvp,proj,camera);
  glUseProgram(program);glUniformMatrix4fv(glGetUniformLocation(program,"uMVP"),1,GL_FALSE,mvp);
- glBindVertexArray(vao);glDrawElements(GL_TRIANGLES,(GLsizei)indices.size(),GL_UNSIGNED_SHORT,nullptr);
+ glBindVertexArray(vao);glBindBuffer(GL_ARRAY_BUFFER,vbo);
+ glBufferSubData(GL_ARRAY_BUFFER,0,visibleLines.size()*sizeof(LineVertex),visibleLines.data());
+ glDrawArrays(GL_LINES,0,(GLsizei)visibleLines.size());
 }
 extern "C" JNIEXPORT void JNICALL Java_com_luckynate_quivermobile_MainActivity_nativeOrbit(JNIEnv*,jobject,jfloat dx,jfloat dy,jfloat zoom){
  yaw+=dx;pitch=std::clamp(pitch+dy,-1.45f,1.45f);
