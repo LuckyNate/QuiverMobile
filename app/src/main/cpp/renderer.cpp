@@ -58,6 +58,8 @@ Vec forward(){return {std::sin(yaw),0,std::cos(yaw)};}
 
 std::vector<LineVertex> visibleLines;
 int activeNodes=0, deepestLevel=0;
+Vec cameraForward, cameraRight, cameraUp;
+float tanHalfHorizontal=1.f, tanHalfVertical=1.f;
 
 void identity(float* m){std::fill(m,m+16,0.f);for(int i=0;i<4;i++)m[i*5]=1.f;}
 void multiply(float* out,const float* a,const float* b){
@@ -91,29 +93,47 @@ void edge(Vec a,Vec b,float alpha){
  if(visibleLines.size()+2>MAX_LINE_VERTICES)return;
  visibleLines.push_back({a,alpha});visibleLines.push_back({b,alpha});
 }
-// Each node stores only its three corners. Descendants are generated transiently
-// during traversal, and disappear immediately when their projected size is small.
+// A conservative spherical bound enables whole quadtree branches to be
+// rejected before creating any children. Coordinates here are radius units.
+bool visible(Triangle tri,Vec eye,Vec center,float radius){
+ Vec towards=subtract(center,eye);
+ float depth=dot(towards,cameraForward);
+ if(depth+radius<=0.f)return false;
+ float lateral=dot(towards,cameraRight);
+ float vertical=dot(towards,cameraUp);
+ // Plane distance in the normalized camera basis. Conservative radius
+ // expansion prevents large root triangles being clipped too early.
+ if(std::abs(lateral)>std::max(0.f,depth)*tanHalfHorizontal+radius*2.f)return false;
+ if(std::abs(vertical)>std::max(0.f,depth)*tanHalfVertical+radius*2.f)return false;
+ float eyeLength=length(eye);
+ if(eyeLength>1.00001f && dot(center,scale(eye,1.f/eyeLength))+radius<1.f/eyeLength)return false;
+ return true;
+}
 void traverse(Triangle tri,int level,Vec eye,float pixelsPerUnit){
  Vec center=normalize(add(add(tri.a,tri.b),tri.c));
- // Back-of-planet culling, with a conservative vertex test for horizon triangles.
- float horizon=1.f/length(eye);
- if(dot(tri.a,eye)/length(eye)<horizon &&
-    dot(tri.b,eye)/length(eye)<horizon &&
-    dot(tri.c,eye)/length(eye)<horizon &&
-    dot(center,eye)/length(eye)<horizon)return;
+ float radius=std::max({length(subtract(tri.a,center)),
+                        length(subtract(tri.b,center)),
+                        length(subtract(tri.c,center))});
+ if(!visible(tri,eye,center,radius))return;
  float edgeLength=std::max({length(subtract(tri.a,tri.b)),
-                           length(subtract(tri.b,tri.c)),
-                           length(subtract(tri.c,tri.a))});
- float cameraDistance=std::max(.00000001f,length(subtract(eye,center)));
- float projected=edgeLength*pixelsPerUnit/cameraDistance;
- if(level>=MAX_LOD || (projected<=SPLIT_PIXELS && length(subtract(center,position)) > .001f) ||
-    visibleLines.size()+6>=MAX_LINE_VERTICES)return;
+                            length(subtract(tri.b,tri.c)),
+                            length(subtract(tri.c,tri.a))});
+ float nearestDistance=std::max(.000003f,length(subtract(eye,center))-radius);
+ float projected=edgeLength*pixelsPerUnit/nearestDistance;
+ float edgeMeters=edgeLength*float(SEA_LEVEL_RADIUS_METERS);
+ // One-meter geometry is needed only for nearby, screen-visible terrain.
+ // Distant branches stop refining based on projected edge size.
+ bool nearSurface=distance<150.f &&
+   (length(subtract(center,position))-radius)*SEA_LEVEL_RADIUS_METERS<160.f;
+ bool subdivide=level<MAX_LOD && edgeMeters>1.f &&
+   (projected>SPLIT_PIXELS || nearSurface);
+ if(!subdivide || visibleLines.size()+16>=MAX_LINE_VERTICES)return;
  ++activeNodes;deepestLevel=std::max(deepestLevel,level+1);
  Vec ab=midpoint(tri.a,tri.b),bc=midpoint(tri.b,tri.c),ca=midpoint(tri.c,tri.a);
- // Only newly introduced interior edges are drawn; ancestor edges remain.
- // Child edges fade before the subdivision branch unloads entirely.
+ // Newly exposed internal edges fade as their screen size shrinks.
  float alpha=clamp01((projected-SPLIT_PIXELS)/(FULL_OPACITY_PIXELS-SPLIT_PIXELS));
- if(alpha>0.f){edge(ab,bc,alpha);edge(bc,ca,alpha);edge(ca,ab,alpha);}
+ if(nearSurface)alpha=std::max(alpha,.85f);
+ if(alpha>.01f){edge(ab,bc,alpha);edge(bc,ca,alpha);edge(ca,ab,alpha);}
  traverse({tri.a,ab,ca},level+1,eye,pixelsPerUnit);
  traverse({tri.b,bc,ab},level+1,eye,pixelsPerUnit);
  traverse({tri.c,ca,bc},level+1,eye,pixelsPerUnit);
@@ -121,14 +141,13 @@ void traverse(Triangle tri,int level,Vec eye,float pixelsPerUnit){
 }
 void rebuild(Vec eye){
  visibleLines.clear();activeNodes=0;deepestLevel=0;
- // For a 55-degree vertical field of view, pixels per world unit at depth 1.
  float pixelScale=height/(2.f*std::tan(55.f*PI/360.f));
- for(auto tri:roots()){
-  // Root edges define the permanent low-resolution reference ball.
-  float horizon=1.f/length(eye);
-  if(dot(tri.a,eye)/length(eye)<horizon &&
-     dot(tri.b,eye)/length(eye)<horizon &&
-     dot(tri.c,eye)/length(eye)<horizon)continue;
+ for(const auto &tri:roots()){
+  Vec center=normalize(add(add(tri.a,tri.b),tri.c));
+  float radius=std::max({length(subtract(tri.a,center)),
+                         length(subtract(tri.b,center)),
+                         length(subtract(tri.c,center))});
+  if(!visible(tri,eye,center,radius))continue;
   edge(tri.a,tri.b,.85f);edge(tri.b,tri.c,.85f);edge(tri.c,tri.a,.85f);
   traverse(tri,0,eye,pixelScale);
  }
@@ -185,6 +204,11 @@ extern "C" JNIEXPORT void JNICALL Java_com_luckynate_quivermobile_MainActivity_n
  Vec cameraFacing=add(scale(north,std::cos(yaw)),scale(east,std::sin(yaw)));
  Vec eye=add(scale(up,1.f),scale(cameraFacing,-distance*std::cos(pitch)/100000.f));
  eye=add(eye,scale(up,(2.f+distance*std::sin(pitch))/100000.f));
+ cameraForward=normalize(subtract(add(position,scale(up,.00001f)),eye));
+ cameraRight=normalize(cross(cameraForward,up));
+ cameraUp=cross(cameraRight,cameraForward);
+ tanHalfVertical=std::tan(55.f*PI/360.f);
+ tanHalfHorizontal=tanHalfVertical*float(width)/float(height);
  rebuild(eye);
  // Display capsule as a wireframe ring and vertical silhouette on the sea-level reference sphere.
  Vec right=east;
