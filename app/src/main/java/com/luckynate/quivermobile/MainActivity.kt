@@ -20,11 +20,15 @@ class MainActivity : Activity() {
     external fun nativeResize(width: Int, height: Int)
     external fun nativeDraw()
     external fun nativeOrbit(dx: Float, dy: Float, zoom: Float)
+    external fun nativeMove(x: Float, y: Float)
 
     private lateinit var surface: GLSurfaceView
     private var lastX = 0f
     private var lastY = 0f
     private var lastSpan = 0f
+    private var leftStartX = 0f
+    private var leftStartY = 0f
+    private var leftStick = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,6 +52,10 @@ class MainActivity : Activity() {
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
                 lastX = x; lastY = y
+                if (e.actionMasked == MotionEvent.ACTION_DOWN) {
+                    leftStick = x < surface.width * 0.5f
+                    leftStartX = x; leftStartY = y
+                }
                 lastSpan = if (e.pointerCount >= 2) span(e) else 0f
             }
             MotionEvent.ACTION_MOVE -> {
@@ -58,6 +66,10 @@ class MainActivity : Activity() {
                         surface.queueEvent { nativeOrbit(0f, 0f, zoom) }
                     }
                     lastSpan = newSpan
+                } else if (leftStick) {
+                    val sx = ((x - leftStartX) / 90f).coerceIn(-1f, 1f)
+                    val sy = ((leftStartY - y) / 90f).coerceIn(-1f, 1f)
+                    surface.queueEvent { nativeMove(sx, sy) }
                 } else {
                     val dx = (x - lastX) * 0.007f
                     val dy = (y - lastY) * 0.007f
@@ -65,7 +77,10 @@ class MainActivity : Activity() {
                 }
                 lastX = x; lastY = y
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> lastSpan = 0f
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                lastSpan = 0f
+                surface.queueEvent { nativeMove(0f, 0f) }
+            }
         }
         return true
     }
