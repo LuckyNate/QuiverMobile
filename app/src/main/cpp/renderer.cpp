@@ -52,8 +52,8 @@ GLuint program=0,vao=0,vbo=0;
 int width=1,height=1;
 float yaw=.0f,pitch=.25f,distance=8.f,moveX=0.f,moveY=0.f;
 Vec position={0,0,1};
-Vec tangentEast(){return norm(cross({0,1,0},position));}
-Vec tangentNorth(){return norm(cross(position,tangentEast()));}
+Vec tangentEast(){return normalize(cross({0,1,0},position));}
+Vec tangentNorth(){return normalize(cross(position,tangentEast()));}
 Vec forward(){return {std::sin(yaw),0,std::cos(yaw)};}
 
 std::vector<LineVertex> visibleLines;
@@ -180,7 +180,7 @@ extern "C" JNIEXPORT void JNICALL Java_com_luckynate_quivermobile_MainActivity_n
  Vec facing=add(scale(north,std::cos(yaw)),scale(east,std::sin(yaw)));
  Vec side=add(scale(east,std::cos(yaw)),scale(north,-std::sin(yaw)));
  Vec movement=add(scale(side,moveX),scale(facing,moveY));
- if(length(movement)>.001f) position=norm(add(position,scale(movement,5.f*dt/100000.f)));
+ if(length(movement)>.001f) position=normalize(add(position,scale(movement,5.f*dt/100000.f)));
  up=position;east=tangentEast();north=tangentNorth();
  Vec cameraFacing=add(scale(north,std::cos(yaw)),scale(east,std::sin(yaw)));
  Vec eye=add(scale(up,1.f),scale(cameraFacing,-distance*std::cos(pitch)/100000.f));
@@ -203,7 +203,7 @@ extern "C" JNIEXPORT void JNICALL Java_com_luckynate_quivermobile_MainActivity_n
  // Work in units of planetary radius, relative to player for floating-point precision.
  Vec localEye=subtract(eye,position);
  Vec localTarget=scale(up,.00001f);
- Vec f=norm(subtract(localTarget,localEye)),r=norm(cross(f,up)),u=cross(r,f);
+ Vec f=normalize(subtract(localTarget,localEye)),r=normalize(cross(f,up)),u=cross(r,f);
  identity(v);
  v[0]=r.x;v[4]=r.y;v[8]=r.z;
  v[1]=u.x;v[5]=u.y;v[9]=u.z;
