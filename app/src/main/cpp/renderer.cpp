@@ -131,6 +131,7 @@ void traverse(Triangle tri,int level,Vec eye,float pixelsPerUnit){
  float edgeMeters=edgeLength*float(SEA_LEVEL_RADIUS_METERS);
  // Visibility decides what we draw; player distance caps how fine it gets.
  // Nearest extent keeps a patch alive if it overlaps the radius.
+ if(level>=MAX_LOD)return;
  const int childLevel=level+1;
  float playerMinDistance=std::max(0.f,
     (length(subtract(center,position))-radius)*float(SEA_LEVEL_RADIUS_METERS));
