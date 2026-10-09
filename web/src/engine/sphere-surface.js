@@ -1,4 +1,3 @@
-import {TERRAIN_AMPLITUDE} from './terrain-height.js';
 // Only outward-facing, 1 m surface patches exist as collision geometry.
 // This cube-sphere parameterization is derived from the same implicit solid
 // radius as octree occupancy; no interior AABB faces are generated.
@@ -20,8 +19,7 @@ export class SphereSurface {
    const denom=Math.max(.001,Math.abs(mid[axis])-extent);
    const u=mid[uAxis]*r/Math.max(.001,Math.abs(mid[axis]));
    const v=mid[vAxis]*r/Math.max(.001,Math.abs(mid[axis]));
-   const spread=Math.min(2*r,extent*r/denom*2+s*2+
-    (this.height?TERRAIN_AMPLITUDE*r/Math.max(1,Math.abs(mid[axis])):0));
+   const spread=Math.min(2*r,extent*r/denom*2+s*2);
    const lowU=Math.max(-r,Math.floor((u-spread+r)/s)*s-r);
    const highU=Math.min(r,Math.ceil((u+spread+r)/s)*s-r);
    const lowV=Math.max(-r,Math.floor((v-spread+r)/s)*s-r);
