@@ -8,6 +8,7 @@ import android.opengl.GLSurfaceView
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.Gravity
 import android.widget.FrameLayout
@@ -27,6 +28,7 @@ class MainActivity : Activity() {
     external fun nativeDraw()
     external fun nativeOrbit(dx: Float, dy: Float, zoom: Float)
     external fun nativeMove(x: Float, y: Float)
+    external fun nativeDiagnostics(): String
 
     private val updateHandler = Handler(Looper.getMainLooper())
     private var checkingUpdates = false
@@ -37,6 +39,7 @@ class MainActivity : Activity() {
             updateHandler.postDelayed(this, 5 * 60 * 1000L)
         }
     }
+    private lateinit var diagnosticLabel: TextView
     private lateinit var surface: GLSurfaceView
     private var lastX = 0f
     private var lastY = 0f
@@ -50,9 +53,20 @@ class MainActivity : Activity() {
         surface = GLSurfaceView(this).apply {
             setEGLContextClientVersion(3)
             setRenderer(object : GLSurfaceView.Renderer {
+                private var lastDiagnosticsAt = 0L
                 override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) = nativeInit()
                 override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) = nativeResize(width, height)
-                override fun onDrawFrame(gl: GL10?) = nativeDraw()
+                override fun onDrawFrame(gl: GL10?) {
+                    nativeDraw()
+                    val now = SystemClock.uptimeMillis()
+                    if (now - lastDiagnosticsAt >= 500L) {
+                        lastDiagnosticsAt = now
+                        val diagnostics = nativeDiagnostics()
+                        runOnUiThread {
+                            if (::diagnosticLabel.isInitialized) diagnosticLabel.text = diagnostics
+                        }
+                    }
+                }
             })
             renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
             setOnTouchListener { _, event -> handleTouch(event) }
@@ -71,6 +85,20 @@ class MainActivity : Activity() {
             FrameLayout.LayoutParams.WRAP_CONTENT,
             Gravity.TOP or Gravity.START
         ))
+        diagnosticLabel = TextView(this).apply {
+            text = "Awaiting native renderer diagnostics..."
+            setTextColor(Color.WHITE)
+            textSize = 11f
+            setPadding(12, 8, 12, 8)
+            setBackgroundColor(0xBB000000.toInt())
+        }
+        val diagnosticsLayout = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.TOP or Gravity.START
+        )
+        diagnosticsLayout.topMargin = (42f * resources.displayMetrics.density).toInt()
+        frame.addView(diagnosticLabel, diagnosticsLayout)
         setContentView(frame)
     }
 
