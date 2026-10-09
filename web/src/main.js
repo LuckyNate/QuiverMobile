@@ -2,8 +2,7 @@ import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {WorldTerrain,RADIUS} from './world.js';
 import {WorldOctree} from './engine/world-octree.js';
-import {buildSolidSphere} from './engine/terrain-occupancy.js';
-import {mergeSolidBoxes} from './engine/rolling-terrain-cache.js';
+import {ImplicitSphere} from './engine/implicit-sphere.js';
 import {PhysicsWorld} from './physics.js';
 
 const app=document.getElementById('app');
@@ -69,15 +68,15 @@ wireBtn.addEventListener('click',()=>{gravityArrow.visible=!gravityArrow.visible
 
 // Permanent mathematical solidity is independent of rendered terrain triangles.
 let physics=null,fallingCubes=[],octree=null,playerCollider=null;
-let solidWork=null,solidBoxes=[],mergedSolids=null,solidInsertIndex=0,solidityReady=false,physicsLoading=false,simulationReady=false;
+let solidity=null,physicsLoading=false,simulationReady=false;
 const cyan=new THREE.LineBasicMaterial({color:0x00ffff,depthTest:true,depthWrite:false});
 const aabbDisplay=new THREE.Group();scene.add(aabbDisplay);
 function boundsAt(p,half){return {min:[p.x-half,p.y-half,p.z-half],max:[p.x+half,p.y+half,p.z+half]};}
 function activeCollisionAreas(){
- const areas=[boundsAt(player,26)];
+ const areas=[boundsAt(player,4)];
  for(const item of fallingCubes){
   const p=item.body.getPosition();
-  areas.push(boundsAt(p,8));
+  areas.push(boundsAt(p,3));
  }
  return areas;
 }
@@ -85,18 +84,19 @@ function registerTerrain(){
  if(!terrain)throw new Error('Terrain geometry unavailable');
  octree=new WorldOctree({center:[0,0,0],halfSize:256,maxDepth:9});
  octree.insert('player',boundsAt(player,.95),{kind:'player',owner:'player'});
- // Build one permanent planet from cubic octree cells, core first.
- // Only after construction do we merge face-adjacent solids into planar AABBs.
- solidWork=buildSolidSphere(RADIUS,{halfSize:128,minCell:0.25});
+ // Permanent mathematical solid, stored as a radius and an implicit octree.
+ // Only queried cells materialize as temporary collision candidates.
+ solidity=new ImplicitSphere(RADIUS,{halfSize:128,minCell:.25});
  report('terrain geometry','READY',terrain.leafCount+' fixed faces');
- report('octree solidity','BUILDING','Planet-wide permanent solidity');
+ report('octree solidity','READY','Implicit 25 cm spherical octree');
+
 }
 registerTerrain();
 function drawNearbyStatic(queryBox){
  while(aabbDisplay.children.length){
   const child=aabbDisplay.children[0];aabbDisplay.remove(child);child.geometry.dispose();
  }
- for(const entry of octree.query(queryBox,{kinds:['static']})){
+ for(const entry of solidity.query(queryBox,{kinds:['static']})){
   const {box}=entry,size=box.min.map((v,i)=>box.max[i]-v);
   const center=box.min.map((v,i)=>(v+box.max[i])/2);
   const lines=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(...size)),cyan);
@@ -111,7 +111,7 @@ async function initializePhysics(){
   const world=await new PhysicsWorld().init();
   // The player is a dynamic capsule; the octree's AABB is only broad-phase occupancy.
   playerCollider=world.addPlayerCapsule(player);
-  world.syncStatic(octree,boundsAt(player,26));
+  world.syncStatic(solidity,boundsAt(player,4));
   if(world.staticBodies.size===0)throw new Error('No solid terrain registered near spawn');
   const group=new THREE.Group();scene.add(group);
   const cubes=[],geometry=new THREE.BoxGeometry(.8,.8,.8);
@@ -130,14 +130,14 @@ async function initializePhysics(){
    octree.insert(id,boundsAt(position,.4),{kind:'dynamic',owner:id});
    cubes.push({id,body,mesh});
   }
-  world.syncStatic(octree,boundsAt(player,26));
+  world.syncStatic(solidity,activeCollisionAreas());
   physics=world;fallingCubes=cubes;simulationReady=true;
   loading.remove();
   report('Box3D','READY',cubes.length+' dynamic bodies sharing world octree');
  }catch(error){loadStatus('Physics initialization failed: '+error.message);report('Box3D','FAILED',error.stack||error.message);}
 }
-report('octree solidity','WAITING','Terrain generation');
-report('Box3D','WAITING','World octree');
+report('octree solidity','READY','Implicit planet');
+report('Box3D','WAITING','Physics initialization');
 let last=performance.now(),elapsed=0,frames=0,lastTerrain=0,resizeW=0,resizeH=0;
 function frame(now){
  requestAnimationFrame(frame);
@@ -160,35 +160,10 @@ function frame(now){
  camera.position.copy(eye);camera.up.copy(up);camera.lookAt(player.clone().addScaledVector(up,1));
  if(avatar){avatar.position.copy(player).addScaledVector(up,-1.1);avatar.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),up);}
  gravityArrow.position.copy(player).addScaledVector(up,3);gravityArrow.setDirection(up.clone().negate());
- // Build the entire planet once. All geometry is committed before physics starts.
+ // The immutable planet is queryable immediately. Player motion never rebuilds it.
  if(octree){
   try{
-   if(!solidityReady){
-    const deadline=performance.now()+3;
-    if(solidWork){
-     while(performance.now()<deadline){
-      const result=solidWork.next();
-      if(result.done){solidWork=null;break;}
-      if(result.value)solidBoxes.push(result.value);
-     }
-     loadStatus('Building planet from solid core outward: '+solidBoxes.length+' occupied AABBs');
-    }else if(!mergedSolids){
-     loadStatus('Merging permanent solid AABBs...');
-     mergedSolids=mergeSolidBoxes(solidBoxes);
-     solidBoxes=[]; // Temporary build buffer only; completed geometry remains immutable.
-    }else{
-     while(solidInsertIndex<mergedSolids.length&&performance.now()<deadline){
-      octree.insert('planet:'+solidInsertIndex,mergedSolids[solidInsertIndex],{kind:'static',shape:'box',owner:'planet'});
-      solidInsertIndex++;
-     }
-     loadStatus('Installing permanent solidity: '+solidInsertIndex+'/'+mergedSolids.length+' AABBs');
-     if(solidInsertIndex===mergedSolids.length){
-      solidityReady=true;mergedSolids=null;
-      report('octree solidity','READY',solidInsertIndex+' permanent merged AABBs');
-     }
-    }
-   }
-   if(solidityReady&&!simulationReady&&!physicsLoading)void initializePhysics();
+   if(!simulationReady&&!physicsLoading)void initializePhysics();
    const up=player.clone().normalize();
    octree.update('player',boundsAt(player,.95));
    if(simulationReady&&physics){
@@ -199,7 +174,7 @@ function frame(now){
      const v=new THREE.Vector3(p.x,p.y,p.z);
      octree.update(item.id,boundsAt(v,.4));
     }
-    if(frames%30===1)physics.syncStatic(octree,activeCollisionAreas());
+    physics.syncStatic(solidity,activeCollisionAreas());
     physics.step(dt);
     if(playerCollider){const p=playerCollider.getPosition();player.set(p.x,p.y,p.z);octree.update('player',boundsAt(player,.95));}
     for(const item of fallingCubes){
@@ -212,7 +187,7 @@ function frame(now){
      octree.update(item.id,boundsAt(item.mesh.position,.4));
     }
    }
-   if(solidityReady&&frames%60===1)drawNearbyStatic(boundsAt(player,8));
+   if(frames%60===1)drawNearbyStatic(boundsAt(player,8));
   }catch(error){report('Box3D','FAILED',error.message);physics=null;}
  }
  if(renderer){
