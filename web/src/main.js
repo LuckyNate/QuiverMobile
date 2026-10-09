@@ -140,7 +140,9 @@ async function initializePhysics(){
   // The player is a dynamic capsule; the octree's AABB is only broad-phase occupancy.
   playerCollider=world.addPlayerCapsule(player);
   world.syncStatic(surface,boundsAt(player,2));
-  if(world.staticBodies.size===0)throw new Error('No solid terrain registered near spawn');
+  // A floating spawn can be above deep water with no nearby solid surface.
+  const spawnOverWater=height.radius(player.clone().normalize(),RADIUS)<water.radius;
+  if(world.staticBodies.size===0&&!spawnOverWater)throw new Error('No solid terrain registered near spawn');
   const group=new THREE.Group();scene.add(group);
   const cubes=[],geometry=new THREE.BoxGeometry(.8,.8,.8);
   const material=new THREE.MeshStandardMaterial({color:0xffa540,roughness:.8});
