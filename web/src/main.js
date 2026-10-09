@@ -40,7 +40,7 @@ try{
 const scene=new THREE.Scene();
 scene.add(new THREE.HemisphereLight(0xeeeeff,0x263b55,2.1));
 const sun=new THREE.DirectionalLight(0xffffff,2.0);sun.position.set(90,180,70);scene.add(sun);
-const camera=new THREE.PerspectiveCamera(55,1,.05,10000);
+const camera=new THREE.PerspectiveCamera(55,1,.05,60000);
 const height=new TerrainHeight(TERRAIN_SEED);
 let terrain=null;
 try{terrain=new WorldTerrain(scene,height);report('terrain setup','READY');}

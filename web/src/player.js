@@ -6,7 +6,7 @@ export class PlayerSystem {
  constructor(scene,camera,canvas,radius,report){
   this.scene=scene;this.camera=camera;this.canvas=canvas;
   this.position=new THREE.Vector3(0,0,radius+1.3);
-  this.yaw=0;this.pitch=.35;this.zoom=8;this.moveX=0;this.moveY=0;
+  this.yaw=0;this.pitch=.35;this.zoom=8;this.viewZoom=8;this.moveX=0;this.moveY=0;
   this.keys=new Set();this.touches=new Map();this.lookPointer=null;this.avatar=null;
   this.swimUp=false;this.swimDown=false;
   report('GLB player','LOADING');
@@ -32,7 +32,17 @@ export class PlayerSystem {
    if(![...this.touches].some(([id])=>id!==this.lookPointer)){this.moveX=0;this.moveY=0;}
   };
   canvas.addEventListener('pointerup',release);canvas.addEventListener('pointercancel',release);
-  canvas.addEventListener('wheel',e=>{e.preventDefault();this.zoom=THREE.MathUtils.clamp(this.zoom*Math.exp(e.deltaY*.001),3,30000);},{passive:false});
+  canvas.addEventListener('wheel',e=>{e.preventDefault();this.setZoom(this.zoom*Math.exp(e.deltaY*.001));},{passive:false});
+  // Logarithmic vertical slider: fine control near the player, globe at the top.
+  this.zoomSlider=document.createElement('input');
+  this.zoomSlider.type='range';this.zoomSlider.min='0';this.zoomSlider.max='1000';
+  this.zoomSlider.step='1';this.zoomSlider.setAttribute('aria-label','Camera zoom');
+  this.zoomSlider.style.cssText='position:fixed;right:12px;top:18%;height:45dvh;width:28px;z-index:5;writing-mode:vertical-lr;direction:rtl;touch-action:none;accent-color:#79b0ce';
+  this.zoomSlider.addEventListener('input',()=>{
+   this.setZoom(3*Math.pow(10000,Number(this.zoomSlider.value)/1000));
+  });
+  document.getElementById('app').append(this.zoomSlider);
+  this.setZoom(this.zoom);
   this.swimControls=document.createElement('div');
   this.swimControls.style.cssText='position:fixed;bottom:90px;right:16px;z-index:4;display:none;flex-direction:column;gap:10px';
   for(const [label,property] of [['UP','swimUp'],['DIVE','swimDown']]){
@@ -48,6 +58,10 @@ export class PlayerSystem {
    this.swimControls.append(button);
   }
   document.getElementById('app').append(this.swimControls);
+ }
+ setZoom(value){
+  this.zoom=THREE.MathUtils.clamp(value,3,30000);
+  if(this.zoomSlider)this.zoomSlider.value=String(Math.round(1000*Math.log(this.zoom/3)/Math.log(10000)));
  }
  diveByLooking(){
   // Pitch is positive when looking down; do not dive at the default camera tilt.
@@ -82,8 +96,15 @@ export class PlayerSystem {
  updateView(){
   const {up,east,north}=this.basis();
   const aim=north.clone().multiplyScalar(Math.cos(this.yaw)).addScaledVector(east,Math.sin(this.yaw));
-  const eye=this.position.clone().addScaledVector(up,2+this.zoom*Math.sin(this.pitch)).addScaledVector(aim,-this.zoom*Math.cos(this.pitch));
-  this.camera.position.copy(eye);this.camera.up.copy(up);this.camera.lookAt(this.position.clone().addScaledVector(up,1));
+  this.viewZoom+=(this.zoom-this.viewZoom)*.16;
+  // Zooming out raises the camera toward the radial normal until it views the globe vertically.
+  const t=THREE.MathUtils.smoothstep(Math.log(this.viewZoom),Math.log(30),Math.log(5000));
+  const chase=this.position.clone().addScaledVector(up,2+this.viewZoom*Math.sin(this.pitch))
+   .addScaledVector(aim,-this.viewZoom*Math.cos(this.pitch));
+  const overhead=this.position.clone().addScaledVector(up,this.viewZoom+2);
+  this.camera.position.copy(chase.lerp(overhead,t));
+  this.camera.up.copy(north);
+  this.camera.lookAt(this.position.clone().addScaledVector(up,1));
   if(this.avatar){this.avatar.position.copy(this.position).addScaledVector(up,-1.1);this.avatar.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),up);}
  }
 }
