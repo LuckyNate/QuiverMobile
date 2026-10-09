@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {WorldTerrain,RADIUS} from './world.js';
 import {WorldOctree} from './engine/world-octree.js';
-import {classifyTerrainVolumesIncremental,createTerrainPartition} from './engine/terrain-occupancy.js';
+import {buildSolidSphere} from './engine/terrain-occupancy.js';
 import {mergeSolidBoxes} from './engine/rolling-terrain-cache.js';
 import {PhysicsWorld} from './physics.js';
 
@@ -67,7 +67,7 @@ canvas.addEventListener('wheel',e=>{e.preventDefault();zoom=THREE.MathUtils.clam
 const gravityArrow=new THREE.ArrowHelper(new THREE.Vector3(0,0,-1),player,6,0xff00ff,1.2,.7);scene.add(gravityArrow);
 wireBtn.addEventListener('click',()=>{gravityArrow.visible=!gravityArrow.visible;wireBtn.textContent='Gravity: '+(gravityArrow.visible?'ON':'OFF');});
 
-// Unified world-space partition: terrain triangles, player and all cubes.
+// Permanent mathematical solidity is independent of rendered terrain triangles.
 let physics=null,fallingCubes=[],octree=null,playerCollider=null;
 let solidWork=null,solidBoxes=[],mergedSolids=null,solidInsertIndex=0,solidityReady=false,physicsLoading=false,simulationReady=false;
 const cyan=new THREE.LineBasicMaterial({color:0x00ffff,depthTest:true,depthWrite:false});
@@ -85,9 +85,9 @@ function registerTerrain(){
  if(!terrain)throw new Error('Terrain geometry unavailable');
  octree=new WorldOctree({center:[0,0,0],halfSize:256,maxDepth:9});
  octree.insert('player',boundsAt(player,.95),{kind:'player',owner:'player'});
- // ONE global immutable partition. One-metre boundary voxels at depth 8.
- const partition=createTerrainPartition(terrain.mesh.geometry.getAttribute('position').array);
- solidWork=classifyTerrainVolumesIncremental(partition,[0,0,0],{halfSize:128,maxDepth:8});
+ // One mathematically solid planet. The central radius-wide cube is emitted
+ // first, then the largest valid solid volumes outward to its spherical edge.
+ solidWork=buildSolidSphere(RADIUS,{halfSize:128,minCell:1});
  report('terrain geometry','READY',terrain.leafCount+' fixed faces');
  report('octree solidity','BUILDING','Planet-wide permanent solidity');
 }
@@ -171,7 +171,7 @@ function frame(now){
       if(result.done){solidWork=null;break;}
       if(result.value)solidBoxes.push(result.value);
      }
-     loadStatus('Classifying permanent planet solidity: '+solidBoxes.length+' occupied nodes');
+     loadStatus('Building planet from solid core outward: '+solidBoxes.length+' occupied AABBs');
     }else if(!mergedSolids){
      loadStatus('Merging permanent solid AABBs...');
      mergedSolids=mergeSolidBoxes(solidBoxes);
