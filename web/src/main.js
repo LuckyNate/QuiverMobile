@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {WorldTerrain,RADIUS} from './world.js';
 import {WorldOctree} from './engine/world-octree.js';
+import {classifyTerrainVolumes} from './engine/terrain-occupancy.js';
 import {PhysicsWorld} from './physics.js';
 
 const app=document.getElementById('app');
@@ -19,7 +20,7 @@ window.addEventListener('unhandledrejection',e=>report('promise','FAILED',e.reas
 ui.style.cssText='position:fixed;top:8px;left:8px;z-index:3;background:#000a;padding:8px;font:12px monospace;max-width:92vw;max-height:45vh;overflow:auto;white-space:pre-wrap;pointer-events:none';
 const controls=document.createElement('div');
 controls.style.cssText='position:fixed;bottom:12px;left:12px;z-index:3;display:flex;gap:8px';
-const wireBtn=document.createElement('button');wireBtn.textContent='Wireframe: ON';wireBtn.style.cssText='font-size:14px;padding:10px';
+const wireBtn=document.createElement('button');wireBtn.textContent='Gravity: ON';wireBtn.style.cssText='font-size:14px;padding:10px';
 controls.append(wireBtn);app.append(ui,controls);
 const canvas=document.createElement('canvas');canvas.style.cssText='width:100vw;height:100dvh;display:block;touch-action:none';app.prepend(canvas);
 report('document','READY');
@@ -57,19 +58,36 @@ canvas.addEventListener('pointermove',e=>{const p=touches.get(e.pointerId);if(!p
 function release(e){touches.delete(e.pointerId);if(lookPointer===e.pointerId)lookPointer=null;if(![...touches].some(([id,p])=>id!==lookPointer)){moveX=0;moveY=0;}}
 canvas.addEventListener('pointerup',release);canvas.addEventListener('pointercancel',release);
 canvas.addEventListener('wheel',e=>{e.preventDefault();zoom=THREE.MathUtils.clamp(zoom*Math.exp(e.deltaY*.001),3,30000);},{passive:false});
-wireBtn.addEventListener('click',()=>{if(!terrain)return;terrain.edges.visible=!terrain.edges.visible;wireBtn.textContent='Wireframe: '+(terrain.edges.visible?'ON':'OFF');});
+const gravityArrow=new THREE.ArrowHelper(new THREE.Vector3(0,0,-1),player,6,0xff00ff,1.2,.7);scene.add(gravityArrow);
+wireBtn.addEventListener('click',()=>{gravityArrow.visible=!gravityArrow.visible;wireBtn.textContent='Gravity: '+(gravityArrow.visible?'ON':'OFF');});
 
 // Unified world-space partition: terrain triangles, player and all cubes.
-let physics=null,fallingCubes=[],octree=null,playerCollider=null,solidityStarted=false;
+let physics=null,fallingCubes=[],octree=null,playerCollider=null,solidityStarted=false,solidAnchor=null;
+let terrainIds=[];
 const cyan=new THREE.LineBasicMaterial({color:0x00ffff,depthTest:true,depthWrite:false});
 const aabbDisplay=new THREE.Group();scene.add(aabbDisplay);
 function boundsAt(p,half){return {min:[p.x-half,p.y-half,p.z-half],max:[p.x+half,p.y+half,p.z+half]};}
+function rebuildSolidGround(anchor=player){
+ if(!octree||!terrain)return;
+ for(const id of terrainIds)octree.remove(id);
+ terrainIds=[];
+ const data=terrain.mesh.geometry.getAttribute('position').array;
+ // Local AABB octree occupancy, world-aligned, from the SAME visible terrain.
+ const center=anchor.toArray().map(v=>Math.round(v/8)*8);
+ const boxes=classifyTerrainVolumes(data,center,{halfSize:16,maxDepth:5});
+ for(let i=0;i<boxes.length;i++){
+  const id='ground-'+i;octree.insert(id,boxes[i],{kind:'static',shape:'box',owner:'planet'});
+  terrainIds.push(id);
+ }
+ solidAnchor=anchor.clone();
+ report('octree solidity','READY',terrainIds.length+' occupied AABBs');
+}
 function registerTerrain(){
  if(!terrain)throw new Error('Terrain geometry unavailable');
- const array=terrain.mesh.geometry.getAttribute('position').array;
  const next=new WorldOctree({center:[0,0,0],halfSize:Math.max(256,RADIUS*2),maxDepth:9});
- next.insertTerrainTriangles('planet',array);
  next.insert('player',boundsAt(player.clone().addScaledVector(player.clone().normalize(),.9),.9),{kind:'player',owner:'player'});
+ octree=next;
+ rebuildSolidGround(player);
  return next;
 }
 function drawNearbyStatic(queryBox){
@@ -87,7 +105,7 @@ async function initializePhysics(){
  try{
   report('octree solidity','LOADING');
   octree=registerTerrain();
-  report('octree solidity','READY',octree.objects.size+' world occupants');
+  report('octree solidity','READY',terrainIds.length+' occupied AABBs');
   report('Box3D','LOADING');
   const world=await new PhysicsWorld().init();
   // The player occupies the same octree and a static Box3D contact shape.
@@ -135,10 +153,12 @@ function frame(now){
  const eye=player.clone().addScaledVector(up,2+zoom*Math.sin(pitch)).addScaledVector(aim,-zoom*Math.cos(pitch));
  camera.position.copy(eye);camera.up.copy(up);camera.lookAt(player.clone().addScaledVector(up,1));
  if(avatar){avatar.position.copy(player);avatar.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),up);}
+ gravityArrow.position.copy(player).addScaledVector(up,3);gravityArrow.setDirection(up.clone().negate());
  // Only change terrain selection when position/zoom changes significantly.
  if(terrain&&now-lastTerrain>650){
   try{
-   terrain.rebuild(player,camera);report('terrain geometry','READY',terrain.leafCount+' leaves');
+   terrain.rebuild(player,camera);terrain.edges.visible=false;report('terrain geometry','READY',terrain.leafCount+' leaves');
+   if(octree&&solidAnchor&&player.distanceTo(solidAnchor)>7)rebuildSolidGround(player);
    if(!solidityStarted){solidityStarted=true;void initializePhysics();}
   }
   catch(error){report('terrain geometry','FAILED',error.message);terrain=null;}
