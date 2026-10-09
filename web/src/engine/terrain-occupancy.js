@@ -2,7 +2,7 @@
 // The terrain geometry must be a convex, outward-faced triangle shell (current icosphere).
 // Future heightmaps feed both renderer and this classifier; non-convex heightmaps
 // will require a winding/ray parity classifier instead of the convex half-spaces.
-export function* classifyTerrainVolumesIncremental(positions,center,{halfSize=16,maxDepth=5,actors=[],lodDistances=[1.5,3,6,12,24,48]}={}){
+export function createTerrainPartition(positions){
  if(!positions?.length||positions.length%9)throw new Error('Unindexed terrain triangles required');
  const planes=[];
  for(let i=0;i<positions.length;i+=9){
@@ -15,7 +15,12 @@ export function* classifyTerrainVolumesIncremental(positions,center,{halfSize=16
   if(n[0]*a[0]+n[1]*a[1]+n[2]*a[2]<0)n.forEach((x,j)=>n[j]=-x);
   planes.push({n,d:n[0]*a[0]+n[1]*a[1]+n[2]*a[2]});
  }
- const occupied=[];
+ return Object.freeze({planes});
+}
+// Cache surface planes once; interior nodes are terminal solid and exterior nodes
+// terminal empty. Only the boundary is recursively refined.
+export function* classifyTerrainVolumesIncremental(source,center,{halfSize=16,maxDepth=5,actors=[],lodDistances=[1.5,3,6,12,24,48]}={}){
+ const planes=source?.planes??createTerrainPartition(source).planes;
  // Minimum separation between the terrain node and any moving body's AABB.
  // Individual nodes refine as bodies approach rather than refining whole chunks.
  function desiredDepth(c,h){
@@ -43,7 +48,9 @@ export function* classifyTerrainVolumesIncremental(positions,center,{halfSize=16
    if(distance-extent>0)return;
    if(distance+extent>0)unresolved.push(p);
   }
-  if(!unresolved.length||depth>=desiredDepth(c,h)){
+  // Fully interior: one coarse solid AABB represents the entire volume.
+  if(!unresolved.length){yield {min:c.map(x=>x-h),max:c.map(x=>x+h)};return;}
+  if(depth>=desiredDepth(c,h)){
    // At maximum depth the center chooses the boundary cell; this establishes
    // the configured AABB precision rather than falsely filling open space.
    if(unresolved.length&&unresolved.some(p=>p.n[0]*c[0]+p.n[1]*c[1]+p.n[2]*c[2]>p.d))return;
