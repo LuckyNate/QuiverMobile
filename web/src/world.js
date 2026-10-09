@@ -55,6 +55,7 @@ export class WorldTerrain {
   this.ghost=null;
   this.fadeElapsed=LOD_FADE_SECONDS;
   this.fadeShader=null;
+  this.ghostShader=null;
   // Screen-door reveal avoids transparent sorting issues with water.
   this.material.onBeforeCompile=shader=>{
    shader.uniforms.lodReveal={value:1};
@@ -75,7 +76,9 @@ export class WorldTerrain {
    this.fadeElapsed+=Math.min(.05,(now-this.fadeClock)/1000);
    this.fadeClock=now;
    const t=Math.min(1,this.fadeElapsed/LOD_FADE_SECONDS);
-   if(this.fadeShader)this.fadeShader.uniforms.lodReveal.value=t*t*(3-2*t);
+   const fade=t*t*(3-2*t);
+   if(this.fadeShader)this.fadeShader.uniforms.lodReveal.value=fade;
+   if(this.ghostShader)this.ghostShader.uniforms.lodReveal.value=fade;
    if(t>=1)this.finishFade();
   }
   const normalized=position.clone().normalize();
@@ -148,8 +151,19 @@ export class WorldTerrain {
   if(!force&&oldGeometry.getAttribute('position')?.count){
    const oldMaterial=new THREE.MeshStandardMaterial({
     color:0xffffff,vertexColors:true,roughness:1,side:THREE.DoubleSide,
-    flatShading:true,depthWrite:false
+    flatShading:true,depthWrite:true
    });
+   // Complementary fade masks: both meshes write opaque depth ahead of water.
+   this.ghostShader=null;
+   oldMaterial.onBeforeCompile=shader=>{
+    shader.uniforms.lodReveal={value:this.fadeElapsed/LOD_FADE_SECONDS};
+    shader.fragmentShader='uniform float lodReveal;\n'+shader.fragmentShader;
+    shader.fragmentShader=shader.fragmentShader.replace(
+     '#include <dithering_fragment>',
+     '#include <dithering_fragment>\nif(fract(sin(dot(gl_FragCoord.xy,vec2(12.9898,78.233)))*43758.5453) <= lodReveal) discard;'
+    );
+    this.ghostShader=shader;
+   };
    this.ghost=new THREE.Mesh(oldGeometry,oldMaterial);
    this.ghost.frustumCulled=false;
    this.ghost.renderOrder=-1;
@@ -169,6 +183,7 @@ export class WorldTerrain {
   this.ghost.geometry.dispose();
   this.ghost.material.dispose();
   this.ghost=null;
+  this.ghostShader=null;
   this.fadeElapsed=LOD_FADE_SECONDS;
   if(this.fadeShader)this.fadeShader.uniforms.lodReveal.value=1;
  }
