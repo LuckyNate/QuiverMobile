@@ -60,7 +60,7 @@ export class RollingTerrainCache {
      this.regions.set(job.key,{ids,signature:job.signature});
      this.pending=null;changed=true;break;
     }
-    this.pending.boxes.push(next.value);
+    if(next.value)this.pending.boxes.push(next.value);
    }while(performance.now()<end);
    if(performance.now()>=end)break;
   }
