@@ -7,6 +7,7 @@ export class PlayerSystem {
   this.scene=scene;this.camera=camera;this.canvas=canvas;
   this.position=new THREE.Vector3(0,0,radius+1.3);
   this.yaw=0;this.pitch=.35;this.zoom=8;this.viewZoom=8;this.moveX=0;this.moveY=0;
+  this.frameUp=null;this.frameForward=null;
   this.keys=new Set();this.touches=new Map();this.lookPointer=null;this.avatar=null;
   this.swimUp=false;this.swimDown=false;
   report('GLB player','LOADING');
@@ -79,8 +80,19 @@ export class PlayerSystem {
  }
  basis(){
   const up=this.position.clone().normalize();
-  const east=new THREE.Vector3(0,1,0).cross(up).normalize();
-  const north=up.clone().cross(east).normalize();
+  if(!this.frameUp){
+   // Establish one initial tangent heading; it is never rederived from a global pole.
+   const reference=Math.abs(up.y)<.9?new THREE.Vector3(0,1,0):new THREE.Vector3(0,0,1);
+   this.frameForward=reference.addScaledVector(up,-reference.dot(up)).normalize();
+  }else{
+   // Parallel-transport the navigation frame over the curved planet.
+   const transport=new THREE.Quaternion().setFromUnitVectors(this.frameUp,up);
+   this.frameForward.applyQuaternion(transport);
+   this.frameForward.addScaledVector(up,-this.frameForward.dot(up)).normalize();
+  }
+  this.frameUp=up;
+  const north=this.frameForward.clone();
+  const east=north.clone().cross(up).normalize();
   return {up,east,north};
  }
  movement(){
@@ -103,7 +115,9 @@ export class PlayerSystem {
    .addScaledVector(aim,-this.viewZoom*Math.cos(this.pitch));
   const overhead=this.position.clone().addScaledVector(up,this.viewZoom+2);
   this.camera.position.copy(chase.lerp(overhead,t));
-  this.camera.up.copy(north);
+  // Ground view stays upright against local gravity; globe view uses player heading
+  // as screen-up. No geographic north, pole, or forced world-space rotation.
+  this.camera.up.copy(up.clone().lerp(aim,t).normalize());
   this.camera.lookAt(this.position.clone().addScaledVector(up,1));
   if(this.avatar){this.avatar.position.copy(this.position).addScaledVector(up,-1.1);this.avatar.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),up);}
  }
