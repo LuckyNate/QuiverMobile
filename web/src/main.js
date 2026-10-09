@@ -90,7 +90,7 @@ function registerTerrain(){
  coarseWork=classifyWorldCoarse(partition,[0,0,0],Math.max(256,RADIUS*2),5);
  coarseCells=[];
  terrainCache=new RollingTerrainCache(octree,{
-  classify:(center,halfSize,depth,actors,feet)=>classifyTerrainVolumesIncremental(partition,center,{halfSize,maxDepth:depth,actors,feet}),
+  classify:(center,halfSize,depth)=>classifyTerrainVolumesIncremental(partition,center,{halfSize,maxDepth:depth}),
   depth:8,cellSize:16,maxRegions:48
  });
  // Startup refinement begins only after the coarse world partition finishes.
@@ -203,8 +203,7 @@ function frame(now){
    }
    if(terrainCache&&coarseReady){
     const actors=[boundsAt(player,.95),...fallingCubes.map(item=>boundsAt(item.body.getPosition(),.4))];
-    const feet=player.clone().addScaledVector(player.clone().normalize(),-1.1).toArray();
-    if(terrainCache.advance(player,actors,2,feet)&&physics)physics.syncStatic(octree,activeCollisionAreas());
+    if(terrainCache.advance(player,actors,2)&&physics)physics.syncStatic(octree,activeCollisionAreas());
     if(frames%60===1)report('octree solidity','READY',terrainCache.regionCount+' cached regions');
    }
    const up=player.clone().normalize();
