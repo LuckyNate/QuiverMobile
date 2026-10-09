@@ -51,15 +51,6 @@ export class PhysicsWorld {
   const body=this.world.createBody({type:'dynamic',position:{x:position.x,y:position.y,z:position.z},rotation,
    motionLocks:{angularX:true,angularY:true,angularZ:true},linearDamping:0.5});
   body.createCapsule({height:1.1,radius:.35,density:1,friction:.8});
-  // A shallow, 0.5 m diameter circular footplate, rigidly attached to the
-  // player's capsule. Local Y points along the planet normal at spawn.
-  const points=[],segments=12;
-  for(let i=0;i<segments;i++){
-   const angle=2*Math.PI*i/segments;
-   const x=.25*Math.cos(angle),z=.25*Math.sin(angle);
-   points.push({x,y:-.91,z},{x,y:-.96,z});
-  }
-  body.createHull({points,density:1,friction:.9});
   return body;
  }
  movePlayer(body,direction,speed,up) {
