@@ -258,15 +258,6 @@ function frame(now){
   const slide=motion.addScaledVector(footNormal,-motion.dot(footNormal));
   if(slide.lengthSq()>1)slide.normalize();
   physics.movePlayer(playerCollider,slide,5,radialUp);
-  if(slide.lengthSq()>.001&&support.rise>.02&&!support.blocked){
-   const v=playerCollider.getLinearVelocity();
-   const radial=v.x*radialUp.x+v.y*radialUp.y+v.z*radialUp.z;
-   const climb=Math.min(3.5,support.rise*7);
-   if(radial<climb){
-    const lift=climb-radial;
-    playerCollider.setLinearVelocity({x:v.x+radialUp.x*lift,y:v.y+radialUp.y*lift,z:v.z+radialUp.z*lift});
-   }
-  }
  }
  up=player.clone().normalize();east=new THREE.Vector3(0,1,0).cross(up).normalize();north=up.clone().cross(east).normalize();
  const aim=north.clone().multiplyScalar(Math.cos(yaw)).addScaledVector(east,Math.sin(yaw));
