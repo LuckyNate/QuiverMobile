@@ -60,50 +60,34 @@ export class RollingTerrainCache {
    const center=[(x+.5)*s,(y+.5)*s,(z+.5)*s];
    const distance=Math.hypot(...center.map((v,i)=>Math.max(0,Math.abs(feetPoint[i]-v)-s/2)));
    if(distance>64)continue;
-   const relevant=bodies.filter(b=>b.min.every((v,i)=>v<=center[i]+s/2+48&&b.max[i]>=center[i]-s/2-48));
-   // A metre of feet movement changes the node-level LOD target, not every frame.
-   const signature=feetPoint.map(v=>Math.floor(v)).join(':');
-   candidates.push({key:this.key(x,y,z),center,distance,signature});
+   candidates.push({key:this.key(x,y,z),center,distance});
   }
   candidates.sort((a,b)=>a.distance-b.distance);
-  const active=new Set(candidates.map(c=>c.key));
   const end=performance.now()+Math.max(0,budgetMs);
   let changed=false;
-  for(const c of candidates){
-   const current=this.regions.get(c.key);
-   if(current?.signature===c.signature){
-    this.regions.delete(c.key);this.regions.set(c.key,current);
-    continue;
-   }
-   // Do not continue an obsolete build after the player changes its required LOD.
-   if(this.pending&&(this.pending.key!==c.key||this.pending.signature!==c.signature)){
-    const pendingDistance=candidates.find(v=>v.key===this.pending.key)?.distance??Infinity;
-    if(this.pending.signature!==candidates.find(v=>v.key===this.pending.key)?.signature||c.distance<pendingDistance)this.pending=null;
-   }
+  for(const candidate of candidates){
+   // A region's occupancy is computed exactly once, regardless of movement.
+   if(this.regions.has(candidate.key))continue;
    if(!this.pending){
-    const generation=this.generation++;
-    this.pending={...c,generation,boxes:[],iterator:this.classify(c.center,s/2,this.depth,bodies,feetPoint)};
+    this.pending={...candidate,boxes:[],
+     iterator:this.classify(candidate.center,s/2,this.depth,[],null)};
    }
-   if(this.pending.key!==c.key)continue;
-   // Yield after each recursive leaf; never execute the entire classifier in one frame.
+   // Never abandon a started region just because the player moves.
+   if(this.pending.key!==candidate.key)continue;
    do{
     const next=this.pending.iterator.next();
     if(next.done){
-     const job=this.pending,ids=[];
-     const merged=mergeSolidBoxes(job.boxes);
+     const job=this.pending,ids=[],merged=mergeSolidBoxes(job.boxes);
      for(let i=0;i<merged.length;i++){
       const box=merged[i];
-      // Permanent interior cells already occupy this volume. Never duplicate them.
       const covered=this.tree.query(box,{kinds:['static']}).some(entry=>entry.owner==='planet-interior'&&
        box.min.every((v,k)=>v>=entry.box.min[k]&&box.max[k]<=entry.box.max[k]));
       if(covered)continue;
-      const id='ground:'+job.key+':'+job.generation+':'+i;
+      const id='ground:'+job.key+':'+i;
       this.tree.insert(id,box,{kind:'static',shape:'box',owner:'planet'});
       ids.push(id);
      }
-     if(current)for(const id of current.ids)this.tree.remove(id);
-     this.regions.delete(job.key);
-     this.regions.set(job.key,{ids,signature:job.signature});
+     this.regions.set(job.key,{ids});
      this.pending=null;changed=true;break;
     }
     if(next.value)this.pending.boxes.push(next.value);
