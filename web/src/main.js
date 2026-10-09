@@ -73,7 +73,7 @@ function registerTerrain(){
  octree=new WorldOctree({center:[0,0,0],halfSize:Math.max(256,RADIUS*2),maxDepth:9});
  octree.insert('player',boundsAt(player,.95),{kind:'player',owner:'player'});
  terrainCache=new RollingTerrainCache(octree,{
-  classify:(center,halfSize,depth)=>classifyTerrainVolumes(terrain.mesh.geometry.getAttribute('position').array,center,{halfSize,maxDepth:depth}),
+  classify:(center,halfSize,depth,actors)=>classifyTerrainVolumes(terrain.mesh.geometry.getAttribute('position').array,center,{halfSize,maxDepth:depth,actors}),
   depth:8,cellSize:16,maxRegions:48
  });
  terrainCache.refresh(player,3);
@@ -151,7 +151,14 @@ function frame(now){
  if(terrain&&now-lastTerrain>650){
   try{
    terrain.rebuild(player,camera);terrain.edges.visible=false;report('terrain geometry','READY',terrain.leafCount+' leaves');
-   if(terrainCache){terrainCache.refresh(player,2);report('octree solidity','READY',terrainCache.regionCount+' cached regions');}
+   if(terrainCache){
+    const actors=[boundsAt(player,.95),...fallingCubes.map(item=>{
+     const p=item.body.getPosition();return boundsAt(p,.4);
+    })];
+    terrainCache.refresh(player,2,actors);
+    if(physics)physics.syncStatic(octree,boundsAt(player,26));
+    report('octree solidity','READY',terrainCache.regionCount+' cached regions');
+   }
    if(!solidityStarted){solidityStarted=true;void initializePhysics();}
   }
   catch(error){report('terrain geometry','FAILED',error.message);terrain=null;}
