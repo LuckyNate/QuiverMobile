@@ -48,6 +48,35 @@ jobs:
           echo "KEYSTORE_PASSWORD=$SIGNING_PASSWORD" >> "$GITHUB_ENV"
           echo "KEY_PASSWORD=$SIGNING_PASSWORD" >> "$GITHUB_ENV"
           echo "KEY_ALIAS=quivermobile" >> "$GITHUB_ENV"
+      - name: Install and validate Android NDK (with retries)
+        shell: bash
+        run: |
+          set -euo pipefail
+          NDK_VERSION="27.0.12077973"
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          NDK_DIR="$SDK_ROOT/ndk/$NDK_VERSION"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(command -v sdkmanager)"
+          fi
+          for attempt in 1 2 3; do
+            if [ -f "$NDK_DIR/source.properties" ] && grep -q "Pkg.Revision = $NDK_VERSION" "$NDK_DIR/source.properties"; then
+              echo "Verified Android NDK $NDK_VERSION"
+              break
+            fi
+            rm -rf "$NDK_DIR"
+            echo "Installing Android NDK $NDK_VERSION (attempt $attempt/3)"
+            if "$SDKMANAGER" --install "ndk;$NDK_VERSION" && [ -f "$NDK_DIR/source.properties" ]; then
+              echo "Android NDK installed successfully"
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::NDK download failed three times"
+              exit 1
+            fi
+            sleep 10
+          done
+          test -x "$NDK_DIR/ndk-build"
       - name: Build signed release APK
         shell: bash
         run: |
