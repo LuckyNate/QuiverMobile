@@ -60,8 +60,13 @@ export class RollingTerrainCache {
     if(next.done){
      const job=this.pending,ids=[];
      for(let i=0;i<job.boxes.length;i++){
+      const box=job.boxes[i];
+      // Permanent interior cells already occupy this volume. Never duplicate them.
+      const covered=this.tree.query(box,{kinds:['static']}).some(entry=>entry.owner==='planet-interior'&&
+       box.min.every((v,k)=>v>=entry.box.min[k]&&box.max[k]<=entry.box.max[k]));
+      if(covered)continue;
       const id='ground:'+job.key+':'+job.generation+':'+i;
-      this.tree.insert(id,job.boxes[i],{kind:'static',shape:'box',owner:'planet'});
+      this.tree.insert(id,box,{kind:'static',shape:'box',owner:'planet'});
       ids.push(id);
      }
      if(current)for(const id of current.ids)this.tree.remove(id);
