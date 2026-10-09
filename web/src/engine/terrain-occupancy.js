@@ -67,7 +67,7 @@ export function classifyTerrainVolumes(positions,center,options={}){
 
 // One-time coarse planet partition. Terminal cells are SOLID or EMPTY;
 // boundary cells are retained for subsequent local surface refinement.
-export function* classifyWorldCoarse(partition,center,halfSize,maxDepth=3){
+export function* classifyWorldCoarse(partition,center,halfSize,maxDepth=5){
  const planes=partition.planes;
  const stack=[{center,half:halfSize,depth:0}];
  while(stack.length){
