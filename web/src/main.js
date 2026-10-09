@@ -71,9 +71,14 @@ let physics=null,fallingCubes=[],octree=null,playerCollider=null;
 let solidity=null,physicsLoading=false,simulationReady=false;
 const cyan=new THREE.LineBasicMaterial({color:0x00ffff,depthTest:true,depthWrite:false});
 const aabbDisplay=new THREE.Group();scene.add(aabbDisplay);
+const footShadow=new THREE.Mesh(
+ new THREE.CircleGeometry(.25,32),
+ new THREE.MeshBasicMaterial({color:0x182432,transparent:true,opacity:.45,depthWrite:false,side:THREE.DoubleSide})
+);
+scene.add(footShadow);
 function boundsAt(p,half){return {min:[p.x-half,p.y-half,p.z-half],max:[p.x+half,p.y+half,p.z+half]};}
 function activeCollisionAreas(){
- const areas=[boundsAt(player,4)];
+ const areas=[boundsAt(player,2)];
  for(const item of fallingCubes){
   const p=item.body.getPosition();
   areas.push(boundsAt(p,3));
@@ -111,7 +116,7 @@ async function initializePhysics(){
   const world=await new PhysicsWorld().init();
   // The player is a dynamic capsule; the octree's AABB is only broad-phase occupancy.
   playerCollider=world.addPlayerCapsule(player);
-  world.syncStatic(solidity,boundsAt(player,4));
+  world.syncStatic(solidity,boundsAt(player,2));
   if(world.staticBodies.size===0)throw new Error('No solid terrain registered near spawn');
   const group=new THREE.Group();scene.add(group);
   const cubes=[],geometry=new THREE.BoxGeometry(.8,.8,.8);
@@ -159,6 +164,8 @@ function frame(now){
  const eye=player.clone().addScaledVector(up,2+zoom*Math.sin(pitch)).addScaledVector(aim,-zoom*Math.cos(pitch));
  camera.position.copy(eye);camera.up.copy(up);camera.lookAt(player.clone().addScaledVector(up,1));
  if(avatar){avatar.position.copy(player).addScaledVector(up,-1.1);avatar.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),up);}
+ footShadow.position.copy(player).addScaledVector(up,-.96);
+ footShadow.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),up);
  gravityArrow.position.copy(player).addScaledVector(up,3);gravityArrow.setDirection(up.clone().negate());
  // The immutable planet is queryable immediately. Player motion never rebuilds it.
  if(octree){
