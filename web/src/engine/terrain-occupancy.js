@@ -81,3 +81,50 @@ export function* classifyWorldCoarse(partition,center,halfSize,maxDepth=5){
   }
  }
 }
+
+
+// Permanent mathematical sphere, constructed from a guaranteed solid core outward.
+// Six disjoint exterior slabs fill the bounding cube without overlapping the core.
+// Each slab is subdivided only where it crosses the sphere; all complete solid
+// AABBs are emitted at their largest valid size. No triangles or player input.
+export function* buildSolidSphere(radius,{halfSize=128,minCell=1}={}){
+ if(!(radius>0&&radius<=halfSize&&minCell>0))throw new RangeError('Invalid solid sphere dimensions');
+ const inner=radius/2; // central cube side length == planet radius
+ const core={min:[-inner,-inner,-inner],max:[inner,inner,inner]};
+ yield core;
+ const h=halfSize,q=inner;
+ const slabs=[
+  {min:[-h,-h,-h],max:[-q,h,h]},
+  {min:[q,-h,-h],max:[h,h,h]},
+  {min:[-q,-h,-h],max:[q,-q,h]},
+  {min:[-q,q,-h],max:[q,h,h]},
+  {min:[-q,-q,-h],max:[q,q,-q]},
+  {min:[-q,-q,q],max:[q,q,h]}
+ ];
+ const r2=radius*radius;
+ function* fill(box){
+  yield null; // enforce the caller's per-frame work budget
+  let far=0,near=0,axis=0,longest=0;
+  for(let i=0;i<3;i++){
+   const lo=box.min[i],hi=box.max[i];
+   far+=Math.max(lo*lo,hi*hi);
+   const closest=lo>0?lo:hi<0?-hi:0;
+   near+=closest*closest;
+   const edge=hi-lo;
+   if(edge>longest){longest=edge;axis=i;}
+  }
+  if(near>r2)return;
+  if(far<=r2){yield box;return;}
+  if(longest<=minCell){
+   // Conservative occupied boundary: retain every voxel intersecting sphere.
+   yield box;return;
+  }
+  const mid=(box.min[axis]+box.max[axis])/2;
+  const left={min:[...box.min],max:[...box.max]};
+  const right={min:[...box.min],max:[...box.max]};
+  left.max[axis]=mid;right.min[axis]=mid;
+  yield* fill(left);
+  yield* fill(right);
+ }
+ for(const slab of slabs)yield* fill(slab);
+}
