@@ -72,6 +72,7 @@ let physics=null,fallingCubes=[],octree=null,playerCollider=null;
 let solidity=null,surface=null,physicsLoading=false,simulationReady=false;
 const cyan=new THREE.LineBasicMaterial({color:0x00ffff,depthTest:true,depthWrite:false});
 const aabbDisplay=new THREE.Group();scene.add(aabbDisplay);
+aabbDisplay.visible=false;
 function boundsAt(p,half){return {min:[p.x-half,p.y-half,p.z-half],max:[p.x+half,p.y+half,p.z+half]};}
 function activeCollisionAreas(){
  const areas=[boundsAt(player,2)];
@@ -128,7 +129,7 @@ function drawNearbyStatic(queryBox){
 // Dark-green surface patches are the same outward faces used by Box3D.
 // Rebuild only when the local set of exposed patches changes.
 const greenSurface=new THREE.Mesh(new THREE.BufferGeometry(),
- new THREE.MeshBasicMaterial({color:0x145c2b,side:THREE.DoubleSide,depthWrite:false,transparent:true,opacity:.8}));
+ new THREE.MeshBasicMaterial({color:0x145c2b,side:THREE.DoubleSide,depthWrite:true,transparent:false,opacity:1}));
 greenSurface.frustumCulled=false;
 scene.add(greenSurface);
 let surfaceSignature='';
@@ -139,8 +140,14 @@ function drawSurface(bounds){
  surfaceSignature=signature;
  const positions=[];
  for(const p of patches){
-  const v=p.corners;
-  for(const i of [0,1,2,0,2,3])positions.push(...v[i].map(x=>x*1.00025));
+  // Visual-only 2 cm edge overlap; collision hulls remain unchanged.
+  const v=p.corners,center=[0,1,2].map(axis=>v.reduce((sum,corner)=>sum+corner[axis],0)/4);
+  const corners=v.map(corner=>{
+   const expanded=corner.map((value,axis)=>center[axis]+(value-center[axis])*1.04);
+   const length=Math.hypot(...expanded);
+   return expanded.map(value=>value*surface.radius*1.00025/length);
+  });
+  for(const i of [0,1,2,0,2,3])positions.push(...corners[i]);
  }
  const geometry=new THREE.BufferGeometry();
  geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
@@ -233,8 +240,7 @@ function frame(now){
      octree.update(item.id,boundsAt(item.mesh.position,.4));
     }
    }
-   drawNearbyStatic(boundsAt(player,2));
-   drawSurface(boundsAt(player,2));
+   drawSurface(boundsAt(player,3));
   }catch(error){report('Box3D','FAILED',error.message);physics=null;}
  }
  if(renderer){
