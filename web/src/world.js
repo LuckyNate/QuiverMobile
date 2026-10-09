@@ -36,10 +36,10 @@ for(let i=0;i<pos.count;i+=3)roots.push([
 ]);
 base.dispose();
 const mid=(a,b)=>a.clone().add(b).normalize();
-function node(a,b,c,level){
+function node(a,b,c,level,parent=null){
  const center=a.clone().add(b).add(c).normalize();
  const reach=RADIUS*Math.max(center.distanceTo(a),center.distanceTo(b),center.distanceTo(c));
- return {a,b,c,level,center,reach,children:null,split:false};
+ return {a,b,c,level,parent,center,reach,children:null,split:false};
 }
 // Render-only spherical triangle hierarchy; physical surface is independent.
 // Retained nodes and split hysteresis avoid rebuilding when walking near a LOD threshold.
@@ -56,9 +56,17 @@ export class WorldTerrain {
   this.fadeElapsed=LOD_FADE_SECONDS;
   this.fadeShader=null;
   this.ghostShader=null;
+  this.morphPlayer=new THREE.Vector3(0,0,RADIUS);
+  this.morphUniform=null;
   // Screen-door reveal avoids transparent sorting issues with water.
   this.material.onBeforeCompile=shader=>{
    shader.uniforms.lodReveal={value:1};
+   shader.uniforms.morphPlayer={value:this.morphPlayer};
+   shader.vertexShader='attribute vec3 morphOrigin;\nattribute float morphRange;\nuniform vec3 morphPlayer;\n'+shader.vertexShader;
+   shader.vertexShader=shader.vertexShader.replace(
+    '#include <begin_vertex>',
+    '#include <begin_vertex>\nfloat morphDistance=length(position-morphPlayer);\nfloat morphFactor=1.0-smoothstep(morphRange*0.55,morphRange,morphDistance);\nvec3 transformed=mix(morphOrigin,position,morphRange>0.0?morphFactor:1.0);'
+   );
    shader.fragmentShader='uniform float lodReveal;\n'+shader.fragmentShader;
    shader.fragmentShader=shader.fragmentShader.replace(
     '#include <dithering_fragment>',
@@ -84,6 +92,7 @@ export class WorldTerrain {
    if(this.ghostShader)this.ghostShader.uniforms.lodReveal.value=fade;
    if(t>=1)this.finishFade();
   }
+  this.morphPlayer.copy(position);
   const normalized=position.clone().normalize();
   const altitude=position.length()-RADIUS;
   let changed=force;
@@ -97,7 +106,7 @@ export class WorldTerrain {
    if(split){
     if(!n.children){
      const ab=mid(n.a,n.b),bc=mid(n.b,n.c),ca=mid(n.c,n.a),level=n.level+1;
-     n.children=[node(n.a,ab,ca,level),node(ab,n.b,bc,level),node(ca,bc,n.c,level),node(ab,bc,ca,level)];
+     n.children=[node(n.a,ab,ca,level,n),node(ab,n.b,bc,level,n),node(ca,bc,n.c,level,n),node(ab,bc,ca,level,n)];
     }
     if(!n.split)changed=true;
     n.split=true;
@@ -110,7 +119,7 @@ export class WorldTerrain {
   };
   for(const root of this.roots)visit(root);
   if(!changed)return false;
-  const positions=[],colors=[];
+  const positions=[],colors=[],morphOrigins=[],morphRanges=[];
   // Every leaf vertex is shared through its direction, independent of LOD.
   // A coarse edge is split wherever a finer neighbor owns its midpoint.
   const key=v=>[v.x,v.y,v.z].map(x=>Math.round(x*1e9)).join(',');
@@ -123,11 +132,27 @@ export class WorldTerrain {
    return [...edgePoints(a,midpoint,depth+1),...edgePoints(midpoint,b,depth+1)];
   };
   const radial=v=>v.clone().multiplyScalar(this.height.radius(v,RADIUS));
-  const add=(a,b,c)=>{
+  // A new subdivision begins on its parent's actual triangle plane.
+  // Its vertices slide toward the finer sampled terrain as the player approaches.
+  // Collision heights remain authoritative and are never morphed.
+  const coarsePoint=(direction,parent)=>{
+   if(!parent)return radial(direction);
+   const A=radial(parent.a),B=radial(parent.b),C=radial(parent.c);
+   const normal=B.clone().sub(A).cross(C.clone().sub(A));
+   const divisor=normal.dot(direction);
+   if(Math.abs(divisor)<1e-7)return radial(direction);
+   const radius=normal.dot(A)/divisor;
+   if(!(radius>0&&Number.isFinite(radius)))return radial(direction);
+   return direction.clone().multiplyScalar(radius);
+  };
+  const add=(a,b,c,leaf)=>{
    const A=radial(a),B=radial(b),C=radial(c);
    const outward=new THREE.Vector3().subVectors(B,A).cross(new THREE.Vector3().subVectors(C,A)).dot(A)>=0;
    for(const p of (outward?[A,B,C]:[A,C,B])){
     positions.push(p.x,p.y,p.z);
+    const coarse=coarsePoint(p.clone().normalize(),leaf.parent);
+    morphOrigins.push(coarse.x,coarse.y,coarse.z);
+    morphRanges.push(leaf.level>=2?LOD_MAX_DISTANCE_METERS[leaf.level]:0);
     const color=terrainColor(p.length()-(RADIUS-1));
     colors.push(color.r,color.g,color.b);
    }
@@ -138,16 +163,18 @@ export class WorldTerrain {
     ...edgePoints(n.b,n.c),
     ...edgePoints(n.c,n.a)
    ];
-   if(boundary.length===3){add(n.a,n.b,n.c);continue;}
+   if(boundary.length===3){add(n.a,n.b,n.c,n);continue;}
    // Fan from a shared-height interior point to the stitched boundary.
    // No skirts or collider changes: neighboring edges now have identical vertices.
    const center=n.a.clone().add(n.b).add(n.c).normalize();
    for(let i=0;i<boundary.length;i++)
-    add(center,boundary[i],boundary[(i+1)%boundary.length]);
+    add(center,boundary[i],boundary[(i+1)%boundary.length],n);
   }
   const geometry=new THREE.BufferGeometry();
   geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
   geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
+  geometry.setAttribute('morphOrigin',new THREE.Float32BufferAttribute(morphOrigins,3));
+  geometry.setAttribute('morphRange',new THREE.Float32BufferAttribute(morphRanges,1));
   geometry.computeVertexNormals();
   if(this.ghost)this.finishFade();
   const oldGeometry=this.geometry;
