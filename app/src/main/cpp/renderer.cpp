@@ -9,7 +9,8 @@
 
 namespace {
 constexpr float PI=3.14159265358979323846f;
-constexpr double SEA_LEVEL_RADIUS_METERS=100000.0;
+constexpr double ROOT_EDGE_METERS=128.0; // 2^7 meters, regular D20 edge
+constexpr double SEA_LEVEL_RADIUS_METERS=ROOT_EDGE_METERS*std::sqrt(10.0+2.0*std::sqrt(5.0))/4.0;
 constexpr int MAX_LOD=18;
 constexpr float SPLIT_PIXELS=42.f;
 constexpr float FULL_OPACITY_PIXELS=105.f;
@@ -207,7 +208,7 @@ extern "C" JNIEXPORT void JNICALL Java_com_luckynate_quivermobile_MainActivity_n
  glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
  glDisable(GL_DEPTH_TEST);
  glClearColor(.035f,.045f,.075f,1.f);
- __android_log_print(ANDROID_LOG_INFO,"QuiverMobile","Reference sphere radius %.0f meters; dynamic wireframe LOD",SEA_LEVEL_RADIUS_METERS);
+ __android_log_print(ANDROID_LOG_INFO,"QuiverMobile","Reference sphere radius %.3f meters; root edge %.0f meters",SEA_LEVEL_RADIUS_METERS,ROOT_EDGE_METERS);
 }
 extern "C" JNIEXPORT void JNICALL Java_com_luckynate_quivermobile_MainActivity_nativeResize(JNIEnv*,jobject,jint w,jint h){
  width=std::max(1,(int)w);height=std::max(1,(int)h);glViewport(0,0,width,height);
@@ -224,11 +225,11 @@ extern "C" JNIEXPORT void JNICALL Java_com_luckynate_quivermobile_MainActivity_n
  Vec facing=add(scale(north,std::cos(yaw)),scale(east,std::sin(yaw)));
  Vec side=add(scale(east,std::cos(yaw)),scale(north,-std::sin(yaw)));
  Vec movement=add(scale(side,moveX),scale(facing,moveY));
- if(length(movement)>.001f) position=normalize(add(position,scale(movement,5.f*dt/100000.f)));
+ if(length(movement)>.001f) position=normalize(add(position,scale(movement,5.f*dt/float(SEA_LEVEL_RADIUS_METERS))));
  up=position;east=tangentEast();north=tangentNorth();
  Vec cameraFacing=add(scale(north,std::cos(yaw)),scale(east,std::sin(yaw)));
- Vec eye=add(scale(up,1.f),scale(cameraFacing,-distance*std::cos(pitch)/100000.f));
- eye=add(eye,scale(up,(2.f+distance*std::sin(pitch))/100000.f));
+ Vec eye=add(scale(up,1.f),scale(cameraFacing,-distance*std::cos(pitch)/float(SEA_LEVEL_RADIUS_METERS)));
+ eye=add(eye,scale(up,(2.f+distance*std::sin(pitch))/float(SEA_LEVEL_RADIUS_METERS)));
  cameraForward=normalize(subtract(add(position,scale(up,.00001f)),eye));
  cameraRight=normalize(cross(cameraForward,up));
  cameraUp=cross(cameraRight,cameraForward);
@@ -241,11 +242,11 @@ extern "C" JNIEXPORT void JNICALL Java_com_luckynate_quivermobile_MainActivity_n
   float a=j*2*PI/12,b=(j+1)*2*PI/12;
   Vec radial=add(scale(right,std::cos(a)),scale(north,std::sin(a)));
   Vec next=add(scale(right,std::cos(b)),scale(north,std::sin(b)));
-  Vec bottom=add(up,scale(radial,.35f/100000.f));
-  Vec top=add(bottom,scale(up,1.8f/100000.f));
-  Vec other=add(up,scale(next,.35f/100000.f));
+  Vec bottom=add(up,scale(radial,.35f/float(SEA_LEVEL_RADIUS_METERS)));
+  Vec top=add(bottom,scale(up,1.8f/float(SEA_LEVEL_RADIUS_METERS)));
+  Vec other=add(up,scale(next,.35f/float(SEA_LEVEL_RADIUS_METERS)));
   edge(bottom,top,1.f);edge(bottom,other,1.f);
-  edge(top,add(other,scale(up,1.8f/100000.f)),1.f);
+  edge(top,add(other,scale(up,1.8f/float(SEA_LEVEL_RADIUS_METERS))),1.f);
  }
  float p[16],v[16],mvp[16];
  perspective(p,55*PI/180.f,(float)width/height,.0000003f,20.f);
