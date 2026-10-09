@@ -65,7 +65,7 @@ export class WorldTerrain {
    shader.vertexShader='attribute vec3 morphOrigin;\nattribute float morphRange;\nuniform vec3 morphPlayer;\n'+shader.vertexShader;
    shader.vertexShader=shader.vertexShader.replace(
     '#include <begin_vertex>',
-    '#include <begin_vertex>\nfloat morphDistance=length(position-morphPlayer);\nfloat morphFactor=1.0-smoothstep(morphRange*0.55,morphRange,morphDistance);\nvec3 transformed=mix(morphOrigin,position,morphRange>0.0?morphFactor:1.0);'
+    '#include <begin_vertex>\nfloat morphDistance=length(position-morphPlayer);\nfloat morphFactor=1.0-smoothstep(morphRange*0.55,morphRange,morphDistance);\ntransformed=mix(morphOrigin,position,morphRange>0.0?morphFactor:1.0);'
    );
    shader.fragmentShader='uniform float lodReveal;\n'+shader.fragmentShader;
    shader.fragmentShader=shader.fragmentShader.replace(
