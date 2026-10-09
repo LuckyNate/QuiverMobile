@@ -110,13 +110,8 @@ export class RollingTerrainCache {
    }while(performance.now()<end);
    if(performance.now()>=end)break;
   }
-  // Retire only out-of-range regions, oldest first.
-  for(const [key,region] of this.regions){
-   if(this.regions.size<=this.maxRegions)break;
-   if(active.has(key))continue;
-   for(const id of region.ids)this.tree.remove(id);
-   this.regions.delete(key);changed=true;
-  }
+  // Finished planetary occupancy is permanent. Distance never deletes ground.
+  // FIFO is retained only for scheduling incomplete detail work.
   return changed;
  }
 }
