@@ -39,3 +39,11 @@ Android release build succeeds; startup reaches Box3D READY; player spawns on la
 - Render-only radial skirts cover mixed-level triangle edges; skirts do not modify the analytical planet, Box3D or water.
 - The terrain remains a constant-radius gray sphere. No displacement/noise is enabled. Local solidity and Box3D patch generation are unchanged and independent from render LOD.
 - Verify smooth walking, no gaps while walking across LOD boundaries, absence of noisy continuous rebuilds, and APK launch before any deformation changes.
+
+## Deterministic terrain seed (2026-10-09)
+
+- `TerrainHeight` in `web/src/engine/terrain-height.js` is the single height authority for rendered LOD vertices, implicit occupancy and Box3D surface patch vertices. Default fixed text seed: `QuiverGL`.
+- Every string, **including the empty string** `""`, hashes deterministically via FNV-1a over UTF-8 bytes. No random fallback or implicit seed generation. Identical string produces identical world.
+- Continuous seeded 3D value noise at 512/128/32 m wavelengths with 24/8/2 m nominal amplitude; conservative maximum radial displacement of ±34 m.
+- Water remains fixed at radius 1023 m. Player starts 1.3 m above the procedural radius at spawn.
+- Current collision uses 1 m cube-sphere sampling while visible triangle LOD is independent; small interpolation mismatches can exist. Verify contact on slopes in-device before considering this production-perfect.

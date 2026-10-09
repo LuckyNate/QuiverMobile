@@ -1,3 +1,4 @@
+import {TerrainHeight,TERRAIN_SEED} from './engine/terrain-height.js';
 import * as THREE from 'three';
 import {WorldTerrain,RADIUS} from './world.js';
 import {PlayerSystem} from './player.js';
@@ -40,12 +41,14 @@ const scene=new THREE.Scene();
 scene.add(new THREE.HemisphereLight(0xeeeeff,0x263b55,2.1));
 const sun=new THREE.DirectionalLight(0xffffff,2.0);sun.position.set(90,180,70);scene.add(sun);
 const camera=new THREE.PerspectiveCamera(55,1,.05,10000);
+const height=new TerrainHeight(TERRAIN_SEED);
 let terrain=null;
-try{terrain=new WorldTerrain(scene);report('terrain setup','READY');}
+try{terrain=new WorldTerrain(scene,height);report('terrain setup','READY');}
 catch(error){report('terrain setup','FAILED',error.message);}
 const water=new WorldWater(scene,RADIUS);
 const playerSystem=new PlayerSystem(scene,camera,canvas,RADIUS,report);
 const player=playerSystem.position;
+player.setLength(height.radius(player.clone().normalize(),RADIUS)+1.3);
 // Permanent mathematical solidity is independent of rendered terrain triangles.
 let physics=null,fallingCubes=[],playerCollider=null;
 let physicsLoading=false,simulationReady=false;
@@ -62,7 +65,7 @@ function activeCollisionAreas(){
  return areas;
 }
 if(!terrain)throw new Error('Terrain geometry unavailable');
-const worldSystem=new WorldSystem(RADIUS,player);
+const worldSystem=new WorldSystem(RADIUS,player,height);
 const {octree,solidity,surface}=worldSystem;
 report('terrain geometry','READY',terrain.leafCount+' fixed faces');
 report('octree solidity','READY','Implicit 1 m spherical octree');

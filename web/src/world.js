@@ -1,3 +1,4 @@
+import {TerrainHeight} from './engine/terrain-height.js';
 import * as THREE from 'three';
 export const RADIUS=1024;
 export const ROOT_EDGE_METERS=RADIUS*4/Math.sqrt(10+2*Math.sqrt(5));
@@ -24,7 +25,8 @@ function node(a,b,c,level){
 // Render-only spherical triangle hierarchy; physical surface is independent.
 // Retained nodes and split hysteresis avoid rebuilding when walking near a LOD threshold.
 export class WorldTerrain {
- constructor(scene){
+ constructor(scene,height=new TerrainHeight()){
+  this.height=height;
   this.roots=roots.map(([a,b,c])=>node(a,b,c,0));
   this.geometry=new THREE.BufferGeometry();
   this.material=new THREE.MeshStandardMaterial({color:0x3e5760,roughness:1,side:THREE.DoubleSide,flatShading:true});
@@ -63,7 +65,7 @@ export class WorldTerrain {
   if(!changed)return false;
   const positions=[];
   const add=(a,b,c)=>{
-   const A=a.clone().multiplyScalar(RADIUS),B=b.clone().multiplyScalar(RADIUS),C=c.clone().multiplyScalar(RADIUS);
+   const A=a.clone().multiplyScalar(this.height.radius(a,RADIUS)),B=b.clone().multiplyScalar(this.height.radius(b,RADIUS)),C=c.clone().multiplyScalar(this.height.radius(c,RADIUS));
    const outward=new THREE.Vector3().subVectors(B,A).cross(new THREE.Vector3().subVectors(C,A)).dot(A)>=0;
    const vertices=outward?[A,B,C]:[A,C,B];
    for(const p of vertices)positions.push(p.x,p.y,p.z);
@@ -75,8 +77,9 @@ export class WorldTerrain {
    for(const [a,b] of [[n.a,n.b],[n.b,n.c],[n.c,n.a]]){
     const edge=RADIUS*a.distanceTo(b);
     const drop=Math.max(.06,edge*edge/(8*RADIUS)+.06);
-    const lowA=a.clone().multiplyScalar(RADIUS-drop),lowB=b.clone().multiplyScalar(RADIUS-drop);
-    const highA=a.clone().multiplyScalar(RADIUS),highB=b.clone().multiplyScalar(RADIUS);
+    const ra=this.height.radius(a,RADIUS),rb=this.height.radius(b,RADIUS);
+    const lowA=a.clone().multiplyScalar(ra-drop),lowB=b.clone().multiplyScalar(rb-drop);
+    const highA=a.clone().multiplyScalar(ra),highB=b.clone().multiplyScalar(rb);
     // Double-sided material on skirts to close seams regardless of orientation.
     for(const p of [highA,highB,lowB,highA,lowB,lowA])positions.push(p.x,p.y,p.z);
    }

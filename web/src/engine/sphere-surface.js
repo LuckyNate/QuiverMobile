@@ -2,8 +2,8 @@
 // This cube-sphere parameterization is derived from the same implicit solid
 // radius as octree occupancy; no interior AABB faces are generated.
 export class SphereSurface {
- constructor(radius,{step=1,depth=2}={}){
-  this.radius=radius;this.step=step;this.depth=depth;
+ constructor(radius,{step=1,depth=2,height=null}={}){
+  this.radius=radius;this.step=step;this.depth=depth;this.height=height;
  }
  query(bounds){
   const mid=bounds.min.map((v,i)=>(v+bounds.max[i])*.5);
@@ -26,12 +26,14 @@ export class SphereSurface {
    const highV=Math.min(r,Math.ceil((v+spread+r)/s)*s-r);
    const vertex=(a,b,rad)=>{
     const p=[0,0,0];p[axis]=sign*r;p[uAxis]=a;p[vAxis]=b;
-    const scale=rad/Math.hypot(...p);return p.map(x=>x*scale);
+    const magnitude=Math.hypot(...p),direction={x:p[0]/magnitude,y:p[1]/magnitude,z:p[2]/magnitude};
+    const actual=rad+(this.height?this.height.height(direction):0);
+    return p.map(x=>x*actual/magnitude);
    };
    for(let a=lowU;a<highU-s*.5;a+=s)for(let b=lowV;b<highV-s*.5;b+=s){
     const corners=[vertex(a,b,r),vertex(a+s,b,r),vertex(a+s,b+s,r),vertex(a,b+s,r)];
     const center=corners.reduce((sum,p)=>sum.map((v,i)=>v+p[i]/4),[0,0,0]);
-    if(center.some((v,i)=>v<bounds.min[i]-s||v>bounds.max[i]+s))continue;
+    if(center.some((v,i)=>v<bounds.min[i]-s-34||v>bounds.max[i]+s+34))continue;
     const inner=[vertex(a,b,r-this.depth),vertex(a+s,b,r-this.depth),
      vertex(a+s,b+s,r-this.depth),vertex(a,b+s,r-this.depth)];
     const i=Math.round((a+r)/s),j=Math.round((b+r)/s);
