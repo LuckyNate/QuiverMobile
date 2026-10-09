@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {WorldTerrain,RADIUS} from './world.js';
-import {buildWorldSolidity} from './world-solidity.js';
+import {WorldOctree} from './engine/world-octree.js';
 import {PhysicsWorld} from './physics.js';
 
 const app=document.getElementById('app');
@@ -59,71 +59,65 @@ canvas.addEventListener('pointerup',release);canvas.addEventListener('pointercan
 canvas.addEventListener('wheel',e=>{e.preventDefault();zoom=THREE.MathUtils.clamp(zoom*Math.exp(e.deltaY*.001),3,30000);},{passive:false});
 wireBtn.addEventListener('click',()=>{if(!terrain)return;terrain.edges.visible=!terrain.edges.visible;wireBtn.textContent='Wireframe: '+(terrain.edges.visible?'ON':'OFF');});
 
-// Box3D operates in an anchored local tangent frame (Y points away from the planet).
-// The frame is fixed when spawned so bodies accumulate on the ground instead of
-// following the player above their heads.
-let physics=null,physicsGroup=null,fallingCubes=[],octree=null,playerCollider=null;
-const dropOrigin=player.clone();
-const dropUp=dropOrigin.clone().normalize();
-const dropEast=new THREE.Vector3(0,1,0).cross(dropUp).normalize();
-const dropNorth=dropUp.clone().cross(dropEast).normalize();
-const dropBasis=new THREE.Matrix4().makeBasis(dropEast,dropUp,dropNorth);
-const dropOrientation=new THREE.Quaternion().setFromRotationMatrix(dropBasis);
-// Planet-static occupancy comes from the same world triangle geometry as the
-// renderer. LOD only changes its presentation; solidity remains a spatial octree.
-function buildTerrainSolidity(){
- if(!terrain)throw new Error('Terrain unavailable');
- return buildWorldSolidity(terrain.mesh.geometry,{
-  origin:dropOrigin,up:dropUp,east:dropEast,north:dropNorth
- },{extent:16,depth:6});
+// Unified world-space partition: terrain triangles, player and all cubes.
+let physics=null,fallingCubes=[],octree=null,playerCollider=null,solidityStarted=false;
+const cyan=new THREE.LineBasicMaterial({color:0x00ffff,depthTest:true,depthWrite:false});
+const aabbDisplay=new THREE.Group();scene.add(aabbDisplay);
+function boundsAt(p,half){return {min:[p.x-half,p.y-half,p.z-half],max:[p.x+half,p.y+half,p.z+half]};}
+function registerTerrain(){
+ if(!terrain)throw new Error('Terrain geometry unavailable');
+ const array=terrain.mesh.geometry.getAttribute('position').array;
+ const next=new WorldOctree({center:[0,0,0],halfSize:Math.max(256,RADIUS*2),maxDepth:9});
+ next.insertTerrainTriangles('planet',array);
+ next.insert('player',boundsAt(player.clone().addScaledVector(player.clone().normalize(),.9),.9),{kind:'player',owner:'player'});
+ return next;
 }
-function showSolidity(group,tree){
- const cyan=new THREE.LineBasicMaterial({color:0x00ffff,depthTest:true,depthWrite:false});
- for(const {box} of tree.sources){
-  const size=box.min.map((v,i)=>box.max[i]-v);
+function drawNearbyStatic(queryBox){
+ while(aabbDisplay.children.length){
+  const child=aabbDisplay.children[0];aabbDisplay.remove(child);child.geometry.dispose();
+ }
+ for(const entry of octree.query(queryBox,{kinds:['static']})){
+  const {box}=entry,size=box.min.map((v,i)=>box.max[i]-v);
   const center=box.min.map((v,i)=>(v+box.max[i])/2);
-  const outline=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(...size)),cyan);
-  outline.position.set(...center);group.add(outline);
+  const lines=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(...size)),cyan);
+  lines.position.set(...center);aabbDisplay.add(lines);
  }
 }
-let solidityStarted=false;
 async function initializePhysics(){
  try{
   report('octree solidity','LOADING');
-  octree=buildTerrainSolidity();
-  report('octree solidity','READY',octree.sources.length+' merged world-solid AABBs');
+  octree=registerTerrain();
+  report('octree solidity','READY',octree.objects.size+' world occupants');
   report('Box3D','LOADING');
   const world=await new PhysicsWorld().init();
-  world.syncStatic(octree,{min:[-16,-24,-16],max:[16,8,16]});
-  // Player collider in the same planet-local frame as the terrain.
-  // Static collision shape stays independent of the visual GLB.
-  playerCollider=world.world.createBody({type:'static',position:{x:0,y:.9,z:0}});
-  playerCollider.createBox({halfExtents:{x:.35,y:.9,z:.35}});
-  const group=new THREE.Group();
-  group.position.copy(dropOrigin);
-  group.quaternion.copy(dropOrientation);
-  // Outline actual merged octree collision boxes in the same local frame.
-  showSolidity(group,octree);
-  const cubes=[];
-  const cubeGeometry=new THREE.BoxGeometry(.8,.8,.8);
-  const cubeMaterial=new THREE.MeshStandardMaterial({color:0xffa540,roughness:.8});
-  // Twenty dynamic bodies; local -Y corresponds to planet-center gravity.
+  // The player occupies the same octree and a static Box3D contact shape.
+  const colliderPosition=player.clone().addScaledVector(player.clone().normalize(),.9);
+  playerCollider=world.world.createBody({type:'static',position:{x:colliderPosition.x,y:colliderPosition.y,z:colliderPosition.z}});
+  playerCollider.createBox({halfExtents:{x:.35,y:.9,z:.35},friction:.7});
+  const group=new THREE.Group();scene.add(group);
+  const cubes=[],geometry=new THREE.BoxGeometry(.8,.8,.8);
+  const material=new THREE.MeshStandardMaterial({color:0xffa540,roughness:.8});
+  const up=player.clone().normalize();
+  const east=new THREE.Vector3(0,1,0).cross(up).normalize();
+  const north=up.clone().cross(east).normalize();
   for(let i=0;i<20;i++){
-   const x=((i%5)-2)*1.15;
-   const z=(Math.floor(i/5)-1.5)*1.15;
-   const y=4+i*.85;
-   const body=world.addDynamicBox([x,y,z],.4);
-   const mesh=new THREE.Mesh(cubeGeometry,cubeMaterial);
-   mesh.position.set(x,y,z);group.add(mesh);
-   cubes.push({body,mesh});
+   const position=player.clone().addScaledVector(up,4+i*.85)
+    .addScaledVector(east,((i%5)-2)*1.15)
+    .addScaledVector(north,(Math.floor(i/5)-1.5)*1.15);
+   const body=world.addDynamicBox(position.toArray(),.4);
+   const mesh=new THREE.Mesh(geometry,material);
+   mesh.position.copy(position);group.add(mesh);
+   const id='cube-'+i;
+   octree.insert(id,boundsAt(position,.4),{kind:'dynamic',owner:id});
+   cubes.push({id,body,mesh});
   }
-  scene.add(group);
-  physics=world;physicsGroup=group;fallingCubes=cubes;
-  report('Box3D','READY',cubes.length+' cubes / local octree physics');
+  world.syncStatic(octree,boundsAt(player,24));
+  physics=world;fallingCubes=cubes;
+  report('Box3D','READY',cubes.length+' dynamic bodies sharing world octree');
  }catch(error){report('Box3D','FAILED',error.stack||error.message);}
 }
 report('octree solidity','WAITING','Terrain generation');
-report('Box3D','WAITING','Terrain solidity');
+report('Box3D','WAITING','World octree');
 let last=performance.now(),elapsed=0,frames=0,lastTerrain=0,resizeW=0,resizeH=0;
 function frame(now){
  requestAnimationFrame(frame);
@@ -150,24 +144,32 @@ function frame(now){
   catch(error){report('terrain geometry','FAILED',error.message);terrain=null;}
   lastTerrain=now;
  }
- if(physics){
+ if(octree){
   try{
-   // Update player collider in the fixed drop-site frame when the player moves.
-   if(playerCollider && typeof playerCollider.setPosition==='function'){
-    const delta=player.clone().sub(dropOrigin);
-    playerCollider.setPosition({
-     x:delta.dot(dropEast), y:.9+delta.dot(dropUp), z:delta.dot(dropNorth)
-    });
-   }
-   physics.step(dt);
-   for(const {body,mesh} of fallingCubes){
-    const p=body.getPosition();
-    mesh.position.set(p.x,p.y,p.z);
-    if(typeof body.getRotation==='function'){
-     const q=body.getRotation();
-     if(q)mesh.quaternion.set(q.x,q.y,q.z,q.w);
+   const up=player.clone().normalize();
+   octree.update('player',boundsAt(player.clone().addScaledVector(up,.9),.9));
+   if(physics){
+    // World-space radial gravity; the frame never rotates independently.
+    physics.setPlanetGravity(player);
+    const near=boundsAt(player,24);
+    for(const item of fallingCubes){
+     const p=item.body.getPosition();
+     const v=new THREE.Vector3(p.x,p.y,p.z);
+     octree.update(item.id,boundsAt(v,.4));
+    }
+    if(frames%30===1)physics.syncStatic(octree,near);
+    physics.step(dt);
+    for(const item of fallingCubes){
+     const p=item.body.getPosition();
+     item.mesh.position.set(p.x,p.y,p.z);
+     if(typeof item.body.getRotation==='function'){
+      const q=item.body.getRotation();
+      if(q)item.mesh.quaternion.set(q.x,q.y,q.z,q.w);
+     }
+     octree.update(item.id,boundsAt(item.mesh.position,.4));
     }
    }
+   if(frames%60===1)drawNearbyStatic(boundsAt(player,8));
   }catch(error){report('Box3D','FAILED',error.message);physics=null;}
  }
  if(renderer){
