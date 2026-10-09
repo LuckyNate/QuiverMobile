@@ -87,7 +87,7 @@ function registerTerrain(){
  octree.insert('player',boundsAt(player,.95),{kind:'player',owner:'player'});
  // Build one permanent planet from cubic octree cells, core first.
  // Only after construction do we merge face-adjacent solids into planar AABBs.
- solidWork=buildSolidSphere(RADIUS,{halfSize:128,minCell:1});
+ solidWork=buildSolidSphere(RADIUS,{halfSize:128,minCell:0.25});
  report('terrain geometry','READY',terrain.leafCount+' fixed faces');
  report('octree solidity','BUILDING','Planet-wide permanent solidity');
 }
