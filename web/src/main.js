@@ -132,8 +132,8 @@ function frame(now){
    for(const {body,mesh} of fallingCubes){
     const p=body.getPosition();
     mesh.position.set(p.x,p.y,p.z);
-    if(typeof body.getQuaternion==='function'){
-     const q=body.getQuaternion();
+    if(typeof body.getRotation==='function'){
+     const q=body.getRotation();
      if(q)mesh.quaternion.set(q.x,q.y,q.z,q.w);
     }
    }
