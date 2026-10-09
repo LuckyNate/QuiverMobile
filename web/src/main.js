@@ -72,7 +72,7 @@ function shorelineSpawn(){
      const mid=dry.clone().add(wet).normalize();
      if(height.height(mid)>=0)dry=mid;else wet=mid;
     }
-    const land=dry.clone().multiplyScalar(1.001).addScaledVector(dry.clone().sub(wet),1).normalize();
+    const land=dry.clone();
     const elevation=height.height(land);
     const neighborWater=height.height(wet);
     if(elevation<0||elevation>5||neighborWater>=0){previous=next;previousHeight=nextHeight;continue;}
