@@ -74,6 +74,14 @@ let terrainIds=[];
 const cyan=new THREE.LineBasicMaterial({color:0x00ffff,depthTest:true,depthWrite:false});
 const aabbDisplay=new THREE.Group();scene.add(aabbDisplay);
 function boundsAt(p,half){return {min:[p.x-half,p.y-half,p.z-half],max:[p.x+half,p.y+half,p.z+half]};}
+function activeCollisionAreas(){
+ const areas=[boundsAt(player,26)];
+ for(const item of fallingCubes){
+  const p=item.body.getPosition();
+  areas.push(boundsAt(p,8));
+ }
+ return areas;
+}
 function registerTerrain(){
  if(!terrain)throw new Error('Terrain geometry unavailable');
  octree=new WorldOctree({center:[0,0,0],halfSize:Math.max(256,RADIUS*2),maxDepth:9});
@@ -196,7 +204,7 @@ function frame(now){
    if(terrainCache&&coarseReady){
     const actors=[boundsAt(player,.95),...fallingCubes.map(item=>boundsAt(item.body.getPosition(),.4))];
     const feet=player.clone().addScaledVector(player.clone().normalize(),-1.1).toArray();
-    if(terrainCache.advance(player,actors,2,feet)&&physics)physics.syncStatic(octree,boundsAt(player,26));
+    if(terrainCache.advance(player,actors,2,feet)&&physics)physics.syncStatic(octree,activeCollisionAreas());
     if(frames%60===1)report('octree solidity','READY',terrainCache.regionCount+' cached regions');
    }
    const up=player.clone().normalize();
@@ -210,7 +218,7 @@ function frame(now){
      const v=new THREE.Vector3(p.x,p.y,p.z);
      octree.update(item.id,boundsAt(v,.4));
     }
-    if(frames%30===1)physics.syncStatic(octree,near);
+    if(frames%30===1)physics.syncStatic(octree,activeCollisionAreas());
     physics.step(dt);
     if(playerCollider){const p=playerCollider.getPosition();player.set(p.x,p.y,p.z);octree.update('player',boundsAt(player,.95));}
     for(const item of fallingCubes){
