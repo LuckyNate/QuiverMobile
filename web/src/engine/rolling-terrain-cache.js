@@ -50,17 +50,19 @@ export class RollingTerrainCache {
   // Maintain compatibility with initial startup: schedule a limited amount of work.
   this.advance(player,actors,budget);
  }
- advance(player,actors=[],budgetMs=2){
+ advance(player,actors=[],budgetMs=2,feet=null){
   const s=this.cellSize,px=player.x??player[0],py=player.y??player[1],pz=player.z??player[2];
+  const feetPoint=feet??[px,py,pz];
   const bodies=actors.length?actors:[{min:[px,py,pz],max:[px,py,pz]}];
   const cx=Math.floor(px/s),cy=Math.floor(py/s),cz=Math.floor(pz/s);
   const candidates=[];
   for(let x=cx-2;x<=cx+2;x++)for(let y=cy-2;y<=cy+2;y++)for(let z=cz-2;z<=cz+2;z++){
    const center=[(x+.5)*s,(y+.5)*s,(z+.5)*s];
-   const distance=Math.hypot(...center.map((v,i)=>Math.max(0,Math.abs([px,py,pz][i]-v)-s/2)));
-   if(distance>32)continue;
+   const distance=Math.hypot(...center.map((v,i)=>Math.max(0,Math.abs(feetPoint[i]-v)-s/2)));
+   if(distance>64)continue;
    const relevant=bodies.filter(b=>b.min.every((v,i)=>v<=center[i]+s/2+48&&b.max[i]>=center[i]-s/2-48));
-   const signature=relevant.map(b=>b.min.map((v,i)=>Math.floor((v+b.max[i])/4)).join(':')).sort().join('|');
+   // A metre of feet movement changes the node-level LOD target, not every frame.
+   const signature=feetPoint.map(v=>Math.floor(v)).join(':');
    candidates.push({key:this.key(x,y,z),center,distance,signature});
   }
   candidates.sort((a,b)=>a.distance-b.distance);
@@ -80,7 +82,7 @@ export class RollingTerrainCache {
    }
    if(!this.pending){
     const generation=this.generation++;
-    this.pending={...c,generation,boxes:[],iterator:this.classify(c.center,s/2,this.depth,bodies)};
+    this.pending={...c,generation,boxes:[],iterator:this.classify(c.center,s/2,this.depth,bodies,feetPoint)};
    }
    if(this.pending.key!==c.key)continue;
    // Yield after each recursive leaf; never execute the entire classifier in one frame.
