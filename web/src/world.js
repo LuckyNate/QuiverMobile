@@ -64,25 +64,35 @@ export class WorldTerrain {
   for(const root of this.roots)visit(root);
   if(!changed)return false;
   const positions=[];
+  // Every leaf vertex is shared through its direction, independent of LOD.
+  // A coarse edge is split wherever a finer neighbor owns its midpoint.
+  const key=v=>[v.x,v.y,v.z].map(x=>Math.round(x*1e9)).join(',');
+  const vertices=new Set();
+  for(const n of leaves)for(const v of [n.a,n.b,n.c])vertices.add(key(v));
+  const edgePoints=(a,b,depth=0)=>{
+   if(depth>=MAX_LOD)return [a];
+   const midpoint=mid(a,b);
+   if(!vertices.has(key(midpoint)))return [a];
+   return [...edgePoints(a,midpoint,depth+1),...edgePoints(midpoint,b,depth+1)];
+  };
+  const radial=v=>v.clone().multiplyScalar(this.height.radius(v,RADIUS));
   const add=(a,b,c)=>{
-   const A=a.clone().multiplyScalar(this.height.radius(a,RADIUS)),B=b.clone().multiplyScalar(this.height.radius(b,RADIUS)),C=c.clone().multiplyScalar(this.height.radius(c,RADIUS));
+   const A=radial(a),B=radial(b),C=radial(c);
    const outward=new THREE.Vector3().subVectors(B,A).cross(new THREE.Vector3().subVectors(C,A)).dot(A)>=0;
-   const vertices=outward?[A,B,C]:[A,C,B];
-   for(const p of vertices)positions.push(p.x,p.y,p.z);
+   for(const p of (outward?[A,B,C]:[A,C,B]))positions.push(p.x,p.y,p.z);
   };
   for(const n of leaves){
-   add(n.a,n.b,n.c);
-   // Visual-only skirts cover T-junctions between adjacent subdivision levels.
-   // Depth scales with the local chord sagitta. No geometry reaches Box3D.
-   for(const [a,b] of [[n.a,n.b],[n.b,n.c],[n.c,n.a]]){
-    const edge=RADIUS*a.distanceTo(b);
-    const drop=Math.max(.06,edge*edge/(8*RADIUS)+.06);
-    const ra=this.height.radius(a,RADIUS),rb=this.height.radius(b,RADIUS);
-    const lowA=a.clone().multiplyScalar(ra-drop),lowB=b.clone().multiplyScalar(rb-drop);
-    const highA=a.clone().multiplyScalar(ra),highB=b.clone().multiplyScalar(rb);
-    // Double-sided material on skirts to close seams regardless of orientation.
-    for(const p of [highA,highB,lowB,highA,lowB,lowA])positions.push(p.x,p.y,p.z);
-   }
+   const boundary=[
+    ...edgePoints(n.a,n.b),
+    ...edgePoints(n.b,n.c),
+    ...edgePoints(n.c,n.a)
+   ];
+   if(boundary.length===3){add(n.a,n.b,n.c);continue;}
+   // Fan from a shared-height interior point to the stitched boundary.
+   // No skirts or collider changes: neighboring edges now have identical vertices.
+   const center=n.a.clone().add(n.b).add(n.c).normalize();
+   for(let i=0;i<boundary.length;i++)
+    add(center,boundary[i],boundary[(i+1)%boundary.length]);
   }
   const geometry=new THREE.BufferGeometry();
   geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
