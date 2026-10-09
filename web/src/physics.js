@@ -7,18 +7,29 @@ export class PhysicsWorld {
   this.b3=b3;
   this.world=new b3.World({gravity:{x:0,y:-9.81,z:0}});
   this.staticBodies=new Map();
+  this.staticRegionCache=[];
   this.accumulator=0;
   return this;
  }
- // Only static occupied octree AABBs become Box3D collision bodies.
+ // Check actor regions every frame. Query occupancy only on crossing the
+ // cached region margin, and incrementally add/remove changed Box3D proxies.
  syncStatic(tree,queryBounds){
   const areas=Array.isArray(queryBounds)?queryBounds:[queryBounds];
-  const wanted=new Map();
-  for(const bounds of areas){
-   for(const entry of tree.query(bounds,{kinds:['static']})){
-    if(entry.shape==='box')wanted.set(entry.id,entry.box);
-   }
+  const margin=.5;
+  let dirty=this.staticRegionCache.length!==areas.length;
+  if(dirty)this.staticRegionCache.length=areas.length;
+  for(let i=0;i<areas.length;i++){
+   const area=areas[i],cached=this.staticRegionCache[i];
+   const inside=cached&&area.min.every((v,k)=>v>=cached.bounds.min[k]&&area.max[k]<=cached.bounds.max[k]);
+   if(inside)continue;
+   const bounds={min:area.min.map(v=>v-margin),max:area.max.map(v=>v+margin)};
+   const boxes=tree.query(bounds,{kinds:['static']}).filter(e=>e.shape==='box');
+   this.staticRegionCache[i]={bounds,boxes};
+   dirty=true;
   }
+  if(!dirty)return;
+  const wanted=new Map();
+  for(const cached of this.staticRegionCache)for(const entry of cached.boxes)wanted.set(entry.id,entry.box);
   for(const [id,box] of wanted)if(!this.staticBodies.has(id)){
    const c=box.min.map((v,i)=>(v+box.max[i])/2);
    const h=box.min.map((v,i)=>(box.max[i]-v)/2);
@@ -26,7 +37,7 @@ export class PhysicsWorld {
    body.createBox({halfExtents:{x:h[0],y:h[1],z:h[2]},friction:.7});
    this.staticBodies.set(id,body);
   }
-  // Commit new support before retiring any previous collider.
+  // New support always exists before any stale proxy is retired.
   for(const [id,body] of this.staticBodies)if(!wanted.has(id)){
    body.destroy();this.staticBodies.delete(id);
   }
