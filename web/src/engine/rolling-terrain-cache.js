@@ -63,6 +63,8 @@ export class RollingTerrainCache {
    candidates.push({key:this.key(x,y,z),center,distance});
   }
   candidates.sort((a,b)=>a.distance-b.distance);
+  // Finish a started classification even after its region leaves the nearby radius.
+  if(this.pending)candidates.unshift(this.pending);
   const end=performance.now()+Math.max(0,budgetMs);
   let changed=false;
   for(const candidate of candidates){
