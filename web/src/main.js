@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {WorldTerrain,RADIUS} from './world.js';
 import {WorldOctree} from './engine/world-octree.js';
-import {classifyTerrainVolumes} from './engine/terrain-occupancy.js';
+import {classifyTerrainVolumesIncremental} from './engine/terrain-occupancy.js';
 import {RollingTerrainCache} from './engine/rolling-terrain-cache.js';
 import {PhysicsWorld} from './physics.js';
 
@@ -73,10 +73,10 @@ function registerTerrain(){
  octree=new WorldOctree({center:[0,0,0],halfSize:Math.max(256,RADIUS*2),maxDepth:9});
  octree.insert('player',boundsAt(player,.95),{kind:'player',owner:'player'});
  terrainCache=new RollingTerrainCache(octree,{
-  classify:(center,halfSize,depth,actors)=>classifyTerrainVolumes(terrain.mesh.geometry.getAttribute('position').array,center,{halfSize,maxDepth:depth,actors}),
+  classify:(center,halfSize,depth,actors)=>classifyTerrainVolumesIncremental(terrain.mesh.geometry.getAttribute('position').array,center,{halfSize,maxDepth:depth,actors}),
   depth:8,cellSize:16,maxRegions:48
  });
- terrainCache.refresh(player,3);
+ terrainCache.advance(player,[],2);
  report('octree solidity','READY',terrainCache.regionCount+' cached regions');
  return octree;
 }
@@ -151,14 +151,7 @@ function frame(now){
  if(terrain&&now-lastTerrain>650){
   try{
    terrain.rebuild(player,camera);terrain.edges.visible=false;report('terrain geometry','READY',terrain.leafCount+' leaves');
-   if(terrainCache){
-    const actors=[boundsAt(player,.95),...fallingCubes.map(item=>{
-     const p=item.body.getPosition();return boundsAt(p,.4);
-    })];
-    terrainCache.refresh(player,2,actors);
-    if(physics)physics.syncStatic(octree,boundsAt(player,26));
-    report('octree solidity','READY',terrainCache.regionCount+' cached regions');
-   }
+
    if(!solidityStarted){solidityStarted=true;void initializePhysics();}
   }
   catch(error){report('terrain geometry','FAILED',error.message);terrain=null;}
@@ -166,6 +159,11 @@ function frame(now){
  }
  if(octree){
   try{
+   if(terrainCache){
+    const actors=[boundsAt(player,.95),...fallingCubes.map(item=>boundsAt(item.body.getPosition(),.4))];
+    if(terrainCache.advance(player,actors,2)&&physics)physics.syncStatic(octree,boundsAt(player,26));
+    if(frames%60===1)report('octree solidity','READY',terrainCache.regionCount+' cached regions');
+   }
    const up=player.clone().normalize();
    octree.update('player',boundsAt(player,.95));
    if(physics){
