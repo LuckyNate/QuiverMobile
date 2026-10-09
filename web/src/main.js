@@ -3,6 +3,7 @@ import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {WorldTerrain,RADIUS} from './world.js';
 import {WorldOctree} from './engine/world-octree.js';
 import {classifyTerrainVolumes} from './engine/terrain-occupancy.js';
+import {RollingTerrainCache} from './engine/rolling-terrain-cache.js';
 import {PhysicsWorld} from './physics.js';
 
 const app=document.getElementById('app');
@@ -40,7 +41,7 @@ let terrain=null;
 try{terrain=new WorldTerrain(scene);report('terrain setup','READY');}
 catch(error){report('terrain setup','FAILED',error.message);}
 let up=new THREE.Vector3(0,0,1),east=new THREE.Vector3(1,0,0),north=new THREE.Vector3(0,1,0);
-let player=up.clone().multiplyScalar(RADIUS),yaw=0,pitch=.35,zoom=8,moveX=0,moveY=0;
+let player=up.clone().multiplyScalar(RADIUS+1.3),yaw=0,pitch=.35,zoom=8,moveX=0,moveY=0;
 let avatar=null;
 report('GLB player','LOADING');
 new GLTFLoader().loadAsync(import.meta.env.BASE_URL+'models/debug/player_capsule.glb')
@@ -62,33 +63,22 @@ const gravityArrow=new THREE.ArrowHelper(new THREE.Vector3(0,0,-1),player,6,0xff
 wireBtn.addEventListener('click',()=>{gravityArrow.visible=!gravityArrow.visible;wireBtn.textContent='Gravity: '+(gravityArrow.visible?'ON':'OFF');});
 
 // Unified world-space partition: terrain triangles, player and all cubes.
-let physics=null,fallingCubes=[],octree=null,playerCollider=null,solidityStarted=false,solidAnchor=null;
+let physics=null,fallingCubes=[],octree=null,playerCollider=null,solidityStarted=false,terrainCache=null;
 let terrainIds=[];
 const cyan=new THREE.LineBasicMaterial({color:0x00ffff,depthTest:true,depthWrite:false});
 const aabbDisplay=new THREE.Group();scene.add(aabbDisplay);
 function boundsAt(p,half){return {min:[p.x-half,p.y-half,p.z-half],max:[p.x+half,p.y+half,p.z+half]};}
-function rebuildSolidGround(anchor=player){
- if(!octree||!terrain)return;
- for(const id of terrainIds)octree.remove(id);
- terrainIds=[];
- const data=terrain.mesh.geometry.getAttribute('position').array;
- // Local AABB octree occupancy, world-aligned, from the SAME visible terrain.
- const center=anchor.toArray().map(v=>Math.round(v/8)*8);
- const boxes=classifyTerrainVolumes(data,center,{halfSize:16,maxDepth:6});
- for(let i=0;i<boxes.length;i++){
-  const id='ground-'+i;octree.insert(id,boxes[i],{kind:'static',shape:'box',owner:'planet'});
-  terrainIds.push(id);
- }
- solidAnchor=anchor.clone();
- report('octree solidity','READY',terrainIds.length+' occupied AABBs');
-}
 function registerTerrain(){
  if(!terrain)throw new Error('Terrain geometry unavailable');
- const next=new WorldOctree({center:[0,0,0],halfSize:Math.max(256,RADIUS*2),maxDepth:9});
- next.insert('player',boundsAt(player.clone().addScaledVector(player.clone().normalize(),.9),.9),{kind:'player',owner:'player'});
- octree=next;
- rebuildSolidGround(player);
- return next;
+ octree=new WorldOctree({center:[0,0,0],halfSize:Math.max(256,RADIUS*2),maxDepth:9});
+ octree.insert('player',boundsAt(player,.95),{kind:'player',owner:'player'});
+ terrainCache=new RollingTerrainCache(octree,{
+  classify:(center,halfSize,depth)=>classifyTerrainVolumes(terrain.mesh.geometry.getAttribute('position').array,center,{halfSize,maxDepth:depth}),
+  depth:8,cellSize:16,maxRegions:48
+ });
+ terrainCache.refresh(player,3);
+ report('octree solidity','READY',terrainCache.regionCount+' cached regions');
+ return octree;
 }
 function drawNearbyStatic(queryBox){
  while(aabbDisplay.children.length){
@@ -108,10 +98,9 @@ async function initializePhysics(){
   report('octree solidity','READY',terrainIds.length+' occupied AABBs');
   report('Box3D','LOADING');
   const world=await new PhysicsWorld().init();
-  // The player occupies the same octree and a static Box3D contact shape.
-  const colliderPosition=player.clone().addScaledVector(player.clone().normalize(),.9);
-  playerCollider=world.world.createBody({type:'static',position:{x:colliderPosition.x,y:colliderPosition.y,z:colliderPosition.z}});
-  playerCollider.createBox({halfExtents:{x:.35,y:.9,z:.35},friction:.7});
+  // The player is a dynamic capsule; the octree's AABB is only broad-phase occupancy.
+  playerCollider=world.addPlayerCapsule(player);
+  world.syncStatic(octree,boundsAt(player,26));
   const group=new THREE.Group();scene.add(group);
   const cubes=[],geometry=new THREE.BoxGeometry(.8,.8,.8);
   const material=new THREE.MeshStandardMaterial({color:0xffa540,roughness:.8});
@@ -129,7 +118,7 @@ async function initializePhysics(){
    octree.insert(id,boundsAt(position,.4),{kind:'dynamic',owner:id});
    cubes.push({id,body,mesh});
   }
-  world.syncStatic(octree,boundsAt(player,24));
+  world.syncStatic(octree,boundsAt(player,26));
   physics=world;fallingCubes=cubes;
   report('Box3D','READY',cubes.length+' dynamic bodies sharing world octree');
  }catch(error){report('Box3D','FAILED',error.stack||error.message);}
@@ -147,18 +136,22 @@ function frame(now){
  up=player.clone().normalize();east=new THREE.Vector3(0,1,0).cross(up).normalize();north=up.clone().cross(east).normalize();
  const facing=north.clone().multiplyScalar(Math.cos(yaw)).addScaledVector(east,Math.sin(yaw));
  const side=east.clone().multiplyScalar(Math.cos(yaw)).addScaledVector(north,-Math.sin(yaw));
- if(ex||ey){const motion=facing.multiplyScalar(ey).addScaledVector(side,ex);if(motion.lengthSq()>1)motion.normalize();player=player.clone().addScaledVector(motion,5*dt).normalize().multiplyScalar(RADIUS);}
+ if(physics&&playerCollider){
+  const motion=facing.multiplyScalar(ey).addScaledVector(side,ex);
+  if(motion.lengthSq()>1)motion.normalize();
+  physics.movePlayer(playerCollider,motion,5,player.clone().normalize());
+ }
  up=player.clone().normalize();east=new THREE.Vector3(0,1,0).cross(up).normalize();north=up.clone().cross(east).normalize();
  const aim=north.clone().multiplyScalar(Math.cos(yaw)).addScaledVector(east,Math.sin(yaw));
  const eye=player.clone().addScaledVector(up,2+zoom*Math.sin(pitch)).addScaledVector(aim,-zoom*Math.cos(pitch));
  camera.position.copy(eye);camera.up.copy(up);camera.lookAt(player.clone().addScaledVector(up,1));
- if(avatar){avatar.position.copy(player);avatar.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),up);}
+ if(avatar){avatar.position.copy(player).addScaledVector(up,-1.1);avatar.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),up);}
  gravityArrow.position.copy(player).addScaledVector(up,3);gravityArrow.setDirection(up.clone().negate());
  // Only change terrain selection when position/zoom changes significantly.
  if(terrain&&now-lastTerrain>650){
   try{
    terrain.rebuild(player,camera);terrain.edges.visible=false;report('terrain geometry','READY',terrain.leafCount+' leaves');
-   if(octree&&solidAnchor&&player.distanceTo(solidAnchor)>7)rebuildSolidGround(player);
+   if(terrainCache){terrainCache.refresh(player,2);report('octree solidity','READY',terrainCache.regionCount+' cached regions');}
    if(!solidityStarted){solidityStarted=true;void initializePhysics();}
   }
   catch(error){report('terrain geometry','FAILED',error.message);terrain=null;}
@@ -167,11 +160,11 @@ function frame(now){
  if(octree){
   try{
    const up=player.clone().normalize();
-   octree.update('player',boundsAt(player.clone().addScaledVector(up,.9),.9));
+   octree.update('player',boundsAt(player,.95));
    if(physics){
     // World-space radial gravity; the frame never rotates independently.
     physics.setPlanetGravity(player);
-    const near=boundsAt(player,24);
+    const near=boundsAt(player,26);
     for(const item of fallingCubes){
      const p=item.body.getPosition();
      const v=new THREE.Vector3(p.x,p.y,p.z);
@@ -179,6 +172,7 @@ function frame(now){
     }
     if(frames%30===1)physics.syncStatic(octree,near);
     physics.step(dt);
+    if(playerCollider){const p=playerCollider.getPosition();player.set(p.x,p.y,p.z);octree.update('player',boundsAt(player,.95));}
     for(const item of fallingCubes){
      const p=item.body.getPosition();
      item.mesh.position.set(p.x,p.y,p.z);

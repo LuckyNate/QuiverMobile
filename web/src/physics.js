@@ -14,7 +14,7 @@ export class PhysicsWorld {
  syncStatic(tree,queryBounds){
   const wanted=new Map(tree.query(queryBounds,{kinds:['static']}).filter(e=>e.shape==='box').map(e=>[e.id,e.box]));
   for(const [id,body] of this.staticBodies)if(!wanted.has(id)){
-   body.destroy?.();this.staticBodies.delete(id);
+   body.destroy();this.staticBodies.delete(id);
   }
   for(const [id,box] of wanted)if(!this.staticBodies.has(id)){
    const c=box.min.map((v,i)=>(v+box.max[i])/2);
@@ -31,6 +31,26 @@ export class PhysicsWorld {
    y:-9.81*position.y/length,
    z:-9.81*position.z/length
   });
+ }
+ addPlayerCapsule(position) {
+  const up=position.clone().normalize();
+  // Orient Y-axis capsule to the local initial gravity normal.
+  const y={x:0,y:1,z:0};
+  const cross={x:up.z,z:-up.x,y:0};
+  const w=1+up.y;
+  let rotation;
+  if(w<1e-6)rotation={x:1,y:0,z:0,w:0};
+  else {const len=Math.hypot(cross.x,cross.y,cross.z,w);rotation={x:cross.x/len,y:cross.y/len,z:cross.z/len,w:w/len};}
+  const body=this.world.createBody({type:'dynamic',position:{x:position.x,y:position.y,z:position.z},rotation,
+   motionLocks:{angularX:true,angularY:true,angularZ:true},linearDamping:0.5});
+  body.createCapsule({height:1.1,radius:.35,density:1,friction:.8});
+  return body;
+ }
+ movePlayer(body,direction,speed,up) {
+  const velocity=body.getLinearVelocity();
+  const radial=velocity.x*up.x+velocity.y*up.y+velocity.z*up.z;
+  body.setLinearVelocity({x:direction.x*speed+up.x*radial,y:direction.y*speed+up.y*radial,z:direction.z*speed+up.z*radial});
+  body.setAwake(true);
  }
  addDynamicBox(position,half=.3) {
   const body=this.world.createBody({type:'dynamic',position:{x:position[0],y:position[1],z:position[2]}});
