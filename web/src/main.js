@@ -97,17 +97,36 @@ function registerTerrain(){
 
 }
 registerTerrain();
+// One reusable line buffer: write current nearby AABB edges every frame.
+// No per-cell Three.js geometry objects or once-per-second rebuild.
+const debugLines=new THREE.BufferGeometry();
+let debugPositions=new Float32Array(0);
+const debugEdges=[[0,1],[0,2],[0,4],[1,3],[1,5],[2,3],[2,6],[3,7],[4,5],[4,6],[5,7],[6,7]];
+const debugMesh=new THREE.LineSegments(debugLines,cyan);
+debugMesh.frustumCulled=false;
+aabbDisplay.add(debugMesh);
 function drawNearbyStatic(queryBox){
- while(aabbDisplay.children.length){
-  const child=aabbDisplay.children[0];aabbDisplay.remove(child);child.geometry.dispose();
+ const entries=solidity.query(queryBox,{kinds:['static']});
+ const needed=entries.length*debugEdges.length*6;
+ if(debugPositions.length<needed){
+  let capacity=Math.max(needed,debugPositions.length*2,1536);
+  debugPositions=new Float32Array(capacity);
+  debugLines.setAttribute('position',new THREE.BufferAttribute(debugPositions,3).setUsage(THREE.DynamicDrawUsage));
  }
- for(const entry of solidity.query(queryBox,{kinds:['static']})){
-  const {box}=entry,size=box.min.map((v,i)=>box.max[i]-v);
-  const center=box.min.map((v,i)=>(v+box.max[i])/2);
-  const lines=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(...size)),cyan);
-  lines.position.set(...center);aabbDisplay.add(lines);
+ let index=0;
+ for(const {box} of entries){
+  const x=box.min[0],y=box.min[1],z=box.min[2],X=box.max[0],Y=box.max[1],Z=box.max[2];
+  const corners=[[x,y,z],[X,y,z],[x,Y,z],[X,Y,z],[x,y,Z],[X,y,Z],[x,Y,Z],[X,Y,Z]];
+  for(const [a,b] of debugEdges){
+   const from=corners[a],to=corners[b];
+   debugPositions[index++]=from[0];debugPositions[index++]=from[1];debugPositions[index++]=from[2];
+   debugPositions[index++]=to[0];debugPositions[index++]=to[1];debugPositions[index++]=to[2];
+  }
  }
+ debugLines.setDrawRange(0,index/3);
+ if(index)debugLines.attributes.position.needsUpdate=true;
 }
+
 async function initializePhysics(){
  try{
   physicsLoading=true;
@@ -194,7 +213,7 @@ function frame(now){
      octree.update(item.id,boundsAt(item.mesh.position,.4));
     }
    }
-   if(frames%60===1)drawNearbyStatic(boundsAt(player,8));
+   drawNearbyStatic(boundsAt(player,2));
   }catch(error){report('Box3D','FAILED',error.message);physics=null;}
  }
  if(renderer){
