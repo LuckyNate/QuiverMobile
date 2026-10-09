@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {WorldTerrain,RADIUS} from './world.js';
 import {WorldOctree} from './engine/world-octree.js';
-import {classifyTerrainVolumesIncremental,createTerrainPartition} from './engine/terrain-occupancy.js';
+import {classifyTerrainVolumesIncremental,createTerrainPartition,classifyWorldCoarse} from './engine/terrain-occupancy.js';
 import {RollingTerrainCache} from './engine/rolling-terrain-cache.js';
 import {PhysicsWorld} from './physics.js';
 
@@ -10,6 +10,11 @@ const app=document.getElementById('app');
 const bootstrap=document.getElementById('bootstrap');
 if(bootstrap)bootstrap.remove();
 const ui=document.createElement('div');
+const loading=document.createElement('div');
+loading.style.cssText='position:fixed;inset:0;z-index:10;background:#080e18e8;color:#e8f5ff;display:flex;align-items:center;justify-content:center;font:16px monospace;text-align:center;padding:24px;pointer-events:auto';
+loading.textContent='Preparing planet...';
+app.append(loading);
+function loadStatus(message){loading.textContent=message;}
 const stages=new Map();
 function report(name,state,detail=''){
  stages.set(name,{state,detail:String(detail)});
@@ -64,6 +69,7 @@ wireBtn.addEventListener('click',()=>{gravityArrow.visible=!gravityArrow.visible
 
 // Unified world-space partition: terrain triangles, player and all cubes.
 let physics=null,fallingCubes=[],octree=null,playerCollider=null,solidityStarted=false,terrainCache=null;
+let coarseWork=null,coarseCells=[],coarseReady=false,physicsLoading=false,simulationReady=false;
 let terrainIds=[];
 const cyan=new THREE.LineBasicMaterial({color:0x00ffff,depthTest:true,depthWrite:false});
 const aabbDisplay=new THREE.Group();scene.add(aabbDisplay);
@@ -73,11 +79,13 @@ function registerTerrain(){
  octree=new WorldOctree({center:[0,0,0],halfSize:Math.max(256,RADIUS*2),maxDepth:9});
  octree.insert('player',boundsAt(player,.95),{kind:'player',owner:'player'});
  const partition=createTerrainPartition(terrain.mesh.geometry.getAttribute('position').array);
+ coarseWork=classifyWorldCoarse(partition,[0,0,0],Math.max(256,RADIUS*2),3);
+ coarseCells=[];
  terrainCache=new RollingTerrainCache(octree,{
   classify:(center,halfSize,depth,actors)=>classifyTerrainVolumesIncremental(partition,center,{halfSize,maxDepth:depth,actors}),
   depth:8,cellSize:16,maxRegions:48
  });
- terrainCache.advance(player,[],2);
+ // Startup refinement begins only after the coarse world partition finishes.
  report('octree solidity','READY',terrainCache.regionCount+' cached regions');
  return octree;
 }
@@ -94,9 +102,8 @@ function drawNearbyStatic(queryBox){
 }
 async function initializePhysics(){
  try{
-  report('octree solidity','LOADING');
-  octree=registerTerrain();
-  report('octree solidity','READY',terrainIds.length+' occupied AABBs');
+  physicsLoading=true;
+  loadStatus('Initializing Box3D and registering solid terrain...');
   report('Box3D','LOADING');
   const world=await new PhysicsWorld().init();
   // The player is a dynamic capsule; the octree's AABB is only broad-phase occupancy.
@@ -120,9 +127,10 @@ async function initializePhysics(){
    cubes.push({id,body,mesh});
   }
   world.syncStatic(octree,boundsAt(player,26));
-  physics=world;fallingCubes=cubes;
+  physics=world;fallingCubes=cubes;simulationReady=true;
+  loading.remove();
   report('Box3D','READY',cubes.length+' dynamic bodies sharing world octree');
- }catch(error){report('Box3D','FAILED',error.stack||error.message);}
+ }catch(error){loadStatus('Physics initialization failed: '+error.message);report('Box3D','FAILED',error.stack||error.message);}
 }
 report('octree solidity','WAITING','Terrain generation');
 report('Box3D','WAITING','World octree');
@@ -137,7 +145,7 @@ function frame(now){
  up=player.clone().normalize();east=new THREE.Vector3(0,1,0).cross(up).normalize();north=up.clone().cross(east).normalize();
  const facing=north.clone().multiplyScalar(Math.cos(yaw)).addScaledVector(east,Math.sin(yaw));
  const side=east.clone().multiplyScalar(Math.cos(yaw)).addScaledVector(north,-Math.sin(yaw));
- if(physics&&playerCollider){
+ if(simulationReady&&physics&&playerCollider){
   const motion=facing.multiplyScalar(ey).addScaledVector(side,ex);
   if(motion.lengthSq()>1)motion.normalize();
   physics.movePlayer(playerCollider,motion,5,player.clone().normalize());
@@ -153,21 +161,40 @@ function frame(now){
   try{
    terrain.rebuild(player,camera);terrain.edges.visible=false;report('terrain geometry','READY',terrain.leafCount+' leaves');
 
-   if(!solidityStarted){solidityStarted=true;void initializePhysics();}
+   if(!solidityStarted){solidityStarted=true;registerTerrain();loadStatus('Partitioning the coarse world...');}
   }
   catch(error){report('terrain geometry','FAILED',error.message);terrain=null;}
   lastTerrain=now;
  }
  if(octree){
   try{
-   if(terrainCache){
+   if(coarseWork&&!coarseReady){
+    const deadline=performance.now()+2;
+    while(performance.now()<deadline){
+     const next=coarseWork.next();
+     if(next.done){coarseReady=true;coarseWork=null;break;}
+     coarseCells.push(next.value);
+    }
+    loadStatus('Partitioning coarse world: '+coarseCells.length+' octree cells classified');
+   }
+   if(coarseReady&&!simulationReady&&!physicsLoading){
+    const coverage=terrainCache.spawnCoverage(boundsAt(player,.95));
+    loadStatus('Refining spawn collision terrain: '+coverage.ready+'/'+coverage.total+' regions ready');
+    if(coverage.complete){
+     const below=player.clone().addScaledVector(player.clone().normalize(),-1.6);
+     const supporting=octree.query(boundsAt(below,1.2),{kinds:['static']});
+     if(supporting.length)void initializePhysics();
+     else loadStatus('Waiting for solid ground beneath spawn...');
+    }
+   }
+   if(terrainCache&&coarseReady){
     const actors=[boundsAt(player,.95),...fallingCubes.map(item=>boundsAt(item.body.getPosition(),.4))];
     if(terrainCache.advance(player,actors,2)&&physics)physics.syncStatic(octree,boundsAt(player,26));
     if(frames%60===1)report('octree solidity','READY',terrainCache.regionCount+' cached regions');
    }
    const up=player.clone().normalize();
    octree.update('player',boundsAt(player,.95));
-   if(physics){
+   if(simulationReady&&physics){
     // World-space radial gravity; the frame never rotates independently.
     physics.setPlanetGravity(player);
     const near=boundsAt(player,26);
