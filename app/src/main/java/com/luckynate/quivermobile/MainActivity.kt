@@ -135,18 +135,6 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        surface.onResume()
-        updateHandler.removeCallbacks(updateTicker)
-        updateHandler.post(updateTicker)
-    }
-    override fun onPause() {
-        updateHandler.removeCallbacks(updateTicker)
-        surface.onPause()
-        super.onPause()
-    }
-
-    override fun onResume() {
-        super.onResume()
         web.onResume()
         updateHandler.removeCallbacks(updateTicker)
         updateHandler.post(updateTicker)
