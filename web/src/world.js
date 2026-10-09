@@ -8,6 +8,24 @@ export const LOD_MAX_DISTANCE_METERS=[
 ];
 const MAX_LOD=LOD_MAX_DISTANCE_METERS.length-1;
 const HYSTERESIS=1.2;
+// Elevation in meters above sea level (RADIUS - 1). Palette is visual only.
+const TERRAIN_PALETTE=[
+ [-35,0x354b2a],[-1.5,0x354b2a],[0,0xc6b88a],[1.5,0xc6b88a],
+ [4,0x354b2a],[10,0x354b2a],[15,0x71934b],[40,0x71934b],
+ [55,0xa5a064],[100,0xa5a064],[125,0x877b65],
+ [250,0x877b65],[280,0x9a9b9c]
+].map(([elevation,hex])=>({elevation,color:new THREE.Color(hex)}));
+function terrainColor(elevation){
+ for(let i=1;i<TERRAIN_PALETTE.length;i++){
+  const low=TERRAIN_PALETTE[i-1],high=TERRAIN_PALETTE[i];
+  if(elevation<=high.elevation){
+   const t=THREE.MathUtils.smoothstep(elevation,low.elevation,high.elevation);
+   return low.color.clone().lerp(high.color,t);
+  }
+ }
+ return TERRAIN_PALETTE[TERRAIN_PALETTE.length-1].color.clone();
+}
+
 const base=new THREE.IcosahedronGeometry(1,0),pos=base.getAttribute('position');
 const roots=[];
 for(let i=0;i<pos.count;i+=3)roots.push([
@@ -29,7 +47,7 @@ export class WorldTerrain {
   this.height=height;
   this.roots=roots.map(([a,b,c])=>node(a,b,c,0));
   this.geometry=new THREE.BufferGeometry();
-  this.material=new THREE.MeshStandardMaterial({color:0x3e5760,roughness:1,side:THREE.DoubleSide,flatShading:true});
+  this.material=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:1,side:THREE.DoubleSide,flatShading:true});
   this.mesh=new THREE.Mesh(this.geometry,this.material);
   this.mesh.frustumCulled=false;
   scene.add(this.mesh);
@@ -63,7 +81,7 @@ export class WorldTerrain {
   };
   for(const root of this.roots)visit(root);
   if(!changed)return false;
-  const positions=[];
+  const positions=[],colors=[];
   // Every leaf vertex is shared through its direction, independent of LOD.
   // A coarse edge is split wherever a finer neighbor owns its midpoint.
   const key=v=>[v.x,v.y,v.z].map(x=>Math.round(x*1e9)).join(',');
@@ -79,7 +97,11 @@ export class WorldTerrain {
   const add=(a,b,c)=>{
    const A=radial(a),B=radial(b),C=radial(c);
    const outward=new THREE.Vector3().subVectors(B,A).cross(new THREE.Vector3().subVectors(C,A)).dot(A)>=0;
-   for(const p of (outward?[A,B,C]:[A,C,B]))positions.push(p.x,p.y,p.z);
+   for(const p of (outward?[A,B,C]:[A,C,B])){
+    positions.push(p.x,p.y,p.z);
+    const color=terrainColor(p.length()-(RADIUS-1));
+    colors.push(color.r,color.g,color.b);
+   }
   };
   for(const n of leaves){
    const boundary=[
@@ -96,6 +118,7 @@ export class WorldTerrain {
   }
   const geometry=new THREE.BufferGeometry();
   geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+  geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
   geometry.computeVertexNormals();
   this.geometry.dispose();
   this.geometry=geometry;
