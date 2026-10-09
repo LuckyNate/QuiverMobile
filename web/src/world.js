@@ -4,7 +4,7 @@ export const ROOT_EDGE_METERS=4096;
 export const RADIUS=ROOT_EDGE_METERS*Math.sqrt(10+2*Math.sqrt(5))/4;
 // Maximum surface distance at which each subdivision level becomes desirable.
 export const LOD_MAX_DISTANCE_METERS=[
- Infinity,Infinity,110,100,90,80,70,60,50,40,30,20,10
+ Infinity,Infinity,220,200,180,160,140,120,100,80,60,40,20
 ];
 const MAX_LOD=LOD_MAX_DISTANCE_METERS.length-1;
 const HYSTERESIS=1.2;
