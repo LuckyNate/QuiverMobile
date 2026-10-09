@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {WorldTerrain,RADIUS} from './world.js';
 import {WorldOctree} from './engine/world-octree.js';
-import {classifyTerrainVolumesIncremental,createTerrainPartition,classifyWorldCoarse} from './engine/terrain-occupancy.js';
-import {RollingTerrainCache} from './engine/rolling-terrain-cache.js';
+import {classifyTerrainVolumesIncremental,createTerrainPartition} from './engine/terrain-occupancy.js';
+import {mergeSolidBoxes} from './engine/rolling-terrain-cache.js';
 import {PhysicsWorld} from './physics.js';
 
 const app=document.getElementById('app');
@@ -68,9 +68,8 @@ const gravityArrow=new THREE.ArrowHelper(new THREE.Vector3(0,0,-1),player,6,0xff
 wireBtn.addEventListener('click',()=>{gravityArrow.visible=!gravityArrow.visible;wireBtn.textContent='Gravity: '+(gravityArrow.visible?'ON':'OFF');});
 
 // Unified world-space partition: terrain triangles, player and all cubes.
-let physics=null,fallingCubes=[],octree=null,playerCollider=null,solidityStarted=false,terrainCache=null;
-let coarseWork=null,coarseCells=[],coarseReady=false,physicsLoading=false,simulationReady=false;
-let terrainIds=[];
+let physics=null,fallingCubes=[],octree=null,playerCollider=null;
+let solidWork=null,solidBoxes=[],mergedSolids=null,solidInsertIndex=0,solidityReady=false,physicsLoading=false,simulationReady=false;
 const cyan=new THREE.LineBasicMaterial({color:0x00ffff,depthTest:true,depthWrite:false});
 const aabbDisplay=new THREE.Group();scene.add(aabbDisplay);
 function boundsAt(p,half){return {min:[p.x-half,p.y-half,p.z-half],max:[p.x+half,p.y+half,p.z+half]};}
@@ -84,19 +83,15 @@ function activeCollisionAreas(){
 }
 function registerTerrain(){
  if(!terrain)throw new Error('Terrain geometry unavailable');
- octree=new WorldOctree({center:[0,0,0],halfSize:Math.max(256,RADIUS*2),maxDepth:9});
+ octree=new WorldOctree({center:[0,0,0],halfSize:256,maxDepth:9});
  octree.insert('player',boundsAt(player,.95),{kind:'player',owner:'player'});
+ // ONE global immutable partition. One-metre boundary voxels at depth 8.
  const partition=createTerrainPartition(terrain.mesh.geometry.getAttribute('position').array);
- coarseWork=classifyWorldCoarse(partition,[0,0,0],Math.max(256,RADIUS*2),5);
- coarseCells=[];
- terrainCache=new RollingTerrainCache(octree,{
-  classify:(center,halfSize,depth)=>classifyTerrainVolumesIncremental(partition,center,{halfSize,maxDepth:depth}),
-  depth:8,cellSize:16,maxRegions:48
- });
- // Startup refinement begins only after the coarse world partition finishes.
- report('octree solidity','READY',terrainCache.regionCount+' cached regions');
- return octree;
+ solidWork=classifyTerrainVolumesIncremental(partition,[0,0,0],{halfSize:128,maxDepth:8});
+ report('terrain geometry','READY',terrain.leafCount+' fixed faces');
+ report('octree solidity','BUILDING','Planet-wide permanent solidity');
 }
+registerTerrain();
 function drawNearbyStatic(queryBox){
  while(aabbDisplay.children.length){
   const child=aabbDisplay.children[0];aabbDisplay.remove(child);child.geometry.dispose();
@@ -165,53 +160,40 @@ function frame(now){
  camera.position.copy(eye);camera.up.copy(up);camera.lookAt(player.clone().addScaledVector(up,1));
  if(avatar){avatar.position.copy(player).addScaledVector(up,-1.1);avatar.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),up);}
  gravityArrow.position.copy(player).addScaledVector(up,3);gravityArrow.setDirection(up.clone().negate());
- // Only change terrain selection when position/zoom changes significantly.
- if(terrain&&now-lastTerrain>650){
-  try{
-   terrain.rebuild(player,camera);terrain.edges.visible=false;report('terrain geometry','READY',terrain.leafCount+' leaves');
-
-   if(!solidityStarted){solidityStarted=true;registerTerrain();loadStatus('Partitioning the coarse world...');}
-  }
-  catch(error){report('terrain geometry','FAILED',error.message);terrain=null;}
-  lastTerrain=now;
- }
+ // Build the entire planet once. All geometry is committed before physics starts.
  if(octree){
   try{
-   if(coarseWork&&!coarseReady){
-    const deadline=performance.now()+2;
-    while(performance.now()<deadline){
-     const next=coarseWork.next();
-     if(next.done){coarseReady=true;coarseWork=null;break;}
-     const cell=next.value;
-     if(cell.state==='solid'){
-      const box={min:cell.center.map(v=>v-cell.half),max:cell.center.map(v=>v+cell.half)};
-      octree.insert('interior:'+coarseCells.length,box,{kind:'static',shape:'box',owner:'planet-interior'});
+   if(!solidityReady){
+    const deadline=performance.now()+3;
+    if(solidWork){
+     while(performance.now()<deadline){
+      const result=solidWork.next();
+      if(result.done){solidWork=null;break;}
+      if(result.value)solidBoxes.push(result.value);
      }
-     coarseCells.push(cell);
+     loadStatus('Classifying permanent planet solidity: '+solidBoxes.length+' occupied nodes');
+    }else if(!mergedSolids){
+     loadStatus('Merging permanent solid AABBs...');
+     mergedSolids=mergeSolidBoxes(solidBoxes);
+     solidBoxes=[]; // Temporary build buffer only; completed geometry remains immutable.
+    }else{
+     while(solidInsertIndex<mergedSolids.length&&performance.now()<deadline){
+      octree.insert('planet:'+solidInsertIndex,mergedSolids[solidInsertIndex],{kind:'static',shape:'box',owner:'planet'});
+      solidInsertIndex++;
+     }
+     loadStatus('Installing permanent solidity: '+solidInsertIndex+'/'+mergedSolids.length+' AABBs');
+     if(solidInsertIndex===mergedSolids.length){
+      solidityReady=true;mergedSolids=null;
+      report('octree solidity','READY',solidInsertIndex+' permanent merged AABBs');
+     }
     }
-    loadStatus('Building permanent solid interior: '+coarseCells.length+' cells classified');
    }
-   if(coarseReady&&!simulationReady&&!physicsLoading){
-    const coverage=terrainCache.spawnCoverage(boundsAt(player,.95));
-    loadStatus('Refining spawn collision terrain: '+coverage.ready+'/'+coverage.total+' regions ready');
-    if(coverage.complete){
-     const below=player.clone().addScaledVector(player.clone().normalize(),-1.6);
-     const supporting=octree.query(boundsAt(below,1.2),{kinds:['static']});
-     if(supporting.length)void initializePhysics();
-     else loadStatus('Waiting for solid ground beneath spawn...');
-    }
-   }
-   if(terrainCache&&coarseReady){
-    const actors=[boundsAt(player,.95),...fallingCubes.map(item=>boundsAt(item.body.getPosition(),.4))];
-    if(terrainCache.advance(player,actors,2)&&physics)physics.syncStatic(octree,activeCollisionAreas());
-    if(frames%60===1)report('octree solidity','READY',terrainCache.regionCount+' cached regions');
-   }
+   if(solidityReady&&!simulationReady&&!physicsLoading)void initializePhysics();
    const up=player.clone().normalize();
    octree.update('player',boundsAt(player,.95));
    if(simulationReady&&physics){
     // World-space radial gravity; the frame never rotates independently.
     physics.setPlanetGravity(player);
-    const near=boundsAt(player,26);
     for(const item of fallingCubes){
      const p=item.body.getPosition();
      const v=new THREE.Vector3(p.x,p.y,p.z);
@@ -230,7 +212,7 @@ function frame(now){
      octree.update(item.id,boundsAt(item.mesh.position,.4));
     }
    }
-   if(frames%60===1)drawNearbyStatic(boundsAt(player,8));
+   if(solidityReady&&frames%60===1)drawNearbyStatic(boundsAt(player,8));
   }catch(error){report('Box3D','FAILED',error.message);physics=null;}
  }
  if(renderer){
