@@ -7,6 +7,8 @@
 #include <vector>
 #include <chrono>
 #include <cstdio>
+#include <unordered_map>
+#include <cstdint>
 
 namespace {
 constexpr float PI=3.14159265358979323846f;
@@ -67,6 +69,8 @@ Vec tangentNorth(){return normalize(cross(position,tangentEast()));}
 Vec forward(){return {std::sin(yaw),0,std::cos(yaw)};}
 
 std::vector<LineVertex> visibleLines;
+struct Leaf { Triangle tri; float alpha; };
+std::vector<Leaf> selectedLeaves;
 int activeNodes=0, deepestLevel=0;
 int frustumRejected=0, horizonRejected=0, visiblePatches=0, radiusRejected=0, lodStopped=0;
 Vec cameraForward, cameraRight, cameraUp;
@@ -134,7 +138,7 @@ bool visible(Triangle tri,Vec eye,Vec center,float radius){
  ++visiblePatches;
  return true;
 }
-void traverse(Triangle tri,int level,Vec eye,float pixelsPerUnit){
+void traverse(Triangle tri,int level,Vec eye,float pixelsPerUnit,float inheritedAlpha=1.f){
  Vec center=normalize(add(add(tri.a,tri.b),tri.c));
  float radius=patchRadius(tri,center);
  if(!visible(tri,eye,center,radius))return;
@@ -146,7 +150,7 @@ void traverse(Triangle tri,int level,Vec eye,float pixelsPerUnit){
  float edgeMeters=edgeLength*float(SEA_LEVEL_RADIUS_METERS);
  // Visibility decides what we draw; player distance caps how fine it gets.
  // Nearest extent keeps a patch alive if it overlaps the radius.
- if(level>=MAX_LOD)return;
+ if(level>=MAX_LOD){selectedLeaves.push_back({tri,inheritedAlpha});++lodStopped;return;}
  const int childLevel=level+1;
  float playerMinDistance=std::max(0.f,
     (length(subtract(center,position))-radius)*float(SEA_LEVEL_RADIUS_METERS));
@@ -156,7 +160,9 @@ void traverse(Triangle tri,int level,Vec eye,float pixelsPerUnit){
  bool subdivide=childLevel<=MAX_LOD && insideRadius &&
    edgeMeters>1.f && (projected>SPLIT_PIXELS || nearSurface);
  if(!insideRadius)++radiusRejected;
- if(!subdivide || visibleLines.size()+16>=MAX_LINE_VERTICES){++lodStopped;return;}
+ if(!subdivide || selectedLeaves.size()*6>=MAX_LINE_VERTICES){
+   selectedLeaves.push_back({tri,inheritedAlpha});++lodStopped;return;
+ }
  ++activeNodes;deepestLevel=std::max(deepestLevel,childLevel);
  Vec ab=midpoint(tri.a,tri.b),bc=midpoint(tri.b,tri.c),ca=midpoint(tri.c,tri.a);
  float alpha=clamp01((projected-SPLIT_PIXELS)/(FULL_OPACITY_PIXELS-SPLIT_PIXELS));
@@ -165,23 +171,68 @@ void traverse(Triangle tri,int level,Vec eye,float pixelsPerUnit){
    float fadeStart=maximumDistance*(1.f-LOD_FADE_FRACTION);
    alpha*=clamp01((maximumDistance-playerMinDistance)/(maximumDistance-fadeStart));
  }
- if(alpha>.01f){edge(ab,bc,alpha);edge(bc,ca,alpha);edge(ca,ab,alpha);}
- traverse({tri.a,ab,ca},level+1,eye,pixelsPerUnit);
- traverse({tri.b,bc,ab},level+1,eye,pixelsPerUnit);
- traverse({tri.c,ca,bc},level+1,eye,pixelsPerUnit);
- traverse({ab,bc,ca},level+1,eye,pixelsPerUnit);
+ // Children replace the parent; only leaf boundaries reach the GPU.
+ // Preserve fade on the selected branches, rather than drawing ancestors.
+ float leafAlpha=std::max(.08f,std::min(inheritedAlpha,alpha));
+ traverse({tri.a,ab,ca},level+1,eye,pixelsPerUnit,leafAlpha);
+ traverse({tri.b,bc,ab},level+1,eye,pixelsPerUnit,leafAlpha);
+ traverse({tri.c,ca,bc},level+1,eye,pixelsPerUnit,leafAlpha);
+ traverse({ab,bc,ca},level+1,eye,pixelsPerUnit,leafAlpha);
+}
+void buildLeafEdges(){
+ // Shared edges are coalesced into a single GPU line, keeping the higher opacity.
+ // Spherical arc subdivision at LOD boundaries is handled by subdividing
+ // coarse edges at any child midpoint present in the selected vertex set.
+ struct Key {int x,y,z; bool operator==(const Key&o)const{return x==o.x&&y==o.y&&z==o.z;}};
+ struct Hash {size_t operator()(const Key&k)const{
+   size_t h=uint32_t(k.x)*73856093u;
+   h^=uint32_t(k.y)*19349663u;h^=uint32_t(k.z)*83492791u;return h;
+ }};
+ auto key=[](Vec v)->Key{return {(int)std::lround(v.x*10000000.),(int)std::lround(v.y*10000000.),(int)std::lround(v.z*10000000.)};};
+ struct Segment {Vec a,b;float opacity;};
+ std::vector<Segment> segments;
+ std::unordered_map<Key,std::vector<Vec>,Hash> vertices;
+ for(const Leaf &leaf:selectedLeaves){
+   for(Vec v:{leaf.tri.a,leaf.tri.b,leaf.tri.c}) vertices[key(v)].push_back(v);
+ }
+ // An edge's spherical midpoint is shared with its finer neighbor.
+ // Split it recursively only if that midpoint exists in selected leaves.
+ std::unordered_map<Key,size_t,Hash> dedup;
+ auto addSegment=[&](Vec a,Vec b,float alpha){
+   Key ka=key(a),kb=key(b);
+   // Pair endpoints in an order-independent 64-bit hash.
+   Hash hash;size_t ha=hash(ka),hb=hash(kb);
+   size_t id=(std::min(ha,hb)*1099511628211ull)^std::max(ha,hb);
+   auto found=dedup.find(Key{(int)(id>>32),(int)id,0});
+   if(found!=dedup.end()){segments[found->second].opacity=std::max(segments[found->second].opacity,alpha);return;}
+   dedup[Key{(int)(id>>32),(int)id,0}]=segments.size();segments.push_back({a,b,alpha});
+ };
+ auto stitch=[&](auto&& self,Vec a,Vec b,float alpha,int depth)->void{
+   if(depth<MAX_LOD){Vec mid=midpoint(a,b);
+     if(vertices.find(key(mid))!=vertices.end()){
+       self(self,a,mid,alpha,depth+1);self(self,mid,b,alpha,depth+1);return;
+     }
+   }
+   addSegment(a,b,alpha);
+ };
+ for(const Leaf &leaf:selectedLeaves){
+   stitch(stitch,leaf.tri.a,leaf.tri.b,leaf.alpha,0);
+   stitch(stitch,leaf.tri.b,leaf.tri.c,leaf.alpha,0);
+   stitch(stitch,leaf.tri.c,leaf.tri.a,leaf.alpha,0);
+ }
+ for(const auto &line:segments){edge(line.a,line.b,line.opacity);}
 }
 void rebuild(Vec eye){
- visibleLines.clear();activeNodes=0;deepestLevel=0;
+ visibleLines.clear();selectedLeaves.clear();activeNodes=0;deepestLevel=0;
  frustumRejected=0;horizonRejected=0;visiblePatches=0;radiusRejected=0;lodStopped=0;
  float pixelScale=height/(2.f*std::tan(55.f*PI/360.f));
  for(const auto &tri:roots()){
   Vec center=normalize(add(add(tri.a,tri.b),tri.c));
   float radius=patchRadius(tri,center);
   if(!visible(tri,eye,center,radius))continue;
-  edge(tri.a,tri.b,.85f);edge(tri.b,tri.c,.85f);edge(tri.c,tri.a,.85f);
   traverse(tri,0,eye,pixelScale);
  }
+ buildLeafEdges();
 }
 }
 
