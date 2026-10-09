@@ -1,9 +1,9 @@
 // Persistent world-aligned terrain chunks. Refreshing a chunk only updates age;
 // collider geometry and octree entries remain stable until safe retirement.
 export class RollingTerrainCache {
- constructor(tree,{classify,depth=8,cellSize=16,maxRegions=48}) {
+ constructor(tree,{classify,depth=8,cellSize=16,maxRegions=48,lodDistances=[8,16,32,64,128,256]}) {
   this.tree=tree;this.classify=classify;this.depth=depth;
-  this.cellSize=cellSize;this.maxRegions=maxRegions;this.regions=new Map();
+  this.cellSize=cellSize;this.maxRegions=maxRegions;this.lodDistances=lodDistances;this.regions=new Map();this.generation=0;
  }
  get regionCount(){return this.regions.size;}
  key(x,y,z){return x+','+y+','+z;}
@@ -16,21 +16,26 @@ export class RollingTerrainCache {
   for(let x=cx-2;x<=cx+2;x++)for(let y=cy-2;y<=cy+2;y++)for(let z=cz-2;z<=cz+2;z++){
    const dist=(x+.5-px/s)**2+(y+.5-py/s)**2+(z+.5-pz/s)**2;
    if(dist>6.75)continue;
-   candidates.push({x,y,z,dist,key:this.key(x,y,z)});
+   const nearest=Math.hypot(...[px,py,pz].map((p,i)=>Math.max(0,Math.abs(p-([x,y,z][i]+.5)*s)-s/2)));
+   const depth=Math.max(2,this.depth-this.lodDistances.filter(d=>nearest>=d).length);
+   candidates.push({x,y,z,dist,depth,key:this.key(x,y,z)});
   }
   candidates.sort((a,b)=>a.dist-b.dist);
   const active=new Set(candidates.map(c=>c.key));
   for(const c of candidates){
-   if(this.regions.has(c.key)){
-    const region=this.regions.get(c.key);
-    this.regions.delete(c.key);this.regions.set(c.key,region);
-   }else if(budget>0){
-    const center=[(c.x+.5)*s,(c.y+.5)*s,(c.z+.5)*s];
-    const boxes=this.classify(center,s/2,this.depth);
-    const ids=[];
-    boxes.forEach((box,i)=>{const id='ground:'+c.key+':'+i;this.tree.insert(id,box,{kind:'static',shape:'box',owner:'planet'});ids.push(id);});
-    this.regions.set(c.key,{ids});budget--;
+   const previous=this.regions.get(c.key);
+   // Refreshing an unchanged region only renews its FIFO age.
+   if(previous&&previous.depth===c.depth){
+    this.regions.delete(c.key);this.regions.set(c.key,previous);continue;
    }
+   if(budget<=0)continue;
+   const center=[(c.x+.5)*s,(c.y+.5)*s,(c.z+.5)*s];
+   const boxes=this.classify(center,s/2,c.depth);
+   // Create the replacement before retiring old colliders, preserving ground coverage.
+   const ids=[],generation=this.generation++;
+   boxes.forEach((box,i)=>{const id='ground:'+c.key+':'+generation+':'+i;this.tree.insert(id,box,{kind:'static',shape:'box',owner:'planet'});ids.push(id);});
+   if(previous)for(const id of previous.ids)this.tree.remove(id);
+   this.regions.delete(c.key);this.regions.set(c.key,{ids,depth:c.depth});budget--;
   }
   // Oldest unrefreshed regions first, but never discard the active neighborhood.
   for(const [key,region] of this.regions){
