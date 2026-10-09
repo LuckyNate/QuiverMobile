@@ -48,7 +48,7 @@ catch(error){report('terrain setup','FAILED',error.message);}
 const water=new WorldWater(scene,RADIUS);
 const playerSystem=new PlayerSystem(scene,camera,canvas,RADIUS,report);
 const player=playerSystem.position;
-player.setLength(height.radius(player.clone().normalize(),RADIUS)+1.3);
+player.setLength(Math.max(height.radius(player.clone().normalize(),RADIUS)+1.3,water.radius+.35));
 // Permanent mathematical solidity is independent of rendered terrain triangles.
 let physics=null,fallingCubes=[],playerCollider=null;
 let physicsLoading=false,simulationReady=false;
@@ -186,6 +186,14 @@ function frame(now){
    if(simulationReady&&physics){
     // World-space radial gravity; the frame never rotates independently.
     physics.setPlanetGravity(player);
+    // Buoyancy only over submerged terrain; preserve normal land walking.
+    if(playerCollider&&height.radius(player.clone().normalize(),RADIUS)<water.radius){
+     const up=player.clone().normalize(),velocity=playerCollider.getLinearVelocity();
+     const radial=velocity.x*up.x+velocity.y*up.y+velocity.z*up.z;
+     const target=Math.max(-1,Math.min(3,(water.radius+.35-player.length())*4));
+     const adjustment=target-radial;
+     playerCollider.setLinearVelocity({x:velocity.x+up.x*adjustment,y:velocity.y+up.y*adjustment,z:velocity.z+up.z*adjustment});
+    }
     for(const item of fallingCubes){
      const p=item.body.getPosition();
      const v=new THREE.Vector3(p.x,p.y,p.z);
