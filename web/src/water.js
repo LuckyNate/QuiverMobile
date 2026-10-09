@@ -13,20 +13,9 @@ export class WorldWater {
   this.mesh.name='WorldWater';
   scene.add(this.mesh);
   this.underwaterFog=new THREE.FogExp2(0x174958,.028);
-  this.surfaceShader=null;
-  // A small vertex displacement gives the surface movement without changing sea level physics.
-  this.material.onBeforeCompile=shader=>{
-   shader.uniforms.waterTime={value:0};
-   shader.vertexShader='uniform float waterTime;\n'+shader.vertexShader;
-   shader.vertexShader=shader.vertexShader.replace(
-    '#include <begin_vertex>',
-    '#include <begin_vertex>\nfloat wave=0.12*sin(position.x*0.035+waterTime*0.65)*sin(position.y*0.029-waterTime*0.47);\ntransformed+=normalize(position)*wave;'
-   );
-   this.surfaceShader=shader;
-  };
+
  }
- update(scene,camera,renderer,elapsed){
-  if(this.surfaceShader)this.surfaceShader.uniforms.waterTime.value=elapsed;
+ update(scene,camera,renderer){
   const depth=this.radius-camera.position.length();
   const underwater=depth>0;
   scene.fog=underwater?this.underwaterFog:null;
