@@ -9,7 +9,7 @@ export class ImplicitSphere {
   if(kinds&&!kinds.includes('static'))return [];
   const result=[],r2=this.radiusSquared;
   const touches=(c,h)=>c.every((v,i)=>v+h>=box.min[i]&&v-h<=box.max[i]);
-  const visit=(c,h,level,index)=>{
+  const visit=(c,h,level,path)=>{
    if(!touches(c,h))return;
    let nearest=0,farthest=0;
    for(let i=0;i<3;i++){
@@ -21,17 +21,17 @@ export class ImplicitSphere {
    if(farthest<=r2||2*h<=this.minCell){
     // At the boundary use the same center-occupancy rule as the old builder.
     if(farthest>r2&&c.reduce((s,v)=>s+v*v,0)>r2)return;
-    result.push({id:'solid:'+level+':'+index,kind:'static',shape:'box',owner:'planet',
+    result.push({id:'solid:'+path,kind:'static',shape:'box',owner:'planet',
      box:{min:c.map(v=>v-h),max:c.map(v=>v+h)}});
     return;
    }
    const childHalf=h/2;
    for(let bits=0;bits<8;bits++){
     const child=c.map((v,i)=>v+((bits>>i&1)?childHalf:-childHalf));
-    visit(child,childHalf,level+1,index*8+bits+1);
+    visit(child,childHalf,level+1,path+bits);
    }
   };
-  visit([0,0,0],this.halfSize,0,0);
+  visit([0,0,0],this.halfSize,0,'');
   return result;
  }
 }
