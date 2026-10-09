@@ -2,7 +2,7 @@
 // The terrain geometry must be a convex, outward-faced triangle shell (current icosphere).
 // Future heightmaps feed both renderer and this classifier; non-convex heightmaps
 // will require a winding/ray parity classifier instead of the convex half-spaces.
-export function classifyTerrainVolumes(positions,center,{halfSize=16,maxDepth=5,actors=[],lodDistances=[1.5,3,6,12,24,48]}={}){
+export function* classifyTerrainVolumesIncremental(positions,center,{halfSize=16,maxDepth=5,actors=[],lodDistances=[1.5,3,6,12,24,48]}={}){
  if(!positions?.length||positions.length%9)throw new Error('Unindexed terrain triangles required');
  const planes=[];
  for(let i=0;i<positions.length;i+=9){
@@ -33,7 +33,7 @@ export function classifyTerrainVolumes(positions,center,{halfSize=16,maxDepth=5,
   }
   return Math.max(2,maxDepth-lodDistances.filter(limit=>distance>=limit).length);
  }
- function walk(c,h,depth,candidates){
+ function* walk(c,h,depth,candidates){
   const unresolved=[];
   for(const p of candidates){
    const distance=p.n[0]*c[0]+p.n[1]*c[1]+p.n[2]*c[2]-p.d;
@@ -45,11 +45,13 @@ export function classifyTerrainVolumes(positions,center,{halfSize=16,maxDepth=5,
    // At maximum depth the center chooses the boundary cell; this establishes
    // the configured AABB precision rather than falsely filling open space.
    if(unresolved.length&&unresolved.some(p=>p.n[0]*c[0]+p.n[1]*c[1]+p.n[2]*c[2]>p.d))return;
-   occupied.push({min:c.map(x=>x-h),max:c.map(x=>x+h)});return;
+   yield {min:c.map(x=>x-h),max:c.map(x=>x+h)};return;
   }
   const r=h/2;
-  for(let bits=0;bits<8;bits++)walk(c.map((x,i)=>x+((bits>>i&1)?r:-r)),r,depth+1,unresolved);
+  for(let bits=0;bits<8;bits++)yield* walk(c.map((x,i)=>x+((bits>>i&1)?r:-r)),r,depth+1,unresolved);
  }
- walk([...center],halfSize,0,planes);
- return occupied;
+ yield* walk([...center],halfSize,0,planes);
+}
+export function classifyTerrainVolumes(positions,center,options={}){
+ return [...classifyTerrainVolumesIncremental(positions,center,options)];
 }
