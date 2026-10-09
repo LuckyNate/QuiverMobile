@@ -79,7 +79,6 @@ scene.add(footShadow);
 function boundsAt(p,half){return {min:[p.x-half,p.y-half,p.z-half],max:[p.x+half,p.y+half,p.z+half]};}
 // Flat 0.8 m footing samples multiple AABB tops along the local gravity
 // normal. This avoids an overlapping compound hull that could jam Box3D.
-const FOOT_RADIUS=.4,FOOT_OFFSET=.9,MAX_STEP=1;
 // Blend terrain support normals over the entire circular sled footprint.
 // Gravity remains independent and always points along the magenta radial arrow.
 const FOOT_RADIUS=.4,FOOT_OFFSET=.925,MAX_STEP=1;
