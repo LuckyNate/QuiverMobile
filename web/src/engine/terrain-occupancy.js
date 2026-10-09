@@ -19,24 +19,19 @@ export function createTerrainPartition(positions){
 }
 // Cache surface planes once; interior nodes are terminal solid and exterior nodes
 // terminal empty. Only the boundary is recursively refined.
-export function* classifyTerrainVolumesIncremental(source,center,{halfSize=16,maxDepth=5,actors=[],lodDistances=[1.5,3,6,12,24,48]}={}){
+export function* classifyTerrainVolumesIncremental(source,center,{halfSize=16,maxDepth=5,actors=[],feet=null,lodDistances=[2,4,8,16,32,64]}={}){
  const planes=source?.planes??createTerrainPartition(source).planes;
- // Minimum separation between the terrain node and any moving body's AABB.
- // Individual nodes refine as bodies approach rather than refining whole chunks.
+ // Detail bands are spherical around the player's feet. Node-to-point AABB
+ // distance ensures a large node crossing a radius is refined appropriately.
  function desiredDepth(c,h){
-  if(!actors.length)return maxDepth;
-  let distance=Infinity;
-  for(const a of actors){
-   const box=a.min&&a.max?a:{min:[a.x??a[0],a.y??a[1],a.z??a[2]],max:[a.x??a[0],a.y??a[1],a.z??a[2]]};
-   let squared=0;
-   for(let i=0;i<3;i++){
-    const min=c[i]-h,max=c[i]+h;
-    const delta=Math.max(0,min-box.max[i],box.min[i]-max);
-    squared+=delta*delta;
-   }
-   distance=Math.min(distance,Math.sqrt(squared));
+  if(!feet)return maxDepth;
+  let squared=0;
+  for(let i=0;i<3;i++){
+   const delta=Math.max(0,Math.abs(feet[i]-c[i])-h);
+   squared+=delta*delta;
   }
-  return Math.max(2,maxDepth-lodDistances.filter(limit=>distance>=limit).length);
+  const distance=Math.sqrt(squared);
+  return Math.max(2,maxDepth-lodDistances.filter(radius=>distance>=radius).length);
  }
  function* walk(c,h,depth,candidates){
   // Also yield work units for empty/outside nodes so the frame budget holds.
