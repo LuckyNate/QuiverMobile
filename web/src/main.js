@@ -81,7 +81,7 @@ function boundsAt(p,half){return {min:[p.x-half,p.y-half,p.z-half],max:[p.x+half
 // normal. This avoids an overlapping compound hull that could jam Box3D.
 // Blend terrain support normals over the entire circular sled footprint.
 // Gravity remains independent and always points along the magenta radial arrow.
-const FOOT_RADIUS=.4,FOOT_OFFSET=.925,MAX_STEP=1;
+const FOOT_RADIUS=.4,FOOT_OFFSET=.9,MAX_STEP=1;
 const footNormal=new THREE.Vector3(0,0,1);
 function footingSurface(position,heading,gravityUp){
  const lateral=new THREE.Vector3().crossVectors(gravityUp,heading).normalize();
@@ -109,7 +109,7 @@ function footingSurface(position,heading,gravityUp){
      if(exit<enter)break;
     }
    }
-   if(enter<=exit&&enter<nearest&&axisHit>=0){nearest=enter;hitAxis=axis;hitSign=sign;}
+   if(enter<=exit&&enter<nearest&&axisHit>=0){nearest=enter;hitAxis=axisHit;hitSign=sign;}
   }
   if(hitAxis<0)continue;
   const rise=1.08-nearest;
@@ -246,7 +246,7 @@ function frame(now){
  const eye=player.clone().addScaledVector(up,2+zoom*Math.sin(pitch)).addScaledVector(aim,-zoom*Math.cos(pitch));
  camera.position.copy(eye);camera.up.copy(up);camera.lookAt(player.clone().addScaledVector(up,1));
  if(avatar){avatar.position.copy(player).addScaledVector(up,-1.1);avatar.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),up);}
- footShadow.position.copy(player).addScaledVector(footNormal,-FOOT_OFFSET);
+ footShadow.position.copy(player).addScaledVector(up,-FOOT_OFFSET);
  footShadow.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),footNormal);
  gravityArrow.position.copy(player).addScaledVector(up,3);gravityArrow.setDirection(up.clone().negate());
  // The immutable planet is queryable immediately. Player motion never rebuilds it.
