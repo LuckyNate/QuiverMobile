@@ -12,7 +12,13 @@ export class PhysicsWorld {
  }
  // Only static occupied octree AABBs become Box3D collision bodies.
  syncStatic(tree,queryBounds){
-  const wanted=new Map(tree.query(queryBounds,{kinds:['static']}).filter(e=>e.shape==='box').map(e=>[e.id,e.box]));
+  const areas=Array.isArray(queryBounds)?queryBounds:[queryBounds];
+  const wanted=new Map();
+  for(const bounds of areas){
+   for(const entry of tree.query(bounds,{kinds:['static']})){
+    if(entry.shape==='box')wanted.set(entry.id,entry.box);
+   }
+  }
   for(const [id,body] of this.staticBodies)if(!wanted.has(id)){
    body.destroy();this.staticBodies.delete(id);
   }
