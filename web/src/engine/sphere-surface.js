@@ -1,3 +1,4 @@
+import {TERRAIN_AMPLITUDE} from './terrain-height.js';
 // Only outward-facing, 1 m surface patches exist as collision geometry.
 // This cube-sphere parameterization is derived from the same implicit solid
 // radius as octree occupancy; no interior AABB faces are generated.
@@ -19,7 +20,8 @@ export class SphereSurface {
    const denom=Math.max(.001,Math.abs(mid[axis])-extent);
    const u=mid[uAxis]*r/Math.max(.001,Math.abs(mid[axis]));
    const v=mid[vAxis]*r/Math.max(.001,Math.abs(mid[axis]));
-   const spread=Math.min(2*r,extent*r/denom*2+s*2);
+   const spread=Math.min(2*r,extent*r/denom*2+s*2+
+    (this.height?TERRAIN_AMPLITUDE*r/Math.max(1,Math.abs(mid[axis])):0));
    const lowU=Math.max(-r,Math.floor((u-spread+r)/s)*s-r);
    const highU=Math.min(r,Math.ceil((u+spread+r)/s)*s-r);
    const lowV=Math.max(-r,Math.floor((v-spread+r)/s)*s-r);
@@ -33,7 +35,7 @@ export class SphereSurface {
    for(let a=lowU;a<highU-s*.5;a+=s)for(let b=lowV;b<highV-s*.5;b+=s){
     const corners=[vertex(a,b,r),vertex(a+s,b,r),vertex(a+s,b+s,r),vertex(a,b+s,r)];
     const center=corners.reduce((sum,p)=>sum.map((v,i)=>v+p[i]/4),[0,0,0]);
-    if(center.some((v,i)=>v<bounds.min[i]-s-34||v>bounds.max[i]+s+34))continue;
+    if(center.some((v,i)=>v<bounds.min[i]-s||v>bounds.max[i]+s))continue;
     const inner=[vertex(a,b,r-this.depth),vertex(a+s,b,r-this.depth),
      vertex(a+s,b+s,r-this.depth),vertex(a,b+s,r-this.depth)];
     const i=Math.round((a+r)/s),j=Math.round((b+r)/s);

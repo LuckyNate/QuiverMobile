@@ -8,9 +8,9 @@ import {SphereSurface} from './engine/sphere-surface.js';
 export class WorldSystem {
  constructor(radius,playerPosition,height=new TerrainHeight()){
   this.height=height;
-  this.octree=new WorldOctree({center:[0,0,0],halfSize:4096,maxDepth:13});
+  this.octree=new WorldOctree({center:[0,0,0],halfSize:8192,maxDepth:14});
   this.octree.insert('player',{min:playerPosition.toArray().map(v=>v-.95),max:playerPosition.toArray().map(v=>v+.95)},{kind:'player',owner:'player'});
-  this.solidity=new ImplicitSphere(radius,{halfSize:4096,minCell:1,height});
+  this.solidity=new ImplicitSphere(radius,{halfSize:8192,minCell:1,height});
   this.surface=new SphereSurface(radius,{step:1,height});
  }
 }

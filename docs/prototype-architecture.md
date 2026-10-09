@@ -55,3 +55,12 @@ Android release build succeeds; startup reaches Box3D READY; player spawns on la
 - Terrain renderer LOD maximum 12. Existing neighbor-edge stitching and hysteresis remain in place; configured split ranges scale with the larger planet.
 - Spatial and implicit-octree half-width: 4096 m, covering the entire planet and its ±34 m height offsets; dynamic octree max depth 13 permits 1 m cells across an 8192 m root cube.
 - Water follows RADIUS - 1 m; seed and noise wavelengths remain unchanged for this development-stage size increase. No player, Box3D contact, or gravity behavior changes.
+
+## Elevation-dependent biome shaping (2026-10-09)
+
+- The same seeded radial `TerrainHeight.height(direction)` continues to drive LOD rendering, implicit solidity and local Box3D collision patches. Any string including `""` remains a valid deterministic seed.
+- Broad geographic elevation uses 1800 m and 650 m wavelengths (245 m and 100 m amplitudes, respectively). This underlying elevation is sampled **first** and controls roughness bands, avoiding a feedback loop from small-scale detail.
+- Near sea level: weak 240 m plains texture (1.5 m amplitude). Foothills: progressively enabled 140 m hills (14 m). Highlands: stronger 32 m fine detail (up to 4 m). Mountains: ridges (up to 38 m at 95 m wavelength) and narrow crevices (up to 30 m depth at 42 m wavelength).
+- Smoothstep blends over elevation bands prevent hard biome edges. No separate biome lookup or stateful noise is used.
+- `TERRAIN_AMPLITUDE=440` is a conservative bound used by octree occupancy and local surface search. The octree root half-width is expanded to 8192 m (14 levels for 1 m resolution) to cover mountain elevations without truncating the world.
+- Water remains RADIUS - 1 m and physics, input and LOD selection remain unchanged. On-device slope/contact and performance validation are required.
