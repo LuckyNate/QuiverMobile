@@ -59,7 +59,16 @@ canvas.addEventListener('pointerup',release);canvas.addEventListener('pointercan
 canvas.addEventListener('wheel',e=>{e.preventDefault();zoom=THREE.MathUtils.clamp(zoom*Math.exp(e.deltaY*.001),3,30000);},{passive:false});
 wireBtn.addEventListener('click',()=>{if(!terrain)return;terrain.edges.visible=!terrain.edges.visible;wireBtn.textContent='Wireframe: '+(terrain.edges.visible?'ON':'OFF');});
 
-let physics=null,testBody=null,testCube=null,physicsGroup=null,octree=null;
+// Box3D operates in an anchored local tangent frame (Y points away from the planet).
+// The frame is fixed when spawned so bodies accumulate on the ground instead of
+// following the player above their heads.
+let physics=null,physicsGroup=null,fallingCubes=[],octree=null;
+const dropOrigin=player.clone();
+const dropUp=dropOrigin.clone().normalize();
+const dropEast=new THREE.Vector3(0,1,0).cross(dropUp).normalize();
+const dropNorth=dropUp.clone().cross(dropEast).normalize();
+const dropBasis=new THREE.Matrix4().makeBasis(dropEast,dropUp,dropNorth);
+const dropOrientation=new THREE.Quaternion().setFromRotationMatrix(dropBasis);
 try{
  octree=new StaticAabbOctree([0,0,0],256,8);
  octree.insert({min:[-12,-1,-12],max:[0,0,12]},'debug-ground-left');
@@ -72,12 +81,25 @@ async function initializePhysics(){
   report('Box3D','LOADING');
   const world=await new PhysicsWorld().init();
   world.syncStatic(octree,{min:[-20,-5,-20],max:[20,5,20]});
-  const body=world.addDynamicBox([2,5,0],.4);
-  const cube=new THREE.Mesh(new THREE.BoxGeometry(.8,.8,.8),new THREE.MeshStandardMaterial({color:0xffa540}));
-  const platform=new THREE.Mesh(new THREE.BoxGeometry(24,1,24),new THREE.MeshStandardMaterial({color:0x5e666e,transparent:true,opacity:.28}));
-  const group=new THREE.Group();group.add(cube,platform);scene.add(group);platform.position.y=-.5;
-  physics=world;testBody=body;testCube=cube;physicsGroup=group;
-  report('Box3D','READY');
+  const group=new THREE.Group();
+  group.position.copy(dropOrigin);
+  group.quaternion.copy(dropOrientation);
+  const cubes=[];
+  const cubeGeometry=new THREE.BoxGeometry(.8,.8,.8);
+  const cubeMaterial=new THREE.MeshStandardMaterial({color:0xffa540,roughness:.8});
+  // Twenty real dynamic bodies; local -Y gravity points radially inward.
+  for(let i=0;i<20;i++){
+   const x=((i%5)-2)*1.15;
+   const z=(Math.floor(i/5)-1.5)*1.15;
+   const y=4+i*.85;
+   const body=world.addDynamicBox([x,y,z],.4);
+   const mesh=new THREE.Mesh(cubeGeometry,cubeMaterial);
+   mesh.position.set(x,y,z);group.add(mesh);
+   cubes.push({body,mesh});
+  }
+  scene.add(group);
+  physics=world;physicsGroup=group;fallingCubes=cubes;
+  report('Box3D','READY',cubes.length+' falling cubes, ground collision active');
  }catch(error){report('Box3D','FAILED',error.stack||error.message);}
 }
 void initializePhysics();
@@ -104,13 +126,17 @@ function frame(now){
   catch(error){report('terrain geometry','FAILED',error.message);terrain=null;}
   lastTerrain=now;
  }
- if(physics&&testBody){
+ if(physics){
   try{
    physics.step(dt);
-   const p=testBody.getPosition();
-   physicsGroup.position.copy(player).addScaledVector(up,4).addScaledVector(east,4);
-   physicsGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),up);
-   testCube.position.set(p.x,p.y,p.z);
+   for(const {body,mesh} of fallingCubes){
+    const p=body.getPosition();
+    mesh.position.set(p.x,p.y,p.z);
+    if(typeof body.getQuaternion==='function'){
+     const q=body.getQuaternion();
+     if(q)mesh.quaternion.set(q.x,q.y,q.z,q.w);
+    }
+   }
   }catch(error){report('Box3D','FAILED',error.message);physics=null;}
  }
  if(renderer){
