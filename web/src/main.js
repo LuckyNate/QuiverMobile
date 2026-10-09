@@ -62,7 +62,7 @@ wireBtn.addEventListener('click',()=>{if(!terrain)return;terrain.edges.visible=!
 // Box3D operates in an anchored local tangent frame (Y points away from the planet).
 // The frame is fixed when spawned so bodies accumulate on the ground instead of
 // following the player above their heads.
-let physics=null,physicsGroup=null,fallingCubes=[],octree=null;
+let physics=null,physicsGroup=null,fallingCubes=[],octree=null,playerCollider=null;
 const dropOrigin=player.clone();
 const dropUp=dropOrigin.clone().normalize();
 const dropEast=new THREE.Vector3(0,1,0).cross(dropUp).normalize();
@@ -81,9 +81,23 @@ async function initializePhysics(){
   report('Box3D','LOADING');
   const world=await new PhysicsWorld().init();
   world.syncStatic(octree,{min:[-20,-5,-20],max:[20,5,20]});
+  // Player collider: stationary relative to the initial drop site until moved.
+  // Static collision shape stays independent of the visual GLB.
+  playerCollider=world.world.createBody({type:'static',position:{x:0,y:.9,z:0}});
+  playerCollider.createBox({halfExtents:{x:.35,y:.9,z:.35}});
   const group=new THREE.Group();
   group.position.copy(dropOrigin);
   group.quaternion.copy(dropOrientation);
+  // Outline actual merged octree collision boxes in the same local frame.
+  const cyanBoxMaterial=new THREE.LineBasicMaterial({color:0x00ffff,depthTest:true,depthWrite:false});
+  for(const {box} of octree.sources){
+   const size=box.min.map((v,i)=>box.max[i]-v);
+   const center=box.min.map((v,i)=>(v+box.max[i])/2);
+   const edgeGeometry=new THREE.EdgesGeometry(new THREE.BoxGeometry(...size));
+   const outline=new THREE.LineSegments(edgeGeometry,cyanBoxMaterial);
+   outline.position.set(...center);
+   group.add(outline);
+  }
   const cubes=[];
   const cubeGeometry=new THREE.BoxGeometry(.8,.8,.8);
   const cubeMaterial=new THREE.MeshStandardMaterial({color:0xffa540,roughness:.8});
@@ -128,6 +142,13 @@ function frame(now){
  }
  if(physics){
   try{
+   // Update player collider in the fixed drop-site frame when the player moves.
+   if(playerCollider && typeof playerCollider.setPosition==='function'){
+    const delta=player.clone().sub(dropOrigin);
+    playerCollider.setPosition({
+     x:delta.dot(dropEast), y:.9+delta.dot(dropUp), z:delta.dot(dropNorth)
+    });
+   }
    physics.step(dt);
    for(const {body,mesh} of fallingCubes){
     const p=body.getPosition();

@@ -17,7 +17,7 @@ export class WorldTerrain {
   this.geometry=new THREE.BufferGeometry();
   this.material=new THREE.MeshStandardMaterial({color:0x3e5760,roughness:1,side:THREE.FrontSide,flatShading:true});
   this.mesh=new THREE.Mesh(this.geometry,this.material);scene.add(this.mesh);
-  this.edges=new THREE.LineSegments(new THREE.BufferGeometry(),new THREE.LineBasicMaterial({color:0xff00ff,transparent:true,opacity:.65,depthTest:false}));
+  this.edges=new THREE.LineSegments(new THREE.BufferGeometry(),new THREE.LineBasicMaterial({color:0xff00ff,transparent:true,opacity:.65,depthTest:true,depthWrite:false}));
   this.edges.visible=true;scene.add(this.edges);
   this.maxDepth=4;this.leafCount=0;
  }
