@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {WorldTerrain,RADIUS} from './world.js';
-import {StaticAabbOctree} from './solidity.js';
+import {buildWorldSolidity} from './world-solidity.js';
 import {PhysicsWorld} from './physics.js';
 
 const app=document.getElementById('app');
@@ -69,35 +69,13 @@ const dropEast=new THREE.Vector3(0,1,0).cross(dropUp).normalize();
 const dropNorth=dropUp.clone().cross(dropEast).normalize();
 const dropBasis=new THREE.Matrix4().makeBasis(dropEast,dropUp,dropNorth);
 const dropOrientation=new THREE.Quaternion().setFromRotationMatrix(dropBasis);
-// The collision columns are sampled from the rendered planet itself.
-// The octree contains occupied terrain volumes, not a separate platform.
-// Box3D's local Y axis maps to the planet's outward radial direction.
+// Planet-static occupancy comes from the same world triangle geometry as the
+// renderer. LOD only changes its presentation; solidity remains a spatial octree.
 function buildTerrainSolidity(){
- if(!terrain || !terrain.mesh.geometry.getAttribute('position')?.count)throw new Error('Terrain geometry not ready');
- terrain.mesh.updateMatrixWorld(true);
- const raycaster=new THREE.Raycaster();
- const down=dropUp.clone().negate();
- const origin=dropOrigin.clone();
- const tree=new StaticAabbOctree([0,-8,0],32,7);
- const tile=1, extent=8;
- let n=0;
- for(let ix=-extent;ix<extent;ix++)for(let iz=-extent;iz<extent;iz++){
-  const x=ix*tile,z=iz*tile;
-  // A cell cannot rise above any measured surface corner.
-  let ground=Infinity,found=0;
-  for(const dx of [0,1])for(const dz of [0,1]){
-   const worldPoint=origin.clone().addScaledVector(dropEast,x+dx*tile).addScaledVector(dropNorth,z+dz*tile).addScaledVector(dropUp,8);
-   raycaster.set(worldPoint,down);
-   const hit=raycaster.intersectObject(terrain.mesh,false)[0];
-   if(hit){ground=Math.min(ground,8-hit.distance);found++;}
-  }
-  if(!found)continue;
-  // Slight inset avoids raising collision above the visible faceted terrain.
-  const top=ground-.06;
-  tree.insert({min:[x,-18,z],max:[x+tile,top,z+tile]},'terrain-'+(n++));
- }
- tree.compact();
- return tree;
+ if(!terrain)throw new Error('Terrain unavailable');
+ return buildWorldSolidity(terrain.mesh.geometry,{
+  origin:dropOrigin,up:dropUp,east:dropEast,north:dropNorth
+ },{extent:16,depth:6});
 }
 function showSolidity(group,tree){
  const cyan=new THREE.LineBasicMaterial({color:0x00ffff,depthTest:true,depthWrite:false});
@@ -113,10 +91,10 @@ async function initializePhysics(){
  try{
   report('octree solidity','LOADING');
   octree=buildTerrainSolidity();
-  report('octree solidity','READY',octree.sources.length+' terrain AABBs');
+  report('octree solidity','READY',octree.sources.length+' merged world-solid AABBs');
   report('Box3D','LOADING');
   const world=await new PhysicsWorld().init();
-  world.syncStatic(octree,{min:[-25,-22,-25],max:[25,10,25]});
+  world.syncStatic(octree,{min:[-16,-24,-16],max:[16,8,16]});
   // Player collider in the same planet-local frame as the terrain.
   // Static collision shape stays independent of the visual GLB.
   playerCollider=world.world.createBody({type:'static',position:{x:0,y:.9,z:0}});
@@ -141,7 +119,7 @@ async function initializePhysics(){
   }
   scene.add(group);
   physics=world;physicsGroup=group;fallingCubes=cubes;
-  report('Box3D','READY',cubes.length+' falling cubes on planet collision');
+  report('Box3D','READY',cubes.length+' cubes / local octree physics');
  }catch(error){report('Box3D','FAILED',error.stack||error.message);}
 }
 report('octree solidity','WAITING','Terrain generation');

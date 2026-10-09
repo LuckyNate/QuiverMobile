@@ -3,25 +3,36 @@
 export function overlaps(a,b) { return a.min.every((v,i)=>v<=b.max[i]&&a.max[i]>=b.min[i]); }
 const EPS=1e-7;
 export function mergeBoxes(boxes){
- let current=boxes.map(({box,id})=>({box:{min:[...box.min],max:[...box.max]},id}));
- // Merge passes must restart: joining along X can enable a join along Y or Z.
- let changed=true;
- while(changed){
-  changed=false;
-  outer:for(let i=0;i<current.length;i++)for(let j=i+1;j<current.length;j++){
-   const a=current[i].box,b=current[j].box;
-   for(let axis=0;axis<3;axis++){
-    const other=[0,1,2].filter(k=>k!==axis);
-    if(!other.every(k=>Math.abs(a.min[k]-b.min[k])<EPS&&Math.abs(a.max[k]-b.max[k])<EPS))continue;
-    const touch=Math.abs(a.max[axis]-b.min[axis])<EPS||Math.abs(b.max[axis]-a.min[axis])<EPS;
-    if(!touch)continue;
-    const merged={min:a.min.map((v,k)=>Math.min(v,b.min[k])),max:a.max.map((v,k)=>Math.max(v,b.max[k]))};
-    const id='merged-'+current[i].id+'-'+current[j].id;
-    current.splice(j,1);current.splice(i,1,{box:merged,id});
-    changed=true;break outer;
+ let current=boxes.map(({box,id})=>({id,box:{min:[...box.min],max:[...box.max]}}));
+ let modified=true;
+ while(modified){
+  modified=false;
+  for(let axis=0;axis<3;axis++){
+   const other=[0,1,2].filter(k=>k!==axis);
+   const groups=new Map();
+   for(const item of current){
+    const key=other.flatMap(k=>[item.box.min[k],item.box.max[k]]).map(x=>x.toFixed(7)).join(',');
+    if(!groups.has(key))groups.set(key,[]);
+    groups.get(key).push(item);
    }
+   const next=[];
+   for(const items of groups.values()){
+    items.sort((a,b)=>a.box.min[axis]-b.box.min[axis]);
+    let previous=null;
+    for(const item of items){
+     if(previous && Math.abs(previous.box.max[axis]-item.box.min[axis])<EPS){
+      previous.box.max[axis]=item.box.max[axis];
+      modified=true;
+     }else{
+      previous={id:item.id,box:{min:[...item.box.min],max:[...item.box.max]}};
+      next.push(previous);
+     }
+    }
+   }
+   current=next;
   }
  }
+ current.forEach((item,i)=>item.id='solid-'+i);
  return current;
 }
 export class StaticAabbOctree {
