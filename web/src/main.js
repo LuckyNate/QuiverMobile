@@ -40,7 +40,7 @@ try{
 const scene=new THREE.Scene();
 scene.add(new THREE.HemisphereLight(0xeeeeff,0x263b55,2.1));
 const sun=new THREE.DirectionalLight(0xffffff,2.0);sun.position.set(90,180,70);scene.add(sun);
-const camera=new THREE.PerspectiveCamera(55,1,.05,60000);
+const camera=new THREE.PerspectiveCamera(55,1,1,60000);
 const height=new TerrainHeight(TERRAIN_SEED,RADIUS);
 let terrain=null;
 try{terrain=new WorldTerrain(scene,height);report('terrain setup','READY');}
@@ -217,6 +217,14 @@ function frame(now){
   physics.movePlayer(playerCollider,playerSystem.movement(),10,player.clone().normalize());
  }
  playerSystem.updateView();
+ // Use a wider near plane at globe altitude to restore depth-buffer precision.
+ // Keep at least 1 m near at all scales and retain the full planet at far.
+ const cameraAltitude=Math.max(0,camera.position.length()-RADIUS);
+ const near=Math.max(1,cameraAltitude*.06);
+ if(Math.abs(camera.near-near)>.05){
+  camera.near=near;
+  camera.updateProjectionMatrix();
+ }
  water.update(scene,camera,renderer,elapsed);
  // The immutable planet is queryable immediately. Player motion never rebuilds it.
  if(octree){
@@ -266,7 +274,10 @@ function frame(now){
      octree.update(item.id,boundsAt(item.mesh.position,.4));
     }
    }
-   terrain.update(player);
+   // Cap fine geometry while the zoom slider approaches planetary scale.
+   const zoom=playerSystem.viewZoom;
+   const maxDetail=zoom>=5000?3:zoom>=1500?5:zoom>=500?8:12;
+   terrain.update(player,false,maxDetail);
    if(greenSurface.visible)drawSurface(boundsAt(player,3));
   }catch(error){report('Box3D','FAILED',error.message);physics=null;}
  }

@@ -68,9 +68,12 @@ export class WorldTerrain {
   };
   scene.add(this.mesh);
   this.leafCount=0;
+  this.maxDetail=MAX_LOD;
   this.update(new THREE.Vector3(0,0,RADIUS+1.3),true);
  }
- update(position,force=false){
+ update(position,force=false,maxDetail=MAX_LOD){
+  maxDetail=Math.max(2,Math.min(MAX_LOD,Math.floor(maxDetail)));
+  if(maxDetail!==this.maxDetail){force=true;this.maxDetail=maxDetail;}
   if(this.ghost){
    const now=performance.now();
    this.fadeElapsed+=Math.min(.05,(now-this.fadeClock)/1000);
@@ -90,7 +93,7 @@ export class WorldTerrain {
    // Conservative distance to triangle; prevents abrupt detail loss at edges.
    const distance=Math.hypot(Math.max(0,arc-n.reach),altitude);
    const threshold=LOD_MAX_DISTANCE_METERS[n.level+1];
-   const split=n.level<MAX_LOD && distance<(n.split?threshold*HYSTERESIS:threshold);
+   const split=n.level<maxDetail && distance<(n.split?threshold*HYSTERESIS:threshold);
    if(split){
     if(!n.children){
      const ab=mid(n.a,n.b),bc=mid(n.b,n.c),ca=mid(n.c,n.a),level=n.level+1;
