@@ -64,3 +64,25 @@ export function* classifyTerrainVolumesIncremental(source,center,{halfSize=16,ma
 export function classifyTerrainVolumes(positions,center,options={}){
  return [...classifyTerrainVolumesIncremental(positions,center,options)].filter(Boolean);
 }
+
+// One-time coarse planet partition. Terminal cells are SOLID or EMPTY;
+// boundary cells are retained for subsequent local surface refinement.
+export function* classifyWorldCoarse(partition,center,halfSize,maxDepth=3){
+ const planes=partition.planes;
+ const stack=[{center,half:halfSize,depth:0}];
+ while(stack.length){
+  const node=stack.pop();let outside=false,inside=true;
+  for(const p of planes){
+   const d=p.n[0]*node.center[0]+p.n[1]*node.center[1]+p.n[2]*node.center[2]-p.d;
+   const r=node.half*(Math.abs(p.n[0])+Math.abs(p.n[1])+Math.abs(p.n[2]));
+   if(d-r>0){outside=true;break;}
+   if(d+r>0)inside=false;
+  }
+  if(outside||inside||node.depth===maxDepth){
+   yield {...node,state:outside?'empty':inside?'solid':'boundary'};
+  }else{
+   const h=node.half/2;
+   for(let i=7;i>=0;i--)stack.push({center:node.center.map((v,k)=>v+((i>>k&1)?h:-h)),half:h,depth:node.depth+1});
+  }
+ }
+}
