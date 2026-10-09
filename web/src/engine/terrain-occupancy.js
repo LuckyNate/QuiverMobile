@@ -83,48 +83,46 @@ export function* classifyWorldCoarse(partition,center,halfSize,maxDepth=5){
 }
 
 
-// Permanent mathematical sphere, constructed from a guaranteed solid core outward.
-// Six disjoint exterior slabs fill the bounding cube without overlapping the core.
-// Each slab is subdivided only where it crosses the sphere; all complete solid
-// AABBs are emitted at their largest valid size. No triangles or player input.
+// Build a permanent spherical solid from cubic octree cells, core first.
+// Every emitted cell is a cube; adjacent cells are merged into rectangular
+// collision AABBs only after the entire construction is complete.
 export function* buildSolidSphere(radius,{halfSize=128,minCell=1}={}){
  if(!(radius>0&&radius<=halfSize&&minCell>0))throw new RangeError('Invalid solid sphere dimensions');
- const inner=radius/2; // central cube side length == planet radius
- const core={min:[-inner,-inner,-inner],max:[inner,inner,inner]};
- yield core;
- const h=halfSize,q=inner;
- const slabs=[
-  {min:[-h,-h,-h],max:[-q,h,h]},
-  {min:[q,-h,-h],max:[h,h,h]},
-  {min:[-q,-h,-h],max:[q,-q,h]},
-  {min:[-q,q,-h],max:[q,h,h]},
-  {min:[-q,-q,-h],max:[q,q,-q]},
-  {min:[-q,-q,q],max:[q,q,h]}
- ];
  const r2=radius*radius;
- function* fill(box){
-  yield null; // enforce the caller's per-frame work budget
-  let far=0,near=0,axis=0,longest=0;
-  for(let i=0;i<3;i++){
-   const lo=box.min[i],hi=box.max[i];
-   far+=Math.max(lo*lo,hi*hi);
-   const closest=lo>0?lo:hi<0?-hi:0;
-   near+=closest*closest;
-   const edge=hi-lo;
-   if(edge>longest){longest=edge;axis=i;}
+ // Use an aligned power-of-two central cube so remaining octree cells tile
+ // its six outer faces without gaps or overlapping it.
+ const coreSide=2**Math.floor(Math.log2(2*radius/Math.sqrt(3)));
+ const coreHalf=Math.min(coreSide/2,halfSize/2);
+ const core={min:[-coreHalf,-coreHalf,-coreHalf],max:[coreHalf,coreHalf,coreHalf]};
+ yield core;
+ const insideCore=(c,h)=>c.every(v=>Math.abs(v)+h<=coreHalf);
+ const touchesCore=(c,h)=>c.every(v=>Math.abs(v)-h<coreHalf);
+ function* visit(c,h){
+  yield null; // caller limits construction work each frame
+  if(insideCore(c,h))return;
+  const nearest=c.reduce((sum,v)=>sum+Math.max(0,Math.abs(v)-h)**2,0);
+  if(nearest>r2)return;
+  const farthest=c.reduce((sum,v)=>sum+(Math.abs(v)+h)**2,0);
+  // Any cell overlapping the central cube must be subdivided until the
+  // intersection vanishes, preventing duplicate solids in the same volume.
+  if(!touchesCore(c,h)&&farthest<=r2){
+   yield {min:c.map(v=>v-h),max:c.map(v=>v+h)};
+   return;
   }
-  if(near>r2)return;
-  if(far<=r2){yield box;return;}
-  if(longest<=minCell){
-   // Conservative occupied boundary: retain every voxel intersecting sphere.
-   yield box;return;
+  if(h*2<=minCell){
+   // Occupancy at the surface uses the cube center. These cells remain cubes.
+   if(c.reduce((sum,v)=>sum+v*v,0)<=r2&&!insideCore(c,h))
+    yield {min:c.map(v=>v-h),max:c.map(v=>v+h)};
+   return;
   }
-  const mid=(box.min[axis]+box.max[axis])/2;
-  const left={min:[...box.min],max:[...box.max]};
-  const right={min:[...box.min],max:[...box.max]};
-  left.max[axis]=mid;right.min[axis]=mid;
-  yield* fill(left);
-  yield* fill(right);
+  const half=h/2;
+  const children=[];
+  for(let bits=0;bits<8;bits++){
+   const child=c.map((v,i)=>v+((bits>>i&1)?half:-half));
+   children.push(child);
+  }
+  children.sort((a,b)=>a.reduce((s,v)=>s+v*v,0)-b.reduce((s,v)=>s+v*v,0));
+  for(const child of children)yield* visit(child,half);
  }
- for(const slab of slabs)yield* fill(slab);
+ yield* visit([0,0,0],halfSize);
 }
