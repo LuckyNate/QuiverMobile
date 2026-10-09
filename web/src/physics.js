@@ -19,15 +19,16 @@ export class PhysicsWorld {
     if(entry.shape==='box')wanted.set(entry.id,entry.box);
    }
   }
-  for(const [id,body] of this.staticBodies)if(!wanted.has(id)){
-   body.destroy();this.staticBodies.delete(id);
-  }
   for(const [id,box] of wanted)if(!this.staticBodies.has(id)){
    const c=box.min.map((v,i)=>(v+box.max[i])/2);
    const h=box.min.map((v,i)=>(box.max[i]-v)/2);
    const body=this.world.createBody({type:'static',position:{x:c[0],y:c[1],z:c[2]}});
    body.createBox({halfExtents:{x:h[0],y:h[1],z:h[2]},friction:.7});
    this.staticBodies.set(id,body);
+  }
+  // Commit new support before retiring any previous collider.
+  for(const [id,body] of this.staticBodies)if(!wanted.has(id)){
+   body.destroy();this.staticBodies.delete(id);
   }
  }
  setPlanetGravity(position) {
