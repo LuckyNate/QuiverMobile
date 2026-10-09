@@ -79,7 +79,7 @@ function registerTerrain(){
  octree=new WorldOctree({center:[0,0,0],halfSize:Math.max(256,RADIUS*2),maxDepth:9});
  octree.insert('player',boundsAt(player,.95),{kind:'player',owner:'player'});
  const partition=createTerrainPartition(terrain.mesh.geometry.getAttribute('position').array);
- coarseWork=classifyWorldCoarse(partition,[0,0,0],Math.max(256,RADIUS*2),3);
+ coarseWork=classifyWorldCoarse(partition,[0,0,0],Math.max(256,RADIUS*2),5);
  coarseCells=[];
  terrainCache=new RollingTerrainCache(octree,{
   classify:(center,halfSize,depth,actors)=>classifyTerrainVolumesIncremental(partition,center,{halfSize,maxDepth:depth,actors}),
@@ -109,6 +109,7 @@ async function initializePhysics(){
   // The player is a dynamic capsule; the octree's AABB is only broad-phase occupancy.
   playerCollider=world.addPlayerCapsule(player);
   world.syncStatic(octree,boundsAt(player,26));
+  if(world.staticBodies.size===0)throw new Error('No solid terrain registered near spawn');
   const group=new THREE.Group();scene.add(group);
   const cubes=[],geometry=new THREE.BoxGeometry(.8,.8,.8);
   const material=new THREE.MeshStandardMaterial({color:0xffa540,roughness:.8});
@@ -173,9 +174,14 @@ function frame(now){
     while(performance.now()<deadline){
      const next=coarseWork.next();
      if(next.done){coarseReady=true;coarseWork=null;break;}
-     coarseCells.push(next.value);
+     const cell=next.value;
+     if(cell.state==='solid'){
+      const box={min:cell.center.map(v=>v-cell.half),max:cell.center.map(v=>v+cell.half)};
+      octree.insert('interior:'+coarseCells.length,box,{kind:'static',shape:'box',owner:'planet-interior'});
+     }
+     coarseCells.push(cell);
     }
-    loadStatus('Partitioning coarse world: '+coarseCells.length+' octree cells classified');
+    loadStatus('Building permanent solid interior: '+coarseCells.length+' cells classified');
    }
    if(coarseReady&&!simulationReady&&!physicsLoading){
     const coverage=terrainCache.spawnCoverage(boundsAt(player,.95));
