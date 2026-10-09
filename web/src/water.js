@@ -6,12 +6,11 @@ export class WorldWater {
   this.radius=terrainRadius+seaLevelOffset;
   this.geometry=new THREE.IcosahedronGeometry(this.radius,6);
   this.material=new THREE.MeshStandardMaterial({
-   color:0x236c9d,roughness:.35,metalness:0,side:THREE.DoubleSide,
+   color:0x236c9d,roughness:.35,metalness:0,side:THREE.FrontSide,
    transparent:true,opacity:.68,depthWrite:false
   });
   this.mesh=new THREE.Mesh(this.geometry,this.material);
   this.mesh.name='WorldWater';
-  this.mesh.renderOrder=1;
   scene.add(this.mesh);
   this.underwaterFog=new THREE.FogExp2(0x174958,.028);
   this.surfaceShader=null;
@@ -33,6 +32,7 @@ export class WorldWater {
   scene.fog=underwater?this.underwaterFog:null;
   renderer.setClearColor(underwater?0x174958:0x0a101c);
   // Water seen from below is less opaque than its surface from above.
+  this.material.side=underwater?THREE.BackSide:THREE.FrontSide;
   this.material.opacity=underwater?.26:.68;
  }
 }
