@@ -80,40 +80,50 @@ function boundsAt(p,half){return {min:[p.x-half,p.y-half,p.z-half],max:[p.x+half
 // Flat 0.8 m footing samples multiple AABB tops along the local gravity
 // normal. This avoids an overlapping compound hull that could jam Box3D.
 const FOOT_RADIUS=.4,FOOT_OFFSET=.9,MAX_STEP=1;
-function groundBelowFoot(position,heading,normal){
- const ahead=position.clone().addScaledVector(heading,.18);
- const side=new THREE.Vector3().crossVectors(normal,heading).normalize();
- if(side.lengthSq()<.01)return 0;
- const cells=solidity.query(boundsAt(ahead,1.6),{kinds:['static']});
- const samples=[[0,0],[.38,0],[-.38,0],[0,.38],[0,-.38],[.27,.27],[.27,-.27],[-.27,.27],[-.27,-.27]];
- let highest=-Infinity;
- for(const [f,r] of samples){
-  const origin=ahead.clone().addScaledVector(normal,1.06-FOOT_OFFSET)
-   .addScaledVector(heading,f).addScaledVector(side,r);
-  let best=Infinity;
+// Blend terrain support normals over the entire circular sled footprint.
+// Gravity remains independent and always points along the magenta radial arrow.
+const FOOT_RADIUS=.4,FOOT_OFFSET=.925,MAX_STEP=1;
+const footNormal=new THREE.Vector3(0,0,1);
+function footingSurface(position,heading,gravityUp){
+ const lateral=new THREE.Vector3().crossVectors(gravityUp,heading).normalize();
+ if(lateral.lengthSq()<.01)return {normal:gravityUp.clone(),rise:0};
+ const ahead=position.clone().addScaledVector(heading,.22);
+ const cells=solidity.query(boundsAt(ahead,1.7),{kinds:['static']});
+ const offsets=[[0,0],[.36,0],[-.36,0],[0,.36],[0,-.36],[.25,.25],[.25,-.25],[-.25,.25],[-.25,-.25]];
+ const avg=new THREE.Vector3(),origin=new THREE.Vector3();
+ let maxRise=0,hits=0;
+ for(const [f,r] of offsets){
+  origin.copy(ahead).addScaledVector(heading,f).addScaledVector(lateral,r)
+   .addScaledVector(gravityUp,1.08-FOOT_OFFSET);
+  let nearest=Infinity,hitAxis=-1,hitSign=0;
   for(const {box} of cells){
-   let tmin=0,tmax=2.2;
+   let enter=0,exit=2.5,axisHit=-1,sign=0;
    for(let axis=0;axis<3;axis++){
-    const v=origin.getComponent(axis),d=-normal.getComponent(axis);
-    if(Math.abs(d)<1e-7){
-     if(v<box.min[axis]||v>box.max[axis]){tmin=Infinity;break;}
+    const d=-gravityUp.getComponent(axis),v=origin.getComponent(axis);
+    if(Math.abs(d)<1e-8){
+     if(v<box.min[axis]||v>box.max[axis]){enter=Infinity;break;}
     }else{
-     const t0=(box.min[axis]-v)/d,t1=(box.max[axis]-v)/d;
-     tmin=Math.max(tmin,Math.min(t0,t1));
-     tmax=Math.min(tmax,Math.max(t0,t1));
-     if(tmax<tmin)break;
+     const t1=(box.min[axis]-v)/d,t2=(box.max[axis]-v)/d;
+     const first=Math.min(t1,t2),last=Math.max(t1,t2);
+     if(first>enter){enter=first;axisHit=axis;sign=t1<t2?-1:1;}
+     exit=Math.min(exit,last);
+     if(exit<enter)break;
     }
    }
-   if(tmin<=tmax)best=Math.min(best,tmin);
+   if(enter<=exit&&enter<nearest&&axisHit>=0){nearest=enter;hitAxis=axis;hitSign=sign;}
   }
-  if(Number.isFinite(best)){
-   const rise=1.06-best;
-   // A rise above the one-meter limit cannot be stepped over.
-   if(rise>MAX_STEP+.01)return 0;
-   highest=Math.max(highest,rise);
-  }
+  if(hitAxis<0)continue;
+  const rise=1.08-nearest;
+  if(rise>MAX_STEP+.005)return {normal:gravityUp.clone(),rise:0,blocked:true};
+  maxRise=Math.max(maxRise,rise);
+  const surface=new THREE.Vector3().setComponent(hitAxis,hitSign);
+  if(surface.dot(gravityUp)>0){avg.add(surface);hits++;}
  }
- return highest>0.035&&highest<=MAX_STEP?highest:0;
+ if(!hits)return {normal:gravityUp.clone(),rise:0};
+ avg.normalize();
+ // Prevent isolated vertical contact from turning the footing into a wall.
+ if(avg.dot(gravityUp)<.3)avg.lerp(gravityUp,.7).normalize();
+ return {normal:avg,rise:Math.max(0,maxRise)};
 }
 function activeCollisionAreas(){
  const areas=[boundsAt(player,2)];
@@ -215,18 +225,20 @@ function frame(now){
   const motion=facing.multiplyScalar(ey).addScaledVector(side,ex);
   if(motion.lengthSq()>1)motion.normalize();
   const radialUp=player.clone().normalize();
-  physics.movePlayer(playerCollider,motion,5,radialUp);
-  if(motion.lengthSq()>.001){
-   const rise=groundBelowFoot(player,motion.clone().normalize(),radialUp);
-   if(rise>0){
-    const velocity=playerCollider.getLinearVelocity();
-    const vertical=velocity.x*radialUp.x+velocity.y*radialUp.y+velocity.z*radialUp.z;
-    const climb=Math.min(3.5,rise*7);
-    if(vertical<climb){
-     const boost=climb-vertical;
-     playerCollider.setLinearVelocity({x:velocity.x+radialUp.x*boost,
-      y:velocity.y+radialUp.y*boost,z:velocity.z+radialUp.z*boost});
-    }
+  const support=footingSurface(player,motion.lengthSq()>.001?motion.clone().normalize():facing.clone().normalize(),radialUp);
+  footNormal.lerp(support.normal,.18).normalize();
+  // Sled movement is tangent to distributed support, not directly into
+  // a vertical AABB face. Gravity stays radial.
+  const slide=motion.addScaledVector(footNormal,-motion.dot(footNormal));
+  if(slide.lengthSq()>1)slide.normalize();
+  physics.movePlayer(playerCollider,slide,5,radialUp);
+  if(slide.lengthSq()>.001&&support.rise>.02&&!support.blocked){
+   const v=playerCollider.getLinearVelocity();
+   const radial=v.x*radialUp.x+v.y*radialUp.y+v.z*radialUp.z;
+   const climb=Math.min(3.5,support.rise*7);
+   if(radial<climb){
+    const lift=climb-radial;
+    playerCollider.setLinearVelocity({x:v.x+radialUp.x*lift,y:v.y+radialUp.y*lift,z:v.z+radialUp.z*lift});
    }
   }
  }
@@ -235,8 +247,8 @@ function frame(now){
  const eye=player.clone().addScaledVector(up,2+zoom*Math.sin(pitch)).addScaledVector(aim,-zoom*Math.cos(pitch));
  camera.position.copy(eye);camera.up.copy(up);camera.lookAt(player.clone().addScaledVector(up,1));
  if(avatar){avatar.position.copy(player).addScaledVector(up,-1.1);avatar.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),up);}
- footShadow.position.copy(player).addScaledVector(up,-FOOT_OFFSET);
- footShadow.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),up);
+ footShadow.position.copy(player).addScaledVector(footNormal,-FOOT_OFFSET);
+ footShadow.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),footNormal);
  gravityArrow.position.copy(player).addScaledVector(up,3);gravityArrow.setDirection(up.clone().negate());
  // The immutable planet is queryable immediately. Player motion never rebuilds it.
  if(octree){

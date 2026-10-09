@@ -62,6 +62,17 @@ export class PhysicsWorld {
   const body=this.world.createBody({type:'dynamic',position:{x:position.x,y:position.y,z:position.z},rotation,
    motionLocks:{angularX:true,angularY:true,angularZ:true},linearDamping:0.5});
   body.createCapsule({height:1.1,radius:.35,density:1,friction:.8});
+  // Rounded-bevel, 0.8 m diameter physical sled under the capsule.
+  // Its underside projects 2 cm below the capsule's lowest point.
+  // A solid convex hull (not a coplanar visual circle).
+  const points=[];
+  for(let i=0;i<16;i++){
+   const a=i*Math.PI/8,x=Math.cos(a),z=Math.sin(a);
+   points.push({x:x*.32,y:-.925,z:z*.32});
+   points.push({x:x*.4,y:-.88,z:z*.4});
+   points.push({x:x*.32,y:-.835,z:z*.32});
+  }
+  body.createHull({points,density:.25,friction:.35});
   return body;
  }
  movePlayer(body,direction,speed,up) {
