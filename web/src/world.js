@@ -1,11 +1,15 @@
 import {TerrainHeight} from './engine/terrain-height.js';
 import * as THREE from 'three';
-export const ROOT_EDGE_METERS=4096;
+export const ROOT_EDGE_METERS=8192; // Current experiment, not a fixed engine limit.
 export const RADIUS=ROOT_EDGE_METERS*Math.sqrt(10+2*Math.sqrt(5))/4;
 // Maximum surface distance at which each subdivision level becomes desirable.
-export const LOD_MAX_DISTANCE_METERS=[
- Infinity,Infinity,220,200,180,160,140,120,100,80,60,40,20
-];
+// Keep approximately 1 m finest nominal edges when root size changes.
+// Each active LOD band is spaced 20 m from the next for this experiment.
+export const MAX_TERRAIN_LOD=Math.round(Math.log2(ROOT_EDGE_METERS));
+export const LOD_MAX_DISTANCE_METERS=Array.from(
+ {length:MAX_TERRAIN_LOD+1},
+ (_,level)=>level<2?Infinity:20*(MAX_TERRAIN_LOD-level+1)
+);
 const MAX_LOD=LOD_MAX_DISTANCE_METERS.length-1;
 const HYSTERESIS=1.2;
 const LOD_FADE_SECONDS=.35;
@@ -76,6 +80,7 @@ export class WorldTerrain {
   };
   scene.add(this.mesh);
   this.leafCount=0;
+  this.maxDetailLevel=MAX_LOD;
   this.maxDetail=MAX_LOD;
   this.update(new THREE.Vector3(0,0,RADIUS+1.3),true);
  }
