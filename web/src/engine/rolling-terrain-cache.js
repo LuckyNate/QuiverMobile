@@ -1,3 +1,32 @@
+// Merge only face-adjacent axis-aligned solids whose union is a box.
+// Sorting by the other two dimensions avoids quadratic pairwise scans.
+export function mergeSolidBoxes(boxes){
+ let items=boxes.map(b=>({min:[...b.min],max:[...b.max]}));
+ let changed=true;
+ while(changed){
+  changed=false;
+  for(let axis=0;axis<3;axis++){
+   const other=[0,1,2].filter(i=>i!==axis),groups=new Map(),next=[];
+   for(const b of items){
+    const key=other.flatMap(i=>[b.min[i],b.max[i]]).join(',');
+    if(!groups.has(key))groups.set(key,[]);
+    groups.get(key).push(b);
+   }
+   for(const group of groups.values()){
+    group.sort((a,b)=>a.min[axis]-b.min[axis]);
+    let previous=null;
+    for(const b of group){
+     if(previous&&previous.max[axis]===b.min[axis]){
+      previous.max[axis]=b.max[axis];changed=true;
+     }else{previous=b;next.push(b);}
+    }
+   }
+   items=next;
+  }
+ }
+ return items;
+}
+
 // Persistent world-aligned terrain chunks. Refreshing a chunk only updates age;
 // collider geometry and octree entries remain stable until safe retirement.
 export class RollingTerrainCache {
@@ -59,8 +88,9 @@ export class RollingTerrainCache {
     const next=this.pending.iterator.next();
     if(next.done){
      const job=this.pending,ids=[];
-     for(let i=0;i<job.boxes.length;i++){
-      const box=job.boxes[i];
+     const merged=mergeSolidBoxes(job.boxes);
+     for(let i=0;i<merged.length;i++){
+      const box=merged[i];
       // Permanent interior cells already occupy this volume. Never duplicate them.
       const covered=this.tree.query(box,{kinds:['static']}).some(entry=>entry.owner==='planet-interior'&&
        box.min.every((v,k)=>v>=entry.box.min[k]&&box.max[k]<=entry.box.max[k]));
