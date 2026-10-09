@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {WorldTerrain,RADIUS} from './world.js';
 import {WorldOctree} from './engine/world-octree.js';
-import {classifyTerrainVolumesIncremental} from './engine/terrain-occupancy.js';
+import {classifyTerrainVolumesIncremental,createTerrainPartition} from './engine/terrain-occupancy.js';
 import {RollingTerrainCache} from './engine/rolling-terrain-cache.js';
 import {PhysicsWorld} from './physics.js';
 
@@ -72,8 +72,9 @@ function registerTerrain(){
  if(!terrain)throw new Error('Terrain geometry unavailable');
  octree=new WorldOctree({center:[0,0,0],halfSize:Math.max(256,RADIUS*2),maxDepth:9});
  octree.insert('player',boundsAt(player,.95),{kind:'player',owner:'player'});
+ const partition=createTerrainPartition(terrain.mesh.geometry.getAttribute('position').array);
  terrainCache=new RollingTerrainCache(octree,{
-  classify:(center,halfSize,depth,actors)=>classifyTerrainVolumesIncremental(terrain.mesh.geometry.getAttribute('position').array,center,{halfSize,maxDepth:depth,actors}),
+  classify:(center,halfSize,depth,actors)=>classifyTerrainVolumesIncremental(partition,center,{halfSize,maxDepth:depth,actors}),
   depth:8,cellSize:16,maxRegions:48
  });
  terrainCache.advance(player,[],2);
