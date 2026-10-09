@@ -34,6 +34,8 @@ export function* classifyTerrainVolumesIncremental(positions,center,{halfSize=16
   return Math.max(2,maxDepth-lodDistances.filter(limit=>distance>=limit).length);
  }
  function* walk(c,h,depth,candidates){
+  // Also yield work units for empty/outside nodes so the frame budget holds.
+  yield null;
   const unresolved=[];
   for(const p of candidates){
    const distance=p.n[0]*c[0]+p.n[1]*c[1]+p.n[2]*c[2]-p.d;
@@ -53,5 +55,5 @@ export function* classifyTerrainVolumesIncremental(positions,center,{halfSize=16
  yield* walk([...center],halfSize,0,planes);
 }
 export function classifyTerrainVolumes(positions,center,options={}){
- return [...classifyTerrainVolumesIncremental(positions,center,options)];
+ return [...classifyTerrainVolumesIncremental(positions,center,options)].filter(Boolean);
 }
