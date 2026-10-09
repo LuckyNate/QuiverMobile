@@ -2,9 +2,7 @@ import * as THREE from 'three';
 export const ROOT_EDGE_METERS=128;
 export const RADIUS=ROOT_EDGE_METERS*Math.sqrt(10+2*Math.sqrt(5))/4;
 export const LOD_MAX_DISTANCE_METERS=[
- Infinity,Infinity,Infinity,Infinity,Infinity,Infinity,
- Infinity,Infinity,Infinity,Infinity,Infinity,Infinity,
- 1600,800,400,200,100,50,25
+ Infinity,Infinity,200,100,50,24,12,6,3
 ];
 const base=new THREE.IcosahedronGeometry(1,0);
 const pos=base.getAttribute('position');
@@ -19,7 +17,7 @@ export class WorldTerrain {
   this.mesh=new THREE.Mesh(this.geometry,this.material);scene.add(this.mesh);
   this.edges=new THREE.LineSegments(new THREE.BufferGeometry(),new THREE.LineBasicMaterial({color:0xff00ff,transparent:true,opacity:.65,depthTest:true,depthWrite:false}));
   this.edges.visible=true;scene.add(this.edges);
-  this.maxDepth=4;this.leafCount=0;
+  this.maxDepth=8;this.leafCount=0;
  }
  rebuild(player,camera) {
   const leaves=[],maxLeaves=14000;
