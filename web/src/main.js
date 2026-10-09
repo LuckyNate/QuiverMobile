@@ -72,11 +72,49 @@ let solidity=null,physicsLoading=false,simulationReady=false;
 const cyan=new THREE.LineBasicMaterial({color:0x00ffff,depthTest:true,depthWrite:false});
 const aabbDisplay=new THREE.Group();scene.add(aabbDisplay);
 const footShadow=new THREE.Mesh(
- new THREE.CircleGeometry(.25,32),
+ new THREE.CircleGeometry(.4,32),
  new THREE.MeshBasicMaterial({color:0x182432,transparent:true,opacity:.45,depthWrite:false,side:THREE.DoubleSide})
 );
 scene.add(footShadow);
 function boundsAt(p,half){return {min:[p.x-half,p.y-half,p.z-half],max:[p.x+half,p.y+half,p.z+half]};}
+// Flat 0.8 m footing samples multiple AABB tops along the local gravity
+// normal. This avoids an overlapping compound hull that could jam Box3D.
+const FOOT_RADIUS=.4,FOOT_OFFSET=.9,MAX_STEP=1;
+function groundBelowFoot(position,heading,normal){
+ const ahead=position.clone().addScaledVector(heading,.18);
+ const side=new THREE.Vector3().crossVectors(normal,heading).normalize();
+ if(side.lengthSq()<.01)return 0;
+ const cells=solidity.query(boundsAt(ahead,1.6),{kinds:['static']});
+ const samples=[[0,0],[.38,0],[-.38,0],[0,.38],[0,-.38],[.27,.27],[.27,-.27],[-.27,.27],[-.27,-.27]];
+ let highest=-Infinity;
+ for(const [f,r] of samples){
+  const origin=ahead.clone().addScaledVector(normal,1.06-FOOT_OFFSET)
+   .addScaledVector(heading,f).addScaledVector(side,r);
+  let best=Infinity;
+  for(const {box} of cells){
+   let tmin=0,tmax=2.2;
+   for(let axis=0;axis<3;axis++){
+    const v=origin.getComponent(axis),d=-normal.getComponent(axis);
+    if(Math.abs(d)<1e-7){
+     if(v<box.min[axis]||v>box.max[axis]){tmin=Infinity;break;}
+    }else{
+     const t0=(box.min[axis]-v)/d,t1=(box.max[axis]-v)/d;
+     tmin=Math.max(tmin,Math.min(t0,t1));
+     tmax=Math.min(tmax,Math.max(t0,t1));
+     if(tmax<tmin)break;
+    }
+   }
+   if(tmin<=tmax)best=Math.min(best,tmin);
+  }
+  if(Number.isFinite(best)){
+   const rise=1.06-best;
+   // A rise above the one-meter limit cannot be stepped over.
+   if(rise>MAX_STEP+.01)return 0;
+   highest=Math.max(highest,rise);
+  }
+ }
+ return highest>0.035&&highest<=MAX_STEP?highest:0;
+}
 function activeCollisionAreas(){
  const areas=[boundsAt(player,2)];
  for(const item of fallingCubes){
@@ -176,14 +214,28 @@ function frame(now){
  if(simulationReady&&physics&&playerCollider){
   const motion=facing.multiplyScalar(ey).addScaledVector(side,ex);
   if(motion.lengthSq()>1)motion.normalize();
-  physics.movePlayer(playerCollider,motion,5,player.clone().normalize());
+  const radialUp=player.clone().normalize();
+  physics.movePlayer(playerCollider,motion,5,radialUp);
+  if(motion.lengthSq()>.001){
+   const rise=groundBelowFoot(player,motion.clone().normalize(),radialUp);
+   if(rise>0){
+    const velocity=playerCollider.getLinearVelocity();
+    const vertical=velocity.x*radialUp.x+velocity.y*radialUp.y+velocity.z*radialUp.z;
+    const climb=Math.min(3.5,rise*7);
+    if(vertical<climb){
+     const boost=climb-vertical;
+     playerCollider.setLinearVelocity({x:velocity.x+radialUp.x*boost,
+      y:velocity.y+radialUp.y*boost,z:velocity.z+radialUp.z*boost});
+    }
+   }
+  }
  }
  up=player.clone().normalize();east=new THREE.Vector3(0,1,0).cross(up).normalize();north=up.clone().cross(east).normalize();
  const aim=north.clone().multiplyScalar(Math.cos(yaw)).addScaledVector(east,Math.sin(yaw));
  const eye=player.clone().addScaledVector(up,2+zoom*Math.sin(pitch)).addScaledVector(aim,-zoom*Math.cos(pitch));
  camera.position.copy(eye);camera.up.copy(up);camera.lookAt(player.clone().addScaledVector(up,1));
  if(avatar){avatar.position.copy(player).addScaledVector(up,-1.1);avatar.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),up);}
- footShadow.position.copy(player).addScaledVector(up,-.96);
+ footShadow.position.copy(player).addScaledVector(up,-FOOT_OFFSET);
  footShadow.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),up);
  gravityArrow.position.copy(player).addScaledVector(up,3);gravityArrow.setDirection(up.clone().negate());
  // The immutable planet is queryable immediately. Player motion never rebuilds it.
