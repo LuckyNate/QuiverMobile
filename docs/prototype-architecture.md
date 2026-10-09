@@ -30,3 +30,12 @@ Introduce one shared radial height provider `height(direction)` to displace visi
 ## Regression checks
 
 Android release build succeeds; startup reaches Box3D READY; player spawns on land and walks smoothly; falling boxes contact local solid surface; turning, zoom and camera track as before; debug colors stay hidden; water remains a separate mesh and does not intercept collisions.
+
+## Terrain LOD baseline (2026-10-09)
+
+- `WorldTerrain` uses 20 root icosahedron triangles and a persistent 4-child subdivision hierarchy.
+- Near-camera leaves subdivide to level 10; distant leaves stay coarse. Split distances are set by `LOD_MAX_DISTANCE_METERS` in `world.js`, with 20% hysteresis on merging.
+- Only current leaf triangles are drawn. Geometry is rebuilt only when the leaf set changes; child nodes are retained across movement.
+- Render-only radial skirts cover mixed-level triangle edges; skirts do not modify the analytical planet, Box3D or water.
+- The terrain remains a constant-radius gray sphere. No displacement/noise is enabled. Local solidity and Box3D patch generation are unchanged and independent from render LOD.
+- Verify smooth walking, no gaps while walking across LOD boundaries, absence of noisy continuous rebuilds, and APK launch before any deformation changes.

@@ -200,6 +200,7 @@ function frame(now){
      octree.update(item.id,boundsAt(item.mesh.position,.4));
     }
    }
+   terrain.update(player);
    drawSurface(boundsAt(player,3));
   }catch(error){report('Box3D','FAILED',error.message);physics=null;}
  }
