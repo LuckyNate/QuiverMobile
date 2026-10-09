@@ -23,18 +23,16 @@ export class PhysicsWorld {
    const inside=cached&&area.min.every((v,k)=>v>=cached.bounds.min[k]&&area.max[k]<=cached.bounds.max[k]);
    if(inside)continue;
    const bounds={min:area.min.map(v=>v-margin),max:area.max.map(v=>v+margin)};
-   const boxes=tree.query(bounds,{kinds:['static']}).filter(e=>e.shape==='box');
+   const boxes=tree.query(bounds);
    this.staticRegionCache[i]={bounds,boxes};
    dirty=true;
   }
   if(!dirty)return;
   const wanted=new Map();
-  for(const cached of this.staticRegionCache)for(const entry of cached.boxes)wanted.set(entry.id,entry.box);
-  for(const [id,box] of wanted)if(!this.staticBodies.has(id)){
-   const c=box.min.map((v,i)=>(v+box.max[i])/2);
-   const h=box.min.map((v,i)=>(box.max[i]-v)/2);
-   const body=this.world.createBody({type:'static',position:{x:c[0],y:c[1],z:c[2]}});
-   body.createBox({halfExtents:{x:h[0],y:h[1],z:h[2]},friction:.7});
+  for(const cached of this.staticRegionCache)for(const entry of cached.boxes)wanted.set(entry.id,entry);
+  for(const [id,entry] of wanted)if(!this.staticBodies.has(id)){
+   const body=this.world.createBody({type:'static',position:{x:0,y:0,z:0}});
+   body.createHull({points:entry.points.map(([x,y,z])=>({x,y,z})),friction:.7});
    this.staticBodies.set(id,body);
   }
   // New support always exists before any stale proxy is retired.

@@ -4,6 +4,7 @@ import {WorldTerrain,RADIUS} from './world.js';
 import {WorldOctree} from './engine/world-octree.js';
 import {ImplicitSphere} from './engine/implicit-sphere.js';
 import {PhysicsWorld} from './physics.js';
+import {SphereSurface} from './engine/sphere-surface.js';
 
 const app=document.getElementById('app');
 const bootstrap=document.getElementById('bootstrap');
@@ -68,7 +69,7 @@ wireBtn.addEventListener('click',()=>{gravityArrow.visible=!gravityArrow.visible
 
 // Permanent mathematical solidity is independent of rendered terrain triangles.
 let physics=null,fallingCubes=[],octree=null,playerCollider=null;
-let solidity=null,physicsLoading=false,simulationReady=false;
+let solidity=null,surface=null,physicsLoading=false,simulationReady=false;
 const cyan=new THREE.LineBasicMaterial({color:0x00ffff,depthTest:true,depthWrite:false});
 const aabbDisplay=new THREE.Group();scene.add(aabbDisplay);
 const footShadow=new THREE.Mesh(
@@ -138,9 +139,10 @@ function registerTerrain(){
  octree.insert('player',boundsAt(player,.95),{kind:'player',owner:'player'});
  // Permanent mathematical solid, stored as a radius and an implicit octree.
  // Only queried cells materialize as temporary collision candidates.
- solidity=new ImplicitSphere(RADIUS,{halfSize:128,minCell:.25});
+ solidity=new ImplicitSphere(RADIUS,{halfSize:128,minCell:1});
+ surface=new SphereSurface(RADIUS,{step:1});
  report('terrain geometry','READY',terrain.leafCount+' fixed faces');
- report('octree solidity','READY','Implicit 25 cm spherical octree');
+ report('octree solidity','READY','Implicit 1 m spherical octree');
 
 }
 registerTerrain();
@@ -174,6 +176,31 @@ function drawNearbyStatic(queryBox){
  if(index)debugLines.attributes.position.needsUpdate=true;
 }
 
+
+// Dark-green surface patches are the same outward faces used by Box3D.
+// Rebuild only when the local set of exposed patches changes.
+const greenSurface=new THREE.Mesh(new THREE.BufferGeometry(),
+ new THREE.MeshBasicMaterial({color:0x145c2b,side:THREE.DoubleSide,depthWrite:false,transparent:true,opacity:.8}));
+greenSurface.frustumCulled=false;
+scene.add(greenSurface);
+let surfaceSignature='';
+function drawSurface(bounds){
+ const patches=surface.query(bounds);
+ const signature=patches.map(p=>p.id).join('|');
+ if(signature===surfaceSignature)return;
+ surfaceSignature=signature;
+ const positions=[];
+ for(const p of patches){
+  const v=p.corners;
+  for(const i of [0,1,2,0,2,3])positions.push(...v[i].map(x=>x*1.00025));
+ }
+ const geometry=new THREE.BufferGeometry();
+ geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+ geometry.computeVertexNormals();
+ greenSurface.geometry.dispose();
+ greenSurface.geometry=geometry;
+}
+
 async function initializePhysics(){
  try{
   physicsLoading=true;
@@ -182,7 +209,7 @@ async function initializePhysics(){
   const world=await new PhysicsWorld().init();
   // The player is a dynamic capsule; the octree's AABB is only broad-phase occupancy.
   playerCollider=world.addPlayerCapsule(player);
-  world.syncStatic(solidity,boundsAt(player,2));
+  world.syncStatic(surface,boundsAt(player,2));
   if(world.staticBodies.size===0)throw new Error('No solid terrain registered near spawn');
   const group=new THREE.Group();scene.add(group);
   const cubes=[],geometry=new THREE.BoxGeometry(.8,.8,.8);
@@ -201,7 +228,7 @@ async function initializePhysics(){
    octree.insert(id,boundsAt(position,.4),{kind:'dynamic',owner:id});
    cubes.push({id,body,mesh});
   }
-  world.syncStatic(solidity,activeCollisionAreas());
+  world.syncStatic(surface,activeCollisionAreas());
   physics=world;fallingCubes=cubes;simulationReady=true;
   loading.remove();
   report('Box3D','READY',cubes.length+' dynamic bodies sharing world octree');
@@ -263,7 +290,7 @@ function frame(now){
      const v=new THREE.Vector3(p.x,p.y,p.z);
      octree.update(item.id,boundsAt(v,.4));
     }
-    physics.syncStatic(solidity,activeCollisionAreas());
+    physics.syncStatic(surface,activeCollisionAreas());
     physics.step(dt);
     if(playerCollider){const p=playerCollider.getPosition();player.set(p.x,p.y,p.z);octree.update('player',boundsAt(player,.95));}
     for(const item of fallingCubes){
@@ -277,6 +304,7 @@ function frame(now){
     }
    }
    drawNearbyStatic(boundsAt(player,2));
+   drawSurface(boundsAt(player,2));
   }catch(error){report('Box3D','FAILED',error.message);physics=null;}
  }
  if(renderer){
