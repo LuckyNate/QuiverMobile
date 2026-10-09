@@ -10,7 +10,7 @@
 namespace {
 constexpr float PI=3.14159265358979323846f;
 constexpr double ROOT_EDGE_METERS=128.0; // 2^7 meters, regular D20 edge
-constexpr double SEA_LEVEL_RADIUS_METERS=ROOT_EDGE_METERS*std::sqrt(10.0+2.0*std::sqrt(5.0))/4.0;
+const double SEA_LEVEL_RADIUS_METERS=ROOT_EDGE_METERS*std::sqrt(10.0+2.0*std::sqrt(5.0))/4.0;
 constexpr int MAX_LOD=18;
 constexpr float SPLIT_PIXELS=42.f;
 constexpr float FULL_OPACITY_PIXELS=105.f;
