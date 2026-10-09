@@ -6,6 +6,7 @@
 #include <cmath>
 #include <vector>
 #include <chrono>
+#include <cstdio>
 
 namespace {
 constexpr float PI=3.14159265358979323846f;
@@ -67,6 +68,7 @@ Vec forward(){return {std::sin(yaw),0,std::cos(yaw)};}
 
 std::vector<LineVertex> visibleLines;
 int activeNodes=0, deepestLevel=0;
+int frustumRejected=0, horizonRejected=0, visiblePatches=0, radiusRejected=0, lodStopped=0;
 Vec cameraForward, cameraRight, cameraUp;
 float tanHalfHorizontal=1.f, tanHalfVertical=1.f;
 
@@ -118,17 +120,18 @@ bool visible(Triangle tri,Vec eye,Vec center,float radius){
  // Signed frustum-plane distance; normals are scaled by plane length.
  float sideAllowance=radius*std::sqrt(1.f+tanHalfHorizontal*tanHalfHorizontal);
  float topAllowance=radius*std::sqrt(1.f+tanHalfVertical*tanHalfVertical);
- if(depth+radius<0.f)return false;
- if(std::abs(dot(delta,cameraRight))-depth*tanHalfHorizontal>sideAllowance)return false;
- if(std::abs(dot(delta,cameraUp))-depth*tanHalfVertical>topAllowance)return false;
+ if(depth+radius<0.f){++frustumRejected;return false;}
+ if(std::abs(dot(delta,cameraRight))-depth*tanHalfHorizontal>sideAllowance){++frustumRejected;return false;}
+ if(std::abs(dot(delta,cameraUp))-depth*tanHalfVertical>topAllowance){++frustumRejected;return false;}
  float cameraRadius=length(eye);
  // A planet blocks a patch only when the complete angular bound is
  // behind the tangent horizon. Keep everything when at/inside sea level.
  if(cameraRadius>1.000001f){
   float horizon=1.f/cameraRadius;
   float facing=dot(center,scale(eye,1.f/cameraRadius));
-  if(facing+radius<horizon)return false;
+  if(facing+radius<horizon){++horizonRejected;return false;}
  }
+ ++visiblePatches;
  return true;
 }
 void traverse(Triangle tri,int level,Vec eye,float pixelsPerUnit){
@@ -152,7 +155,8 @@ void traverse(Triangle tri,int level,Vec eye,float pixelsPerUnit){
  bool nearSurface=distance<150.f && childLevel>=12 && insideRadius;
  bool subdivide=childLevel<=MAX_LOD && insideRadius &&
    edgeMeters>1.f && (projected>SPLIT_PIXELS || nearSurface);
- if(!subdivide || visibleLines.size()+16>=MAX_LINE_VERTICES)return;
+ if(!insideRadius)++radiusRejected;
+ if(!subdivide || visibleLines.size()+16>=MAX_LINE_VERTICES){++lodStopped;return;}
  ++activeNodes;deepestLevel=std::max(deepestLevel,childLevel);
  Vec ab=midpoint(tri.a,tri.b),bc=midpoint(tri.b,tri.c),ca=midpoint(tri.c,tri.a);
  float alpha=clamp01((projected-SPLIT_PIXELS)/(FULL_OPACITY_PIXELS-SPLIT_PIXELS));
@@ -169,6 +173,7 @@ void traverse(Triangle tri,int level,Vec eye,float pixelsPerUnit){
 }
 void rebuild(Vec eye){
  visibleLines.clear();activeNodes=0;deepestLevel=0;
+ frustumRejected=0;horizonRejected=0;visiblePatches=0;radiusRejected=0;lodStopped=0;
  float pixelScale=height/(2.f*std::tan(55.f*PI/360.f));
  for(const auto &tri:roots()){
   Vec center=normalize(add(add(tri.a,tri.b),tri.c));
@@ -271,4 +276,18 @@ extern "C" JNIEXPORT void JNICALL Java_com_luckynate_quivermobile_MainActivity_n
 extern "C" JNIEXPORT void JNICALL Java_com_luckynate_quivermobile_MainActivity_nativeOrbit(JNIEnv*,jobject,jfloat dx,jfloat dy,jfloat zoom){
  yaw+=dx;pitch=std::clamp(pitch+dy,-.1f,1.45f);
  distance=std::clamp(distance*zoom,3.f,600000.f);
+}
+
+extern "C" JNIEXPORT jstring JNICALL Java_com_luckynate_quivermobile_MainActivity_nativeDiagnostics(JNIEnv* env,jobject){
+ char output[320];
+ std::snprintf(output,sizeof(output),
+   "NATIVE LOD-DIAG-1 | R %.2fm | edge %.0fm\\n"
+   "depth %d / %d | split %d | lines %zu\\n"
+   "visible %d | frustum %d | horizon %d\\n"
+   "radius stop %d | LOD stop %d | zoom %.1fm",
+   SEA_LEVEL_RADIUS_METERS,ROOT_EDGE_METERS,
+   deepestLevel,MAX_LOD,activeNodes,visibleLines.size()/2,
+   visiblePatches,frustumRejected,horizonRejected,
+   radiusRejected,lodStopped,distance);
+ return env->NewStringUTF(output);
 }
