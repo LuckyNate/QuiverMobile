@@ -74,7 +74,7 @@ function rebuildSolidGround(anchor=player){
  const data=terrain.mesh.geometry.getAttribute('position').array;
  // Local AABB octree occupancy, world-aligned, from the SAME visible terrain.
  const center=anchor.toArray().map(v=>Math.round(v/8)*8);
- const boxes=classifyTerrainVolumes(data,center,{halfSize:16,maxDepth:7});
+ const boxes=classifyTerrainVolumes(data,center,{halfSize:16,maxDepth:6});
  for(let i=0;i<boxes.length;i++){
   const id='ground-'+i;octree.insert(id,boxes[i],{kind:'static',shape:'box',owner:'planet'});
   terrainIds.push(id);
