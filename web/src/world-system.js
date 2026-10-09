@@ -1,0 +1,14 @@
+import {WorldOctree} from './engine/world-octree.js';
+import {ImplicitSphere} from './engine/implicit-sphere.js';
+import {SphereSurface} from './engine/sphere-surface.js';
+
+// World owns the spatial index and solid planet construction.
+// Do not mix renderer terrain, sea level or input into collision geometry.
+export class WorldSystem {
+ constructor(radius,playerPosition){
+  this.octree=new WorldOctree({center:[0,0,0],halfSize:2048,maxDepth:12});
+  this.octree.insert('player',{min:playerPosition.toArray().map(v=>v-.95),max:playerPosition.toArray().map(v=>v+.95)},{kind:'player',owner:'player'});
+  this.solidity=new ImplicitSphere(radius,{halfSize:2048,minCell:1});
+  this.surface=new SphereSurface(radius,{step:1});
+ }
+}

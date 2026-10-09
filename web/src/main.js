@@ -1,10 +1,9 @@
 import * as THREE from 'three';
-import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {WorldTerrain,RADIUS} from './world.js';
-import {WorldOctree} from './engine/world-octree.js';
-import {ImplicitSphere} from './engine/implicit-sphere.js';
+import {PlayerSystem} from './player.js';
+import {WorldSystem} from './world-system.js';
+import {WorldWater} from './water.js';
 import {PhysicsWorld} from './physics.js';
-import {SphereSurface} from './engine/sphere-surface.js';
 
 const app=document.getElementById('app');
 const bootstrap=document.getElementById('bootstrap');
@@ -44,29 +43,12 @@ const camera=new THREE.PerspectiveCamera(55,1,.05,10000);
 let terrain=null;
 try{terrain=new WorldTerrain(scene);report('terrain setup','READY');}
 catch(error){report('terrain setup','FAILED',error.message);}
-let up=new THREE.Vector3(0,0,1),east=new THREE.Vector3(1,0,0),north=new THREE.Vector3(0,1,0);
-let player=up.clone().multiplyScalar(RADIUS+1.3),yaw=0,pitch=.35,zoom=8,moveX=0,moveY=0;
-let avatar=null;
-report('GLB player','LOADING');
-new GLTFLoader().loadAsync(import.meta.env.BASE_URL+'models/debug/player_capsule.glb')
-.then(capsule=>{avatar=capsule.scene;scene.add(avatar);report('GLB player','READY');})
-.catch(error=>report('GLB player','FAILED',error.message));
-const keys=new Set();window.addEventListener('keydown',e=>{keys.add(e.key.toLowerCase());if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key.toLowerCase()))e.preventDefault();});
-window.addEventListener('keyup',e=>keys.delete(e.key.toLowerCase()));
-let touches=new Map(),lookPointer=null;
-canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);touches.set(e.pointerId,{x:e.clientX,y:e.clientY,startX:e.clientX,startY:e.clientY});if(e.clientX>innerWidth/2)lookPointer=e.pointerId;});
-canvas.addEventListener('pointermove',e=>{const p=touches.get(e.pointerId);if(!p)return;
- const dx=e.clientX-p.x,dy=e.clientY-p.y;p.x=e.clientX;p.y=e.clientY;
- if(e.pointerId===lookPointer){yaw+=dx*.007;pitch=THREE.MathUtils.clamp(pitch+dy*.007,-.1,1.45);}
- else{moveX=THREE.MathUtils.clamp((e.clientX-p.startX)/90,-1,1);moveY=THREE.MathUtils.clamp((p.startY-e.clientY)/90,-1,1);}
-});
-function release(e){touches.delete(e.pointerId);if(lookPointer===e.pointerId)lookPointer=null;if(![...touches].some(([id,p])=>id!==lookPointer)){moveX=0;moveY=0;}}
-canvas.addEventListener('pointerup',release);canvas.addEventListener('pointercancel',release);
-canvas.addEventListener('wheel',e=>{e.preventDefault();zoom=THREE.MathUtils.clamp(zoom*Math.exp(e.deltaY*.001),3,30000);},{passive:false});
-
+const water=new WorldWater(scene,RADIUS);
+const playerSystem=new PlayerSystem(scene,camera,canvas,RADIUS,report);
+const player=playerSystem.position;
 // Permanent mathematical solidity is independent of rendered terrain triangles.
-let physics=null,fallingCubes=[],octree=null,playerCollider=null;
-let solidity=null,surface=null,physicsLoading=false,simulationReady=false;
+let physics=null,fallingCubes=[],playerCollider=null;
+let physicsLoading=false,simulationReady=false;
 const cyan=new THREE.LineBasicMaterial({color:0x00ffff,depthTest:true,depthWrite:false});
 const aabbDisplay=new THREE.Group();scene.add(aabbDisplay);
 aabbDisplay.visible=false;
@@ -79,19 +61,11 @@ function activeCollisionAreas(){
  }
  return areas;
 }
-function registerTerrain(){
- if(!terrain)throw new Error('Terrain geometry unavailable');
- octree=new WorldOctree({center:[0,0,0],halfSize:2048,maxDepth:12});
- octree.insert('player',boundsAt(player,.95),{kind:'player',owner:'player'});
- // Permanent mathematical solid, stored as a radius and an implicit octree.
- // Only queried cells materialize as temporary collision candidates.
- solidity=new ImplicitSphere(RADIUS,{halfSize:2048,minCell:1});
- surface=new SphereSurface(RADIUS,{step:1});
- report('terrain geometry','READY',terrain.leafCount+' fixed faces');
- report('octree solidity','READY','Implicit 1 m spherical octree');
-
-}
-registerTerrain();
+if(!terrain)throw new Error('Terrain geometry unavailable');
+const worldSystem=new WorldSystem(RADIUS,player);
+const {octree,solidity,surface}=worldSystem;
+report('terrain geometry','READY',terrain.leafCount+' fixed faces');
+report('octree solidity','READY','Implicit 1 m spherical octree');
 // One reusable line buffer: write current nearby AABB edges every frame.
 // No per-cell Three.js geometry objects or once-per-second rebuild.
 const debugLines=new THREE.BufferGeometry();
@@ -195,21 +169,10 @@ function frame(now){
  try{
  const dt=Math.min(.05,(now-last)/1000);last=now;elapsed+=dt;frames++;
  if(innerWidth!==resizeW||innerHeight!==resizeH){resizeW=innerWidth;resizeH=innerHeight;renderer.setSize(resizeW,resizeH,false);camera.aspect=resizeW/resizeH;camera.updateProjectionMatrix();}
- const ex=(keys.has('d')||keys.has('arrowright')?1:0)-(keys.has('a')||keys.has('arrowleft')?1:0)+moveX;
- const ey=(keys.has('w')||keys.has('arrowup')?1:0)-(keys.has('s')||keys.has('arrowdown')?1:0)+moveY;
- up=player.clone().normalize();east=new THREE.Vector3(0,1,0).cross(up).normalize();north=up.clone().cross(east).normalize();
- const facing=north.clone().multiplyScalar(Math.cos(yaw)).addScaledVector(east,Math.sin(yaw));
- const side=east.clone().multiplyScalar(Math.cos(yaw)).addScaledVector(north,-Math.sin(yaw));
  if(simulationReady&&physics&&playerCollider){
-  const motion=facing.multiplyScalar(ey).addScaledVector(side,ex);
-  if(motion.lengthSq()>1)motion.normalize();
-  physics.movePlayer(playerCollider,motion,5,player.clone().normalize());
+  physics.movePlayer(playerCollider,playerSystem.movement(),5,player.clone().normalize());
  }
- up=player.clone().normalize();east=new THREE.Vector3(0,1,0).cross(up).normalize();north=up.clone().cross(east).normalize();
- const aim=north.clone().multiplyScalar(Math.cos(yaw)).addScaledVector(east,Math.sin(yaw));
- const eye=player.clone().addScaledVector(up,2+zoom*Math.sin(pitch)).addScaledVector(aim,-zoom*Math.cos(pitch));
- camera.position.copy(eye);camera.up.copy(up);camera.lookAt(player.clone().addScaledVector(up,1));
- if(avatar){avatar.position.copy(player).addScaledVector(up,-1.1);avatar.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),up);}
+ playerSystem.updateView();
  // The immutable planet is queryable immediately. Player motion never rebuilds it.
  if(octree){
   try{
