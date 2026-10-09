@@ -85,8 +85,8 @@ function registerTerrain(){
  if(!terrain)throw new Error('Terrain geometry unavailable');
  octree=new WorldOctree({center:[0,0,0],halfSize:256,maxDepth:9});
  octree.insert('player',boundsAt(player,.95),{kind:'player',owner:'player'});
- // One mathematically solid planet. The central radius-wide cube is emitted
- // first, then the largest valid solid volumes outward to its spherical edge.
+ // Build one permanent planet from cubic octree cells, core first.
+ // Only after construction do we merge face-adjacent solids into planar AABBs.
  solidWork=buildSolidSphere(RADIUS,{halfSize:128,minCell:1});
  report('terrain geometry','READY',terrain.leafCount+' fixed faces');
  report('octree solidity','BUILDING','Planet-wide permanent solidity');
