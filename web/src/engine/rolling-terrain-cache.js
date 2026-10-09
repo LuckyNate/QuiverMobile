@@ -36,9 +36,8 @@ export class RollingTerrainCache {
    }
    // Do not continue an obsolete build after the player changes its required LOD.
    if(this.pending&&(this.pending.key!==c.key||this.pending.signature!==c.signature)){
-    if(!active.has(this.pending.key)||c.distance<this.pending.distance){
-     this.pending=null;
-    }
+    const pendingDistance=candidates.find(v=>v.key===this.pending.key)?.distance??Infinity;
+    if(this.pending.signature!==candidates.find(v=>v.key===this.pending.key)?.signature||c.distance<pendingDistance)this.pending=null;
    }
    if(!this.pending){
     const generation=this.generation++;
