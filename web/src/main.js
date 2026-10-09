@@ -69,19 +69,55 @@ const dropEast=new THREE.Vector3(0,1,0).cross(dropUp).normalize();
 const dropNorth=dropUp.clone().cross(dropEast).normalize();
 const dropBasis=new THREE.Matrix4().makeBasis(dropEast,dropUp,dropNorth);
 const dropOrientation=new THREE.Quaternion().setFromRotationMatrix(dropBasis);
-try{
- octree=new StaticAabbOctree([0,0,0],256,8);
- octree.insert({min:[-12,-1,-12],max:[0,0,12]},'debug-ground-left');
- octree.insert({min:[0,-1,-12],max:[12,0,12]},'debug-ground-right');
- octree.compact();report('octree solidity','READY',octree.sources.length+' boxes');
-}catch(error){report('octree solidity','FAILED',error.message);}
+// The collision columns are sampled from the rendered planet itself.
+// The octree contains occupied terrain volumes, not a separate platform.
+// Box3D's local Y axis maps to the planet's outward radial direction.
+function buildTerrainSolidity(){
+ if(!terrain || !terrain.mesh.geometry.getAttribute('position')?.count)throw new Error('Terrain geometry not ready');
+ terrain.mesh.updateMatrixWorld(true);
+ const raycaster=new THREE.Raycaster();
+ const down=dropUp.clone().negate();
+ const origin=dropOrigin.clone();
+ const tree=new StaticAabbOctree([0,-8,0],32,7);
+ const tile=1, extent=8;
+ let n=0;
+ for(let ix=-extent;ix<extent;ix++)for(let iz=-extent;iz<extent;iz++){
+  const x=ix*tile,z=iz*tile;
+  // A cell cannot rise above any measured surface corner.
+  let ground=Infinity,found=0;
+  for(const dx of [0,1])for(const dz of [0,1]){
+   const worldPoint=origin.clone().addScaledVector(dropEast,x+dx*tile).addScaledVector(dropNorth,z+dz*tile).addScaledVector(dropUp,8);
+   raycaster.set(worldPoint,down);
+   const hit=raycaster.intersectObject(terrain.mesh,false)[0];
+   if(hit){ground=Math.min(ground,8-hit.distance);found++;}
+  }
+  if(!found)continue;
+  // Slight inset avoids raising collision above the visible faceted terrain.
+  const top=ground-.06;
+  tree.insert({min:[x,-18,z],max:[x+tile,top,z+tile]},'terrain-'+(n++));
+ }
+ tree.compact();
+ return tree;
+}
+function showSolidity(group,tree){
+ const cyan=new THREE.LineBasicMaterial({color:0x00ffff,depthTest:true,depthWrite:false});
+ for(const {box} of tree.sources){
+  const size=box.min.map((v,i)=>box.max[i]-v);
+  const center=box.min.map((v,i)=>(v+box.max[i])/2);
+  const outline=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(...size)),cyan);
+  outline.position.set(...center);group.add(outline);
+ }
+}
+let solidityStarted=false;
 async function initializePhysics(){
- if(!octree){report('Box3D','SKIPPED','No octree');return;}
  try{
+  report('octree solidity','LOADING');
+  octree=buildTerrainSolidity();
+  report('octree solidity','READY',octree.sources.length+' terrain AABBs');
   report('Box3D','LOADING');
   const world=await new PhysicsWorld().init();
-  world.syncStatic(octree,{min:[-20,-5,-20],max:[20,5,20]});
-  // Player collider: stationary relative to the initial drop site until moved.
+  world.syncStatic(octree,{min:[-25,-22,-25],max:[25,10,25]});
+  // Player collider in the same planet-local frame as the terrain.
   // Static collision shape stays independent of the visual GLB.
   playerCollider=world.world.createBody({type:'static',position:{x:0,y:.9,z:0}});
   playerCollider.createBox({halfExtents:{x:.35,y:.9,z:.35}});
@@ -89,19 +125,11 @@ async function initializePhysics(){
   group.position.copy(dropOrigin);
   group.quaternion.copy(dropOrientation);
   // Outline actual merged octree collision boxes in the same local frame.
-  const cyanBoxMaterial=new THREE.LineBasicMaterial({color:0x00ffff,depthTest:true,depthWrite:false});
-  for(const {box} of octree.sources){
-   const size=box.min.map((v,i)=>box.max[i]-v);
-   const center=box.min.map((v,i)=>(v+box.max[i])/2);
-   const edgeGeometry=new THREE.EdgesGeometry(new THREE.BoxGeometry(...size));
-   const outline=new THREE.LineSegments(edgeGeometry,cyanBoxMaterial);
-   outline.position.set(...center);
-   group.add(outline);
-  }
+  showSolidity(group,octree);
   const cubes=[];
   const cubeGeometry=new THREE.BoxGeometry(.8,.8,.8);
   const cubeMaterial=new THREE.MeshStandardMaterial({color:0xffa540,roughness:.8});
-  // Twenty real dynamic bodies; local -Y gravity points radially inward.
+  // Twenty dynamic bodies; local -Y corresponds to planet-center gravity.
   for(let i=0;i<20;i++){
    const x=((i%5)-2)*1.15;
    const z=(Math.floor(i/5)-1.5)*1.15;
@@ -113,10 +141,11 @@ async function initializePhysics(){
   }
   scene.add(group);
   physics=world;physicsGroup=group;fallingCubes=cubes;
-  report('Box3D','READY',cubes.length+' falling cubes, ground collision active');
+  report('Box3D','READY',cubes.length+' falling cubes on planet collision');
  }catch(error){report('Box3D','FAILED',error.stack||error.message);}
 }
-void initializePhysics();
+report('octree solidity','WAITING','Terrain generation');
+report('Box3D','WAITING','Terrain solidity');
 let last=performance.now(),elapsed=0,frames=0,lastTerrain=0,resizeW=0,resizeH=0;
 function frame(now){
  requestAnimationFrame(frame);
@@ -136,7 +165,10 @@ function frame(now){
  if(avatar){avatar.position.copy(player);avatar.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),up);}
  // Only change terrain selection when position/zoom changes significantly.
  if(terrain&&now-lastTerrain>650){
-  try{terrain.rebuild(player,camera);report('terrain geometry','READY',terrain.leafCount+' leaves');}
+  try{
+   terrain.rebuild(player,camera);report('terrain geometry','READY',terrain.leafCount+' leaves');
+   if(!solidityStarted){solidityStarted=true;void initializePhysics();}
+  }
   catch(error){report('terrain geometry','FAILED',error.message);terrain=null;}
   lastTerrain=now;
  }
