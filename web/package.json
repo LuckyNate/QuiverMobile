@@ -1,0 +1,17 @@
+{
+  "name": "quivermobile-web",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "three": "^0.180.0",
+    "box3d-wasm": "^0.2.0"
+  },
+  "devDependencies": {
+    "vite": "^7.1.0"
+  }
+}

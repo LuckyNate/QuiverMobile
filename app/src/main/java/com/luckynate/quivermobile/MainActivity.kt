@@ -4,32 +4,24 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
 import android.net.Uri
-import android.opengl.GLSurfaceView
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.os.SystemClock
-import android.view.MotionEvent
+import android.graphics.Color
 import android.view.Gravity
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.webkit.WebResourceRequest
 import android.widget.FrameLayout
 import android.widget.TextView
-import android.graphics.Color
 import androidx.core.content.FileProvider
+import androidx.webkit.WebViewAssetLoader
 import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
-import javax.microedition.khronos.egl.EGLConfig
-import javax.microedition.khronos.opengles.GL10
 
 class MainActivity : Activity() {
-    external fun nativeInit(assets: android.content.res.AssetManager)
-    external fun nativeResize(width: Int, height: Int)
-    external fun nativeDraw()
-    external fun nativeOrbit(dx: Float, dy: Float, zoom: Float)
-    external fun nativeMove(x: Float, y: Float)
-    external fun nativeDiagnostics(): String
-
     private val updateHandler = Handler(Looper.getMainLooper())
     private var checkingUpdates = false
     private var promptedVersion = 0
@@ -39,40 +31,22 @@ class MainActivity : Activity() {
             updateHandler.postDelayed(this, 5 * 60 * 1000L)
         }
     }
-    private lateinit var diagnosticLabel: TextView
-    private lateinit var surface: GLSurfaceView
-    private var lastX = 0f
-    private var lastY = 0f
-    private var lastSpan = 0f
-    private var leftStartX = 0f
-    private var leftStartY = 0f
-    private var leftStick = false
+    private lateinit var web: WebView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        surface = GLSurfaceView(this).apply {
-            setEGLContextClientVersion(3)
-            setRenderer(object : GLSurfaceView.Renderer {
-                private var lastDiagnosticsAt = 0L
-                override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) = nativeInit(assets)
-                override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) = nativeResize(width, height)
-                override fun onDrawFrame(gl: GL10?) {
-                    nativeDraw()
-                    val now = SystemClock.uptimeMillis()
-                    if (now - lastDiagnosticsAt >= 500L) {
-                        lastDiagnosticsAt = now
-                        val diagnostics = nativeDiagnostics()
-                        runOnUiThread {
-                            if (::diagnosticLabel.isInitialized) diagnosticLabel.text = diagnostics
-                        }
-                    }
-                }
-            })
-            renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
-            setOnTouchListener { _, event -> handleTouch(event) }
+        val assetLoader = WebViewAssetLoader.Builder()
+            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
+            .build()
+        web = WebView(this)
+        web.settings.javaScriptEnabled = true
+        web.settings.domStorageEnabled = true
+        web.webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?) =
+                request?.url?.let { assetLoader.shouldInterceptRequest(it) }
         }
         val frame = FrameLayout(this)
-        frame.addView(surface)
+        frame.addView(web)
         val versionLabel = TextView(this).apply {
             text = "QuiverMobile v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
             setTextColor(Color.MAGENTA)
@@ -85,66 +59,8 @@ class MainActivity : Activity() {
             FrameLayout.LayoutParams.WRAP_CONTENT,
             Gravity.TOP or Gravity.START
         ))
-        diagnosticLabel = TextView(this).apply {
-            text = "Awaiting native renderer diagnostics..."
-            setTextColor(Color.WHITE)
-            textSize = 11f
-            setPadding(12, 8, 12, 8)
-            setBackgroundColor(0xBB000000.toInt())
-        }
-        val diagnosticsLayout = FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            Gravity.TOP or Gravity.START
-        )
-        diagnosticsLayout.topMargin = (42f * resources.displayMetrics.density).toInt()
-        frame.addView(diagnosticLabel, diagnosticsLayout)
         setContentView(frame)
-    }
-
-    private fun handleTouch(e: MotionEvent): Boolean {
-        val x = e.getX(0)
-        val y = e.getY(0)
-        when (e.actionMasked) {
-            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
-                lastX = x; lastY = y
-                if (e.actionMasked == MotionEvent.ACTION_DOWN) {
-                    leftStick = x < surface.width * 0.5f
-                    leftStartX = x; leftStartY = y
-                }
-                lastSpan = if (e.pointerCount >= 2) span(e) else 0f
-            }
-            MotionEvent.ACTION_MOVE -> {
-                if (e.pointerCount >= 2) {
-                    val newSpan = span(e)
-                    if (lastSpan > 0f && newSpan > 0f) {
-                        val zoom = (lastSpan / newSpan).coerceIn(0.7f, 1.4f)
-                        surface.queueEvent { nativeOrbit(0f, 0f, zoom) }
-                    }
-                    lastSpan = newSpan
-                } else if (leftStick) {
-                    val sx = ((x - leftStartX) / 90f).coerceIn(-1f, 1f)
-                    val sy = ((leftStartY - y) / 90f).coerceIn(-1f, 1f)
-                    surface.queueEvent { nativeMove(sx, sy) }
-                } else {
-                    val dx = (x - lastX) * 0.007f
-                    val dy = (y - lastY) * 0.007f
-                    surface.queueEvent { nativeOrbit(-dx, dy, 1f) }
-                }
-                lastX = x; lastY = y
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                lastSpan = 0f
-                surface.queueEvent { nativeMove(0f, 0f) }
-            }
-        }
-        return true
-    }
-
-    private fun span(e: MotionEvent): Float {
-        val dx = e.getX(0) - e.getX(1)
-        val dy = e.getY(0) - e.getY(1)
-        return kotlin.math.sqrt(dx * dx + dy * dy)
+        web.loadUrl("https://appassets.androidplatform.net/assets/web/index.html")
     }
 
     private fun checkUpdates() {
@@ -229,7 +145,19 @@ class MainActivity : Activity() {
         super.onPause()
     }
 
-    companion object {
-        init { System.loadLibrary("quivermobile") }
+    override fun onResume() {
+        super.onResume()
+        web.onResume()
+        updateHandler.removeCallbacks(updateTicker)
+        updateHandler.post(updateTicker)
+    }
+    override fun onPause() {
+        updateHandler.removeCallbacks(updateTicker)
+        web.onPause()
+        super.onPause()
+    }
+    override fun onDestroy() {
+        web.destroy()
+        super.onDestroy()
     }
 }

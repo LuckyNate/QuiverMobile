@@ -12,7 +12,6 @@ android {
         targetSdk = 35
         versionCode = (project.findProperty("appVersionCode")?.toString()?.toIntOrNull() ?: 1)
         versionName = "0.1.${versionCode}"
-        externalNativeBuild { cmake { cppFlags += "-std=c++17" } }
         ndk { abiFilters += listOf("arm64-v8a") }
     }
     val ksPath = System.getenv("KEYSTORE_FILE")
@@ -36,7 +35,6 @@ android {
         }
     }
     buildFeatures { buildConfig = true }
-    externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt") } }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -46,4 +44,5 @@ android {
 
 dependencies {
     implementation("androidx.core:core-ktx:1.16.0")
+    implementation("androidx.webkit:webkit:1.14.0")
 }
