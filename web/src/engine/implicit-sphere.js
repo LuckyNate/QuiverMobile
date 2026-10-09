@@ -1,4 +1,4 @@
-import {TERRAIN_AMPLITUDE} from './terrain-height.js';
+import {TERRAIN_AMPLITUDE_RATIO} from './terrain-height.js';
 // Immutable spherical solidity. Occupancy is implicit; no planet-wide AABB objects.
 export class ImplicitSphere {
  constructor(radius,{halfSize=128,minCell=.25,height=null}={}){
@@ -9,7 +9,8 @@ export class ImplicitSphere {
  query(box,{kinds=null}={}){
   if(kinds&&!kinds.includes('static'))return [];
   const result=[],r2=this.radiusSquared;
-  const outer=(this.radius+TERRAIN_AMPLITUDE)**2,inner=(this.radius-TERRAIN_AMPLITUDE)**2;
+  const limit=this.radius*TERRAIN_AMPLITUDE_RATIO;
+  const outer=(this.radius+limit)**2,inner=(this.radius-limit)**2;
   const touches=(c,h)=>c.every((v,i)=>v+h>=box.min[i]&&v-h<=box.max[i]);
   const visit=(c,h,level,path)=>{
    if(!touches(c,h))return;

@@ -41,14 +41,53 @@ const scene=new THREE.Scene();
 scene.add(new THREE.HemisphereLight(0xeeeeff,0x263b55,2.1));
 const sun=new THREE.DirectionalLight(0xffffff,2.0);sun.position.set(90,180,70);scene.add(sun);
 const camera=new THREE.PerspectiveCamera(55,1,.05,60000);
-const height=new TerrainHeight(TERRAIN_SEED);
+const height=new TerrainHeight(TERRAIN_SEED,RADIUS);
 let terrain=null;
 try{terrain=new WorldTerrain(scene,height);report('terrain setup','READY');}
 catch(error){report('terrain setup','FAILED',error.message);}
 const water=new WorldWater(scene,RADIUS);
 const playerSystem=new PlayerSystem(scene,camera,canvas,RADIUS,report);
 const player=playerSystem.position;
-player.setLength(height.radius(player.clone().normalize(),RADIUS)+1.3);
+// Find a dry, near-datum shoreline deterministically using the same height function
+// as the renderer and collider. Search once at startup; never scan during frames.
+function shorelineSpawn(){
+ const radial=(latitude,longitude)=>{
+  const c=Math.cos(latitude);
+  return new THREE.Vector3(c*Math.cos(longitude),c*Math.sin(longitude),Math.sin(latitude));
+ };
+ const rows=36,columns=144;
+ let selected=null,selectedScore=Infinity;
+ for(let row=1;row<rows;row++){
+  const latitude=-Math.PI/2+Math.PI*row/rows;
+  let previous=radial(latitude,0);
+  let previousHeight=height.height(previous);
+  for(let col=1;col<=columns;col++){
+   const next=radial(latitude,2*Math.PI*col/columns);
+   const nextHeight=height.height(next);
+   // Shore is 0 m terrain elevation, 1 m above water at -1 m.
+   if((previousHeight<=0&&nextHeight>=0)||(previousHeight>=0&&nextHeight<=0)){
+    let dry=previousHeight>=0?previous:next;
+    let wet=previousHeight>=0?next:previous;
+    for(let i=0;i<15;i++){
+     const mid=dry.clone().add(wet).normalize();
+     if(height.height(mid)>=0)dry=mid;else wet=mid;
+    }
+    const land=dry.clone().multiplyScalar(1.001).addScaledVector(dry.clone().sub(wet),1).normalize();
+    const elevation=height.height(land);
+    const neighborWater=height.height(wet);
+    if(elevation<0||elevation>5||neighborWater>=0){previous=next;previousHeight=nextHeight;continue;}
+    // Prefer shallow beach slopes; retain deterministic tie breaking.
+    const gradient=Math.abs(previousHeight-nextHeight);
+    const score=elevation*8+gradient*.05;
+    if(score<selectedScore){selected=land;selectedScore=score;}
+   }
+   previous=next;previousHeight=nextHeight;
+  }
+ }
+ if(!selected)throw new Error('Seeded terrain contains no shoreline spawn candidate');
+ return selected.multiplyScalar(height.radius(selected,RADIUS)+1.3);
+}
+player.copy(shorelineSpawn());
 // Permanent mathematical solidity is independent of rendered terrain triangles.
 let physics=null,fallingCubes=[],playerCollider=null;
 let physicsLoading=false,simulationReady=false;
