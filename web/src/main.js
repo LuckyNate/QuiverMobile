@@ -176,6 +176,7 @@ function frame(now){
   physics.movePlayer(playerCollider,playerSystem.movement(),5,player.clone().normalize());
  }
  playerSystem.updateView();
+ water.update(scene,camera,renderer,elapsed);
  // The immutable planet is queryable immediately. Player motion never rebuilds it.
  if(octree){
   try{

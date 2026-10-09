@@ -10,8 +10,8 @@ const MAX_LOD=LOD_MAX_DISTANCE_METERS.length-1;
 const HYSTERESIS=1.2;
 // Elevation in meters above sea level (RADIUS - 1). Palette is visual only.
 const TERRAIN_PALETTE=[
- [-35,0x354b2a],[-1.5,0x354b2a],[0,0xc6b88a],[1.5,0xc6b88a],
- [4,0x354b2a],[10,0x354b2a],[15,0x71934b],[40,0x71934b],
+ [-35,0xc6b88a],[0,0xc6b88a],[5,0xc6b88a],
+ [10,0x354b2a],[15,0x71934b],[40,0x71934b],
  [55,0xa5a064],[100,0xa5a064],[125,0x877b65],
  [250,0x877b65],[280,0x9a9b9c]
 ].map(([elevation,hex])=>({elevation,color:new THREE.Color(hex)}));
