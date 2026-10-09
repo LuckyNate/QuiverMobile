@@ -1,10 +1,10 @@
 import {TerrainHeight} from './engine/terrain-height.js';
 import * as THREE from 'three';
-export const RADIUS=1024;
-export const ROOT_EDGE_METERS=RADIUS*4/Math.sqrt(10+2*Math.sqrt(5));
+export const ROOT_EDGE_METERS=4096;
+export const RADIUS=ROOT_EDGE_METERS*Math.sqrt(10+2*Math.sqrt(5))/4;
 // Maximum surface distance at which each subdivision level becomes desirable.
 export const LOD_MAX_DISTANCE_METERS=[
- Infinity,Infinity,700,350,175,88,44,22,11,5.5,3
+ Infinity,Infinity,1400,700,350,175,88,44,22,11,5.5,2.75,1.375
 ];
 const MAX_LOD=LOD_MAX_DISTANCE_METERS.length-1;
 const HYSTERESIS=1.2;

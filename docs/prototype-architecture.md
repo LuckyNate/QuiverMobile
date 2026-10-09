@@ -4,11 +4,11 @@ Status: **working-prototype boundary**, 2026-10-09. Preserve existing walking/co
 
 ## Ownership
 
-- **World** (`web/src/world-system.js`): planet spatial index, immutable implicit solidity at 1 m cells, local outward-facing Box3D patch source. World-wide position/normal is radial, radius 1024 m.
+- **World** (`web/src/world-system.js`): planet spatial index, immutable implicit solidity at 1 m cells, local outward-facing Box3D patch source. World-wide position/normal is radial, radius derived from the 4096 m D20 root edge (approximately 3895.9 m).
 - **Player** (`web/src/player.js`): Android-touch/keyboard controls, yaw/pitch/zoom camera, visual GLB capsule and local movement vector. Actual capsule body remains owned by `PhysicsWorld`.
 - **Solidity** (`web/src/engine/implicit-sphere.js`, `sphere-surface.js`, `physics.js`): mathematical occupancy and local static Box3D collision hulls. Never derive contact from visible triangles or water. Physics gravity is radial.
 - **Terrain** (`web/src/world.js`): visible gray icosphere; currently fixed-radius and not deformed.
-- **Water** (`web/src/water.js`): independent blue icosphere at radius 1023 m (terrain radius - 1 m). Currently purely visual and below the land, so it may be occluded everywhere. Its radius is configurable; it has no physics.
+- **Water** (`web/src/water.js`): independent blue icosphere at radius RADIUS - 1 m (terrain radius - 1 m). Currently purely visual and below the land, so it may be occluded everywhere. Its radius is configurable; it has no physics.
 
 `main.js` orchestrates setup, debug meshes, physics update and rendering; this is intentionally a limited extraction to protect working gameplay.
 
@@ -45,5 +45,13 @@ Android release build succeeds; startup reaches Box3D READY; player spawns on la
 - `TerrainHeight` in `web/src/engine/terrain-height.js` is the single height authority for rendered LOD vertices, implicit occupancy and Box3D surface patch vertices. Default fixed text seed: `QuiverGL`.
 - Every string, **including the empty string** `""`, hashes deterministically via FNV-1a over UTF-8 bytes. No random fallback or implicit seed generation. Identical string produces identical world.
 - Continuous seeded 3D value noise at 512/128/32 m wavelengths with 24/8/2 m nominal amplitude; conservative maximum radial displacement of ±34 m.
-- Water remains fixed at radius 1023 m. Player starts 1.3 m above the procedural radius at spawn.
+- Water remains fixed at RADIUS - 1 m. Player starts 1.3 m above the procedural radius at spawn.
 - Current collision uses 1 m cube-sphere sampling while visible triangle LOD is independent; small interpolation mismatches can exist. Verify contact on slopes in-device before considering this production-perfect.
+
+## Development planet scale — accepted target (2026-10-09)
+
+- Authoritative root icosahedron edge: **4096 meters = 2^12 meters**; radius is derived as `ROOT_EDGE_METERS * sqrt(10 + 2*sqrt(5)) / 4`.
+- Subdivision level 12 targets **1 m nominal original-face edge length** (4096 / 2^12); radial re-normalization means actual triangle edges vary somewhat.
+- Terrain renderer LOD maximum 12. Existing neighbor-edge stitching and hysteresis remain in place; configured split ranges scale with the larger planet.
+- Spatial and implicit-octree half-width: 4096 m, covering the entire planet and its ±34 m height offsets; dynamic octree max depth 13 permits 1 m cells across an 8192 m root cube.
+- Water follows RADIUS - 1 m; seed and noise wavelengths remain unchanged for this development-stage size increase. No player, Box3D contact, or gravity behavior changes.
