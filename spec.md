@@ -1,113 +1,37 @@
-# QuiverMobile — Engine Specification
+# QuiverMobile / QuiverGL — Current Engine Specification
 
-**Version:** 0.1.0 (Planning)  
-**Status:** Draft  
-**Parent concept:** QuiverGL
+**Status:** experimental working implementation, 2026-10-09. This document describes the current code, not a claim of production readiness.
 
-## 1. Purpose
+## Purpose and platforms
+A continuous spherical outdoor world engine. Three.js/WebGL2 and Box3D WebAssembly run in the same Vite-built JavaScript application on desktop browsers and the Android Kotlin WebView shell. Android packaging and signed APK updates use GitHub Actions. Native VR/OpenXR is a future direction, not currently implemented.
 
-QuiverMobile is a lightweight, native Android 3D game engine designed for large, continuous outdoor environments.
+## World dimensions and levels of detail
+- Twenty icosahedron (D20) root triangles, recursively subdivided into four children each.
+- **Current experimental root edge: 8192 m** (`ROOT_EDGE_METERS` in `web/src/world.js`). **Not a fixed engine requirement.**
+- Derived spherical base radius: `rootEdge * sqrt(10 + 2*sqrt(5)) / 4`.
+- Finest subdivision level derives from `round(log2(rootEdge))`: currently **13** to target nominal 1 m edges. Both planet size and subdivision count are adjustable; they are not architectural constants.
+- Current 20 m LOD bands are a tuning choice, not a universal rule. Near-player detail is selected by distance with split hysteresis; far zoom limits maximum active detail.
+- Render leaves stitch vertices along unequal-level boundaries. Detail is morphed toward sampled height in the vertex shader, with a complementary dither fade between topology replacements. These are experimental rendering techniques requiring on-device visual checks.
 
-Android is the initial platform. Native VR is the intended next platform, using the same engine core.
+## Geology, sea and solid ground
+- One deterministic seeded radial `TerrainHeight` drives visible terrain, implicit solids, and local collision hulls. Current seed: `QuiverGL`.
+- Planet-relative, layered 3D noise: broad continent/ocean relief plus progressively activated hills, ridges, crevices and fine detail. Roughness depends on broad elevation.
+- Terrain radial height is `RADIUS + height(direction)`; visual meshes never define solidity.
+- **Sea level remains `RADIUS - 1 m`**. Water is an animated transparent surface; buoyancy applies where the ground is below sea level. Water must not count as solid terrain.
+- Player spawn samples a deterministic near-zero-elevation dry shoreline near water.
 
-The engine prioritizes rendering efficiency, spatial organization, simplicity, and extensibility.
+## Spatial index and physics
+- Sparse `WorldOctree` indexes dynamic actor locations, and `ImplicitSphere` provides analytical static occupancy. Current 8192 m edge configuration uses a 16384 m octree half-width and maximum depth 15, retaining nominal 1 m octree cell resolution.
+- `SphereSurface` generates 1 m local outward terrain hull patches from the same height provider. Only nearby patches are registered as static proxies with Box3D, never every triangle of the planet.
+- Dynamic capsule and demonstration boxes use Box3D; the player follows radial gravity. The movement target is currently 10 m/s. Immersion adds upward buoyancy and vertical drag; forward while looking down contributes dive effort.
+- Terrain LOD morphing is **render-only**. Box3D uses un-morphed mathematical terrain; visual and contact surfaces may temporarily differ.
 
-## 2. Core Architecture
+## Camera and controls
+- Chase camera stays in a player-local, parallel-transported navigation frame, gradually becoming overhead at high zoom. Globe orientation is relative to player heading, not geographic poles.
+- Vertical logarithmic zoom slider and mouse wheel cover 3–30000 m. The camera near plane has a 1 m minimum and rises with camera altitude; far plane is currently 60000 m.
+- Above approximately 500 / 1500 / 5000 m zoom, render LOD detail is capped at 8 / 5 / 3 respectively. These are current experimental thresholds.
 
-- Native C++ engine core.
-- Kotlin Android application shell.
-- Android NDK build system.
-- Rendering API abstraction supporting an initial Android renderer and future VR requirements.
-- Separation between world simulation, rendering, physics, input, and platform services.
-- GitHub Actions for APK compilation and distribution.
-
-## 3. World Representation
-
-- Planetary world based on an icosphere.
-- Recursive triangular subdivision.
-- Target maximum terrain resolution of approximately 1 meter.
-- Hierarchical spatial partitioning for world queries.
-- Large-world coordinate handling to maintain local precision.
-- Continuous world navigation without predefined map boundaries.
-
-## 4. Rendering
-
-- Native GPU-accelerated 3D rendering.
-- Hierarchical visibility determination.
-- Terrain detail derived from the spatial hierarchy.
-- Reduced geometric complexity at distance.
-- Outdoor skybox and distance fog.
-- Frustum culling.
-- Efficient geometry batching.
-- Texture and geometry resource management.
-- Configurable draw distance.
-
-Rendering should scale with visible complexity rather than total world size.
-
-## 5. Physics and Collision
-
-- Spatial partitioning supplies broad-phase collision candidates.
-- Solid world objects maintain collision representations.
-- Physics operates on nearby relevant objects.
-- Box2D integration is proposed; its role in the 3D simulation requires definition.
-- Physics implementation must remain independent of rendering.
-
-## 6. Camera and Input
-
-- Touchscreen input.
-- Configurable virtual controls.
-- Camera movement independent of world simulation.
-- Support for perspective cameras.
-- Camera architecture capable of later stereoscopic rendering.
-- Hardware controller support as a future capability.
-
-## 7. VR Path
-
-- Native OpenXR integration as a future development phase.
-- Head tracking and stereoscopic cameras.
-- VR controller input.
-- Frame timing and rendering optimized for headset requirements.
-- Shared world simulation and asset systems between Android and VR.
-
-VR support must not require replacing the underlying world architecture.
-
-## 8. Asset Pipeline
-
-- Blender-compatible modeling workflow.
-- Importable mesh, material, and texture formats.
-- Reusable asset definitions.
-- Resource loading independent of scene management.
-- Asset streaming as a future capability.
-
-## 9. Performance
-
-- Target a broad range of modern Android GPU capabilities.
-- Minimize draw calls and unnecessary geometry processing.
-- Avoid loading or simulating distant objects without need.
-- Manage memory and thermal load.
-- Make frame timing measurable.
-- Adjustable graphics quality and rendering distance.
-
-## 10. Initial Milestone
-
-The first working APK should:
-
-1. Launch successfully on Android.
-2. Initialize the native engine.
-3. Display an outdoor 3D environment with a skybox.
-4. Render simple terrain.
-5. Permit touchscreen camera movement.
-6. Maintain a functioning render loop.
-7. Build automatically through GitHub Actions.
-
-## 11. Deferred Decisions
-
-- Initial rendering backend: OpenGL ES or Vulkan.
-- Exact spatial partition implementation.
-- Box2D's responsibilities in a 3D environment.
-- World terrain generation and storage.
-- Asset format and conversion pipeline.
-- Minimum Android API level.
-- Initial performance targets and reference devices.
-
-Decisions remain open until explicitly agreed upon.
+## Boundaries and ongoing validation
+- Android is the primary device test. Validate startup and shoreline spawn, capsule contact, swimming, fixed seed, map-scale camera stability, water occlusion, globe clipping, seam stitching, and LOD morph/fade.
+- Current code should not be described as implementing native C++, a native graphics backend, true per-pixel shoreline masking, a production geographic planet, or full VR.
+- Any change to planet root edge requires auditing radius-derived noise, visible LOD depth, spatial bounds, physics sampling, and camera extent; do not treat a single numerical edit as the entire system.

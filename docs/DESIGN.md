@@ -1,43 +1,32 @@
-# QuiverGL / QuiverMobile — Engine Design
+# QuiverGL / QuiverMobile — Design and Techniques
 
-Status: adopted baseline, 2026-10-08.
+**Current experimental implementation, 2026-10-09.** For the authoritative runtime values see `world.js`, `world-system.js` and `main.js`.
 
-## Purpose
-A common browser-native 3D engine that runs unmodified in a desktop browser and in an Android WebView. No emulator or separate native graphics backend.
+## Architecture and separation of authority
+- **Three.js WebGL2** displays scenery and GLB avatars; **Box3D WASM** controls rigid-body motion; **Kotlin Android WebView** packages the same Vite assets used on desktop.
+- `TerrainHeight.height(direction)` is the deterministic mathematical terrain authority. Rendered triangles are samples of it, **not** collision geometry or permanent world storage.
+- `WorldSystem` owns the spatial index, implicit solid terrain and collision patch source. `PhysicsWorld` maintains Box3D dynamic bodies and a bounded changing set of static contact hulls.
+- `PlayerSystem` controls input, player-relative heading and camera; `main.js` orchestrates frames.
 
-## Architectural invariants
-- **Three.js** is the scene renderer; require **WebGL2**.
-- **Blender -> GLB** is the primary authored-mesh workflow. Load GLB once, upload geometry once, instantiate freely. Geometry, normals and material values come from the asset.
-- The world is a recursively subdivided **icosphere**. The root icosahedron has power-of-two edge length in meters; initial diagnostic setting: **128 m**. The world is geometrically small for now, not yet planet-size.
-- Terrain LOD and visibility are spatial partition concerns, not separate rendering backends. Solid triangles are the normal draw mode. Wireframe and AABB overlays are optional diagnostics.
-- **Box3D compiled to WebAssembly** is the 3D physics solver.
-- The **octree of axis-aligned bounding boxes** is the authoritative coarse representation of *fixed/static world solidity*. It is also used to query physics collision candidates; it is not replaced by Three.js mesh raycasts.
-- Do not create one simulated rigid body per static world triangle or per octree node. Query the octree for overlapping static occupancy, hand bounded relevant static box shapes to Box3D, and let Box3D resolve contacts against dynamic bodies. Retire distant proxies when safe.
-- Dynamic bodies belong to Box3D. Do not use rendered meshes as the collision authority.
-- Keep rendering, world generation, physics and the app shell modular, so individual features can be changed without redesigning other systems.
-- Preserve player-world/camera intent independently of visuals.
+## Scalable icosphere
+Twenty D20 root faces recursively split into four triangles. Face directions are normalized radially, then displaced by the shared heightfield. The root edge is a parameter: **8192 m currently**, formerly 4096 m; neither is fixed. The target finest nominal edge is around 1 m and the needed LOD count derives from log2(root edge) (currently 13). The collision/octree extent must also grow with the planet and maximum possible relief.
 
-## Fixed-world collision contract
-1. Author or procedurally derive solid world occupancy.
-2. Partition it into conservative octree AABBs in **world coordinates**. Solid leaves are the coarse static collision source. Adjacent boxes automatically merge into maximal rectangular volumes when their two orthogonal spans match and their third-axis faces touch. Merging repeatedly is required until no valid joins remain. A face touch alone cannot justify filling empty space. Octree siblings can collapse and boxes across sibling boundaries can merge, without exceeding represented solids.
-3. Given dynamic body bounds and motion sweep, query nearby occupied AABBs.
-4. Create/update bounded **static Box3D box shapes** for candidate AABBs in the current simulation neighborhood (not the entire planet).
-5. Step Box3D at fixed timestep; let Box3D compute contact response.
-6. Copy dynamic physics transforms into Three.js render instances.
-7. When the simulation origin shifts, relocate/rebuild nearby proxies consistently. Rendering and physics share a coordinate-frame conversion.
-Static geometry is never treated as a free dynamic body. AABB approximation can be refined by subdivisions; octree culling and simulation proxy lifecycle are separate decisions.
+## Layered geography
+Seeded 3D value noise is sampled on the unit sphere so wavelength and amplitude scale with planet radius. Very broad layers establish ocean basins and highlands. A smooth elevation gate activates foothill hills, mountain ridges, detail and crevices without feeding fine noise back into its own biome classification. Radial height remains bounded away from the planet center. Sea level is a separate fixed `RADIUS - 1 m` datum, not an automatically recomputed water percentage.
 
-## Runtime modules
-- `web/src/main.js`: startup, scene, input, main loop.
-- `web/src/world.js`: recursive icosphere terrain selection/geometry (eventually horizon and frustum culling).
-- `web/src/solidity.js`: static AABB octree, bounded candidate queries, immutable occupancy data.
-- `web/src/physics.js`: Box3D WASM, fixed-step world, static proxies generated from octree queries.
-- `web/public/models/debug/player_capsule.glb`: initial player placeholder, authored as GLB.
-- Android: a WebView wrapper for **the same built web assets**, including in-app updater.
-- PC: served as ordinary web files; no native APK or emulation.
+## Terrain LOD and seam handling
+The visible tree retains recursive nodes and chooses current leaves from player distance, face reach, zoom-specific maximum detail, and 20% hysteresis on collapse. This experiment uses 20 m successive near-player distance bands. Neighbor edge midpoints are recursively inserted into coarser leaf triangle boundaries so coarse and fine leaves share boundary vertices, rather than using geometry skirts.
 
-## Startup milestone
-First playable/inspectable slice: solid icosphere with adjustable wireframe overlay, chase camera and touch/keyboard input, gray GLB player, and Box3D static-object collision proof backed by an octree. This does **not** claim full planet-wide physics, terrain collision, geodesic occupancy, or seamless octree proxy streaming.
+When topology changes, the previous mesh briefly stays as a ghost. Complementary screen-door (dither) masks progressively reveal the new mesh while both write depth so translucent water does not paint over land. The ghost is removed and disposed after 0.35 seconds. The vertex shader additionally blends new sample positions from a parent-triangle plane toward their full heightfield positions as a function of player distance. This morph is visual; avoid deriving physics from it. Current morphing and mixed-edge behavior are subject to visual regression testing, particularly after changing planet dimensions.
 
-## Working agreement
-Every modification is explicitly negotiated, scoped, and approved. Implement requested behavior only; preserve working code, versioning and distribution. Verify build before treating any release as good. Do not silently convert diagnostics into the renderer architecture.
+## Solid octree and local physics
+The implicit octree tests occupied static cells mathematically against a shared radial solid boundary and exposes queries without constructing a global set of cube objects. A separate local `SphereSurface` query constructs outward-facing thin Box3D hull patches near player and demo cubes. `PhysicsWorld.syncStatic` caches nearby regions and adds new support before retiring stale contact bodies. This prevents distant static geometry from becoming thousands of Box3D actors. Frame gravity points toward the planet center. The capsule uses real contact resolution, not renderer raycasts.
+
+## Water and swimming
+The water mesh is a transparent animated sea-level icosphere; no underwater fog. Water occupies open space above submerged ground. A capsule submerged fraction controls buoyancy and radial drag; forward input and camera pitch permit diving. Ocean rendering and shore-edge masking are areas for further validation, particularly with terrain fade transitions.
+
+## Camera and globe navigation
+A player-local tangent frame is parallel transported across the spherical world to preserve heading independently of any fixed geographic pole. Camera distance follows a log-scaled vertical slider; orientation lerps from third-person chase toward outward-radial globe overhead. Movement remains player-relative at any scale. Near clipping starts at 1 m and increases at large camera altitude to improve depth precision, while planet-scale zoom caps fine terrain subdivision.
+
+## Intentional boundaries
+Current experience is a diagnostic engine prototype, not a finished planet renderer. Some design notes in `prototype-architecture.md` describe earlier historical milestones, not present implementation. Do not reinstate old constants or pretend older static-planet notes are active requirements.
