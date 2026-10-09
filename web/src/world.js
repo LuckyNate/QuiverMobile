@@ -4,10 +4,11 @@ export const ROOT_EDGE_METERS=4096;
 export const RADIUS=ROOT_EDGE_METERS*Math.sqrt(10+2*Math.sqrt(5))/4;
 // Maximum surface distance at which each subdivision level becomes desirable.
 export const LOD_MAX_DISTANCE_METERS=[
- Infinity,Infinity,1400,700,350,175,88,44,22,11,5.5,2.75,1.375
+ Infinity,Infinity,2100,1050,525,262.5,132,66,33,16.5,8.25,4.125,2.0625
 ];
 const MAX_LOD=LOD_MAX_DISTANCE_METERS.length-1;
 const HYSTERESIS=1.2;
+const LOD_FADE_SECONDS=.35;
 // Elevation in meters above sea level (RADIUS - 1). Palette is visual only.
 const TERRAIN_PALETTE=[
  [-35,0xc6b88a],[0,0xc6b88a],[5,0xc6b88a],
@@ -50,11 +51,33 @@ export class WorldTerrain {
   this.material=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:1,side:THREE.DoubleSide,flatShading:true});
   this.mesh=new THREE.Mesh(this.geometry,this.material);
   this.mesh.frustumCulled=false;
+  this.scene=scene;
+  this.ghost=null;
+  this.fadeElapsed=LOD_FADE_SECONDS;
+  this.fadeShader=null;
+  // Screen-door reveal avoids transparent sorting issues with water.
+  this.material.onBeforeCompile=shader=>{
+   shader.uniforms.lodReveal={value:1};
+   shader.fragmentShader='uniform float lodReveal;\n'+shader.fragmentShader;
+   shader.fragmentShader=shader.fragmentShader.replace(
+    '#include <dithering_fragment>',
+    '#include <dithering_fragment>\nif(lodReveal < 1.0 && fract(sin(dot(gl_FragCoord.xy,vec2(12.9898,78.233)))*43758.5453) > lodReveal) discard;'
+   );
+   this.fadeShader=shader;
+  };
   scene.add(this.mesh);
   this.leafCount=0;
   this.update(new THREE.Vector3(0,0,RADIUS+1.3),true);
  }
  update(position,force=false){
+  if(this.ghost){
+   const now=performance.now();
+   this.fadeElapsed+=Math.min(.05,(now-this.fadeClock)/1000);
+   this.fadeClock=now;
+   const t=Math.min(1,this.fadeElapsed/LOD_FADE_SECONDS);
+   if(this.fadeShader)this.fadeShader.uniforms.lodReveal.value=t*t*(3-2*t);
+   if(t>=1)this.finishFade();
+  }
   const normalized=position.clone().normalize();
   const altitude=position.length()-RADIUS;
   let changed=force;
@@ -120,10 +143,33 @@ export class WorldTerrain {
   geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
   geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
   geometry.computeVertexNormals();
-  this.geometry.dispose();
+  if(this.ghost)this.finishFade();
+  const oldGeometry=this.geometry;
+  if(!force&&oldGeometry.getAttribute('position')?.count){
+   const oldMaterial=new THREE.MeshStandardMaterial({
+    color:0xffffff,vertexColors:true,roughness:1,side:THREE.DoubleSide,
+    flatShading:true,depthWrite:false
+   });
+   this.ghost=new THREE.Mesh(oldGeometry,oldMaterial);
+   this.ghost.frustumCulled=false;
+   this.ghost.renderOrder=-1;
+   this.scene.add(this.ghost);
+   this.fadeElapsed=0;
+   this.fadeClock=performance.now();
+   if(this.fadeShader)this.fadeShader.uniforms.lodReveal.value=0;
+  }else oldGeometry.dispose();
   this.geometry=geometry;
   this.mesh.geometry=geometry;
   this.leafCount=leaves.length;
   return true;
+ }
+ finishFade(){
+  if(!this.ghost)return;
+  this.scene.remove(this.ghost);
+  this.ghost.geometry.dispose();
+  this.ghost.material.dispose();
+  this.ghost=null;
+  this.fadeElapsed=LOD_FADE_SECONDS;
+  if(this.fadeShader)this.fadeShader.uniforms.lodReveal.value=1;
  }
 }
