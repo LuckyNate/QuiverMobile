@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-export const ROOT_EDGE_METERS=128;
-export const RADIUS=ROOT_EDGE_METERS*Math.sqrt(10+2*Math.sqrt(5))/4;
+export const RADIUS=1024;
+export const ROOT_EDGE_METERS=RADIUS*4/Math.sqrt(10+2*Math.sqrt(5));
 export const LOD_MAX_DISTANCE_METERS=[
  Infinity,Infinity,200,100,50,24,12,6,3
 ];
@@ -15,7 +15,7 @@ export class WorldTerrain {
  constructor(scene) {
   const triangles=[];
   const add=(a,b,c,level)=>{
-   if(level===4){
+   if(level===6){
     const vertices=[a.clone().multiplyScalar(RADIUS),b.clone().multiplyScalar(RADIUS),c.clone().multiplyScalar(RADIUS)];
     if(new THREE.Vector3().subVectors(vertices[1],vertices[0]).cross(new THREE.Vector3().subVectors(vertices[2],vertices[0])).dot(vertices[0])<0)
      [vertices[1],vertices[2]]=[vertices[2],vertices[1]];

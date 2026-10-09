@@ -26,8 +26,7 @@ window.addEventListener('unhandledrejection',e=>report('promise','FAILED',e.reas
 ui.style.cssText='position:fixed;top:8px;left:8px;z-index:3;background:#000a;padding:8px;font:12px monospace;max-width:92vw;max-height:45vh;overflow:auto;white-space:pre-wrap;pointer-events:none';
 const controls=document.createElement('div');
 controls.style.cssText='position:fixed;bottom:12px;left:12px;z-index:3;display:flex;gap:8px';
-const wireBtn=document.createElement('button');wireBtn.textContent='Gravity: ON';wireBtn.style.cssText='font-size:14px;padding:10px';
-controls.append(wireBtn);app.append(ui,controls);
+app.append(ui,controls);
 const canvas=document.createElement('canvas');canvas.style.cssText='width:100vw;height:100dvh;display:block;touch-action:none';app.prepend(canvas);
 report('document','READY');
 let renderer=null;
@@ -41,7 +40,7 @@ try{
 const scene=new THREE.Scene();
 scene.add(new THREE.HemisphereLight(0xeeeeff,0x263b55,2.1));
 const sun=new THREE.DirectionalLight(0xffffff,2.0);sun.position.set(90,180,70);scene.add(sun);
-const camera=new THREE.PerspectiveCamera(55,1,.05,2000);
+const camera=new THREE.PerspectiveCamera(55,1,.05,10000);
 let terrain=null;
 try{terrain=new WorldTerrain(scene);report('terrain setup','READY');}
 catch(error){report('terrain setup','FAILED',error.message);}
@@ -64,8 +63,6 @@ canvas.addEventListener('pointermove',e=>{const p=touches.get(e.pointerId);if(!p
 function release(e){touches.delete(e.pointerId);if(lookPointer===e.pointerId)lookPointer=null;if(![...touches].some(([id,p])=>id!==lookPointer)){moveX=0;moveY=0;}}
 canvas.addEventListener('pointerup',release);canvas.addEventListener('pointercancel',release);
 canvas.addEventListener('wheel',e=>{e.preventDefault();zoom=THREE.MathUtils.clamp(zoom*Math.exp(e.deltaY*.001),3,30000);},{passive:false});
-const gravityArrow=new THREE.ArrowHelper(new THREE.Vector3(0,0,-1),player,6,0xff00ff,1.2,.7);scene.add(gravityArrow);
-wireBtn.addEventListener('click',()=>{gravityArrow.visible=!gravityArrow.visible;wireBtn.textContent='Gravity: '+(gravityArrow.visible?'ON':'OFF');});
 
 // Permanent mathematical solidity is independent of rendered terrain triangles.
 let physics=null,fallingCubes=[],octree=null,playerCollider=null;
@@ -84,11 +81,11 @@ function activeCollisionAreas(){
 }
 function registerTerrain(){
  if(!terrain)throw new Error('Terrain geometry unavailable');
- octree=new WorldOctree({center:[0,0,0],halfSize:256,maxDepth:9});
+ octree=new WorldOctree({center:[0,0,0],halfSize:2048,maxDepth:12});
  octree.insert('player',boundsAt(player,.95),{kind:'player',owner:'player'});
  // Permanent mathematical solid, stored as a radius and an implicit octree.
  // Only queried cells materialize as temporary collision candidates.
- solidity=new ImplicitSphere(RADIUS,{halfSize:128,minCell:1});
+ solidity=new ImplicitSphere(RADIUS,{halfSize:2048,minCell:1});
  surface=new SphereSurface(RADIUS,{step:1});
  report('terrain geometry','READY',terrain.leafCount+' fixed faces');
  report('octree solidity','READY','Implicit 1 m spherical octree');
@@ -132,6 +129,7 @@ const greenSurface=new THREE.Mesh(new THREE.BufferGeometry(),
  new THREE.MeshBasicMaterial({color:0x145c2b,side:THREE.DoubleSide,depthWrite:true,transparent:false,opacity:1}));
 greenSurface.frustumCulled=false;
 scene.add(greenSurface);
+greenSurface.visible=false;
 let surfaceSignature='';
 function drawSurface(bounds){
  const patches=surface.query(bounds);
@@ -212,7 +210,6 @@ function frame(now){
  const eye=player.clone().addScaledVector(up,2+zoom*Math.sin(pitch)).addScaledVector(aim,-zoom*Math.cos(pitch));
  camera.position.copy(eye);camera.up.copy(up);camera.lookAt(player.clone().addScaledVector(up,1));
  if(avatar){avatar.position.copy(player).addScaledVector(up,-1.1);avatar.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),up);}
- gravityArrow.position.copy(player).addScaledVector(up,3);gravityArrow.setDirection(up.clone().negate());
  // The immutable planet is queryable immediately. Player motion never rebuilds it.
  if(octree){
   try{
