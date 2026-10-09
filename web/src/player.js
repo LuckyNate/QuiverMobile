@@ -8,6 +8,7 @@ export class PlayerSystem {
   this.position=new THREE.Vector3(0,0,radius+1.3);
   this.yaw=0;this.pitch=.35;this.zoom=8;this.moveX=0;this.moveY=0;
   this.keys=new Set();this.touches=new Map();this.lookPointer=null;this.avatar=null;
+  this.swimUp=false;this.swimDown=false;
   report('GLB player','LOADING');
   new GLTFLoader().loadAsync(import.meta.env.BASE_URL+'models/debug/player_capsule.glb')
    .then(capsule=>{this.avatar=capsule.scene;scene.add(this.avatar);report('GLB player','READY');})
@@ -32,6 +33,28 @@ export class PlayerSystem {
   };
   canvas.addEventListener('pointerup',release);canvas.addEventListener('pointercancel',release);
   canvas.addEventListener('wheel',e=>{e.preventDefault();this.zoom=THREE.MathUtils.clamp(this.zoom*Math.exp(e.deltaY*.001),3,30000);},{passive:false});
+  this.swimControls=document.createElement('div');
+  this.swimControls.style.cssText='position:fixed;bottom:90px;right:16px;z-index:4;display:none;flex-direction:column;gap:10px';
+  for(const [label,property] of [['UP','swimUp'],['DIVE','swimDown']]){
+   const button=document.createElement('button');
+   button.textContent=label;
+   button.style.cssText='padding:14px 18px;background:#173b54;color:white;border:1px solid #79b0ce;border-radius:9px;font:16px monospace;touch-action:none';
+   const press=e=>{e.preventDefault();this[property]=true;button.setPointerCapture(e.pointerId);};
+   const release=e=>{e.preventDefault();this[property]=false;};
+   button.addEventListener('pointerdown',press);
+   button.addEventListener('pointerup',release);
+   button.addEventListener('pointercancel',release);
+   button.addEventListener('lostpointercapture',()=>{this[property]=false;});
+   this.swimControls.append(button);
+  }
+  document.getElementById('app').append(this.swimControls);
+ }
+ swimAxis(){
+  return (this.swimUp||this.keys.has(' ')?1:0)-(this.swimDown||this.keys.has('shift')?1:0);
+ }
+ setSwimming(enabled){
+  this.swimControls.style.display=enabled?'flex':'none';
+  if(!enabled){this.swimUp=false;this.swimDown=false;}
  }
  basis(){
   const up=this.position.clone().normalize();

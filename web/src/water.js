@@ -23,6 +23,13 @@ export class WorldWater {
    this.surfaceShader=shader;
   };
  }
+ // Water occupies the gap between the radial seabed and sea level, never solid terrain.
+ immersion(position,groundRadius,halfHeight=.75){
+  if(groundRadius>=this.radius)return 0;
+  const center=position.length();
+  if(center<=groundRadius)return 0;
+  return THREE.MathUtils.clamp((this.radius+halfHeight-center)/(halfHeight*2),0,1);
+ }
  update(scene,camera,renderer,elapsed){
   if(this.surfaceShader)this.surfaceShader.uniforms.waterTime.value=elapsed;
   const underwater=camera.position.length()<this.radius;

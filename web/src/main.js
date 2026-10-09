@@ -48,7 +48,7 @@ catch(error){report('terrain setup','FAILED',error.message);}
 const water=new WorldWater(scene,RADIUS);
 const playerSystem=new PlayerSystem(scene,camera,canvas,RADIUS,report);
 const player=playerSystem.position;
-player.setLength(Math.max(height.radius(player.clone().normalize(),RADIUS)+1.3,water.radius+.35));
+player.setLength(height.radius(player.clone().normalize(),RADIUS)+1.3);
 // Permanent mathematical solidity is independent of rendered terrain triangles.
 let physics=null,fallingCubes=[],playerCollider=null;
 let physicsLoading=false,simulationReady=false;
@@ -188,13 +188,26 @@ function frame(now){
    if(simulationReady&&physics){
     // World-space radial gravity; the frame never rotates independently.
     physics.setPlanetGravity(player);
-    // Buoyancy only over submerged terrain; preserve normal land walking.
-    if(playerCollider&&height.radius(player.clone().normalize(),RADIUS)<water.radius){
-     const up=player.clone().normalize(),velocity=playerCollider.getLinearVelocity();
-     const radial=velocity.x*up.x+velocity.y*up.y+velocity.z*up.z;
-     const target=Math.max(-1,Math.min(3,(water.radius+.35-player.length())*4));
-     const adjustment=target-radial;
-     playerCollider.setLinearVelocity({x:velocity.x+up.x*adjustment,y:velocity.y+up.y*adjustment,z:velocity.z+up.z*adjustment});
+    // Gravity remains active: submerged volume generates upward buoyancy and drag.
+    // No collision with sea level; the same terrain collision hulls form the seabed.
+    if(playerCollider){
+     const up=player.clone().normalize();
+     const groundRadius=height.radius(up,RADIUS);
+     const immersion=water.immersion(player,groundRadius);
+     const swimming=immersion>0;
+     playerSystem.setSwimming(swimming);
+     if(swimming){
+      const velocity=playerCollider.getLinearVelocity();
+      const radial=velocity.x*up.x+velocity.y*up.y+velocity.z*up.z;
+      const swim=playerSystem.swimAxis();
+      // Box3D gravity contributes -9.81 m/s²; buoyancy and radial drag
+      // are per-frame velocity increments, not forced position corrections.
+      const acceleration=(20*immersion+14*swim*immersion-2.5*radial*immersion);
+      const delta=acceleration*dt;
+      playerCollider.setLinearVelocity({
+       x:velocity.x+up.x*delta,y:velocity.y+up.y*delta,z:velocity.z+up.z*delta
+      });
+     }
     }
     for(const item of fallingCubes){
      const p=item.body.getPosition();
