@@ -23,7 +23,7 @@ import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
 class MainActivity : Activity() {
-    external fun nativeInit()
+    external fun nativeInit(assets: android.content.res.AssetManager)
     external fun nativeResize(width: Int, height: Int)
     external fun nativeDraw()
     external fun nativeOrbit(dx: Float, dy: Float, zoom: Float)
@@ -54,7 +54,7 @@ class MainActivity : Activity() {
             setEGLContextClientVersion(3)
             setRenderer(object : GLSurfaceView.Renderer {
                 private var lastDiagnosticsAt = 0L
-                override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) = nativeInit()
+                override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) = nativeInit(assets)
                 override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) = nativeResize(width, height)
                 override fun onDrawFrame(gl: GL10?) {
                     nativeDraw()

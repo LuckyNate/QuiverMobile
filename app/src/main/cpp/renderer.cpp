@@ -9,6 +9,12 @@
 #include <cstdio>
 #include <unordered_map>
 #include <cstdint>
+#include <android/asset_manager.h>
+#include <android/asset_manager_jni.h>
+#include <string>
+#include <cstring>
+#include <cstdlib>
+
 
 namespace {
 constexpr float PI=3.14159265358979323846f;
@@ -61,6 +67,9 @@ const std::array<Triangle,20>& roots(){
 }
 
 GLuint program=0,vao=0,vbo=0;
+GLuint meshProgram=0,meshVao=0,meshVbo=0,meshIbo=0;
+GLsizei meshIndexCount=0;
+float meshGray[4]={.5f,.5f,.5f,1.f};
 int width=1,height=1;
 float yaw=.0f,pitch=.25f,distance=8.f,moveX=0.f,moveY=0.f;
 Vec position={0,0,1};
@@ -222,6 +231,89 @@ void buildLeafEdges(){
  }
  for(const auto &line:segments){edge(line.a,line.b,line.opacity);}
 }
+
+struct MeshVertex {float position[3];float normal[3];};
+uint32_t read32(const uint8_t* p){uint32_t v;std::memcpy(&v,p,4);return v;}
+std::string jsonArray(const std::string& s,const char* name){
+ std::string label=std::string("\"")+name+"\"";
+ size_t pos=s.find(label);if(pos==std::string::npos)return {};
+ pos=s.find('[',pos+label.size());if(pos==std::string::npos)return {};
+ size_t begin=pos++,depth=1;
+ for(;pos<s.size();pos++){if(s[pos]=='[')depth++;else if(s[pos]==']'&&!--depth)return s.substr(begin+1,pos-begin-1);}
+ return {};
+}
+std::vector<std::string> jsonObjects(const std::string& arr){
+ std::vector<std::string> result;size_t first=0;int depth=0;
+ for(size_t i=0;i<arr.size();i++){if(arr[i]=='{'){if(depth++==0)first=i;}
+ else if(arr[i]=='}'&&--depth==0)result.push_back(arr.substr(first,i-first+1));}
+ return result;
+}
+int jsonNumber(const std::string& obj,const char* name,int fallback=0){
+ std::string key=std::string("\"")+name+"\"";
+ size_t p=obj.find(key);if(p==std::string::npos)return fallback;
+ p=obj.find(':',p+key.size());if(p==std::string::npos)return fallback;
+ return std::atoi(obj.c_str()+p+1);
+}
+float jsonFloat(const std::string& obj,const char* name,float fallback){
+ std::string key=std::string("\"")+name+"\"";
+ size_t p=obj.find(key);if(p==std::string::npos)return fallback;
+ p=obj.find(':',p+key.size());if(p==std::string::npos)return fallback;
+ return std::strtof(obj.c_str()+p+1,nullptr);
+}
+bool loadPlayerGLB(AAssetManager* mgr){
+ if(!mgr)return false;
+ AAsset* asset=AAssetManager_open(mgr,"models/debug/player_capsule.glb",AASSET_MODE_BUFFER);
+ if(!asset)return false;
+ size_t size=(size_t)AAsset_getLength(asset);
+ std::vector<uint8_t> bytes(size);
+ int64_t copied=0;
+ while(copied<(int64_t)size){
+  int n=AAsset_read(asset,bytes.data()+copied,size-copied);
+  if(n<=0)break;copied+=n;
+ }
+ AAsset_close(asset);
+ if(copied!=(int64_t)size||size<28||read32(bytes.data())!=0x46546c67u||read32(bytes.data()+4)!=2u)return false;
+ uint32_t jsonSize=read32(bytes.data()+12);
+ if(read32(bytes.data()+16)!=0x4e4f534au||20ull+jsonSize+8>size)return false;
+ std::string json((const char*)bytes.data()+20,jsonSize);
+ size_t binHeader=20+jsonSize;
+ uint32_t binSize=read32(bytes.data()+binHeader);
+ if(read32(bytes.data()+binHeader+4)!=0x004e4942u||binHeader+8ull+binSize>size)return false;
+ const uint8_t* bin=bytes.data()+binHeader+8;
+ auto views=jsonObjects(jsonArray(json,"bufferViews"));
+ auto accessors=jsonObjects(jsonArray(json,"accessors"));
+ if(views.size()<3||accessors.size()<3)return false;
+ auto getView=[&](int accessor,size_t elemBytes,int& count,const uint8_t*& ptr)->bool{
+  if(accessor<0||accessor>=(int)accessors.size())return false;
+  const std::string& a=accessors[accessor];
+  int vi=jsonNumber(a,"bufferView",-1);if(vi<0||vi>=(int)views.size())return false;
+  count=jsonNumber(a,"count",-1);int offset=jsonNumber(views[vi],"byteOffset")+jsonNumber(a,"byteOffset");
+  int stride=jsonNumber(views[vi],"byteStride",(int)elemBytes);
+  if(count<1||offset<0||stride!=(int)elemBytes||uint64_t(offset)+uint64_t(count)*elemBytes>binSize)return false;
+  ptr=bin+offset;return true;
+ };
+ const uint8_t *pos=nullptr,*norm=nullptr,*idx=nullptr;
+ int pc=0,nc=0,ic=0;
+ if(!getView(0,12,pc,pos)||!getView(1,12,nc,norm)||!getView(2,2,ic,idx)||pc!=nc||pc>65535)return false;
+ if(jsonNumber(accessors[0],"componentType")!=5126||jsonNumber(accessors[1],"componentType")!=5126||jsonNumber(accessors[2],"componentType")!=5123)return false;
+ std::vector<MeshVertex> vertices(pc);
+ for(int i=0;i<pc;i++){std::memcpy(vertices[i].position,pos+i*12,12);std::memcpy(vertices[i].normal,norm+i*12,12);}
+ const std::string materials=jsonArray(json,"materials");
+ size_t color=materials.find("\"baseColorFactor\"");
+ if(color!=std::string::npos){size_t bracket=materials.find('[',color);if(bracket!=std::string::npos){
+  const char* p=materials.c_str()+bracket+1;
+  for(int i=0;i<4;i++){char* after=nullptr;meshGray[i]=std::strtof(p,&after);p=after;if(i<3){p=std::strchr(p,',');if(!p)break;p++;}}
+ }}
+ glGenVertexArrays(1,&meshVao);glBindVertexArray(meshVao);
+ glGenBuffers(1,&meshVbo);glBindBuffer(GL_ARRAY_BUFFER,meshVbo);
+ glBufferData(GL_ARRAY_BUFFER,vertices.size()*sizeof(MeshVertex),vertices.data(),GL_STATIC_DRAW);
+ glGenBuffers(1,&meshIbo);glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,meshIbo);
+ glBufferData(GL_ELEMENT_ARRAY_BUFFER,ic*sizeof(uint16_t),idx,GL_STATIC_DRAW);
+ glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,sizeof(MeshVertex),(void*)0);glEnableVertexAttribArray(0);
+ glVertexAttribPointer(1,3,GL_FLOAT,GL_FALSE,sizeof(MeshVertex),(void*)(3*sizeof(float)));glEnableVertexAttribArray(1);
+ glBindVertexArray(0);meshIndexCount=ic;return true;
+}
+
 void rebuild(Vec eye){
  visibleLines.clear();selectedLeaves.clear();activeNodes=0;deepestLevel=0;
  frustumRejected=0;horizonRejected=0;visiblePatches=0;radiusRejected=0;lodStopped=0;
@@ -236,7 +328,7 @@ void rebuild(Vec eye){
 }
 }
 
-extern "C" JNIEXPORT void JNICALL Java_com_luckynate_quivermobile_MainActivity_nativeInit(JNIEnv*,jobject){
+extern "C" JNIEXPORT void JNICALL Java_com_luckynate_quivermobile_MainActivity_nativeInit(JNIEnv* env,jobject,jobject androidAssets){
  const char* vs=R"(#version 300 es
  layout(location=0) in vec3 aPosition;
  layout(location=1) in float aAlpha;
@@ -261,6 +353,39 @@ extern "C" JNIEXPORT void JNICALL Java_com_luckynate_quivermobile_MainActivity_n
  glEnableVertexAttribArray(0);
  glVertexAttribPointer(1,1,GL_FLOAT,GL_FALSE,sizeof(LineVertex),(void*)sizeof(Vec));
  glEnableVertexAttribArray(1);glBindVertexArray(0);
+
+ const char* meshVS=R"(#version 300 es
+ layout(location=0) in vec3 aPosition;
+ layout(location=1) in vec3 aNormal;
+ uniform mat4 uMVP;
+ uniform vec3 uOrigin;
+ uniform vec3 uEast;
+ uniform vec3 uNorth;
+ uniform vec3 uUp;
+ uniform float uWorldScale;
+ out vec3 normal;
+ void main(){
+   vec3 local=(aPosition.x*uEast+aPosition.y*uUp+aPosition.z*uNorth)*uWorldScale;
+   gl_Position=uMVP*vec4(local,1.0);
+   normal=normalize(aNormal.x*uEast+aNormal.y*uUp+aNormal.z*uNorth);
+ }
+ )";
+ const char* meshFS=R"(#version 300 es
+ precision mediump float;
+ in vec3 normal;
+ uniform vec4 uBaseColor;
+ out vec4 color;
+ void main(){
+   float light=.32+.68*max(dot(normalize(normal),normalize(vec3(.3,.85,.4))),0.0);
+   color=vec4(uBaseColor.rgb*light,uBaseColor.a);
+ }
+ )";
+ GLuint mv=compile(GL_VERTEX_SHADER,meshVS),mf=compile(GL_FRAGMENT_SHADER,meshFS);
+ meshProgram=glCreateProgram();glAttachShader(meshProgram,mv);glAttachShader(meshProgram,mf);
+ glLinkProgram(meshProgram);glDeleteShader(mv);glDeleteShader(mf);
+ bool loaded=loadPlayerGLB(AAssetManager_fromJava(env,androidAssets));
+ __android_log_print(loaded?ANDROID_LOG_INFO:ANDROID_LOG_ERROR,"QuiverMobile",
+  "Debug player GLB %s",loaded?"loaded":"FAILED TO LOAD");
  glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
  glDisable(GL_DEPTH_TEST);
  glClearColor(.035f,.045f,.075f,1.f);
@@ -292,18 +417,6 @@ extern "C" JNIEXPORT void JNICALL Java_com_luckynate_quivermobile_MainActivity_n
  tanHalfVertical=std::tan(55.f*PI/360.f);
  tanHalfHorizontal=tanHalfVertical*float(width)/float(height);
  rebuild(eye);
- // Display capsule as a wireframe ring and vertical silhouette on the sea-level reference sphere.
- Vec right=east;
- for(int j=0;j<12;j++){
-  float a=j*2*PI/12,b=(j+1)*2*PI/12;
-  Vec radial=add(scale(right,std::cos(a)),scale(north,std::sin(a)));
-  Vec next=add(scale(right,std::cos(b)),scale(north,std::sin(b)));
-  Vec bottom=add(up,scale(radial,.35f/float(SEA_LEVEL_RADIUS_METERS)));
-  Vec top=add(bottom,scale(up,1.8f/float(SEA_LEVEL_RADIUS_METERS)));
-  Vec other=add(up,scale(next,.35f/float(SEA_LEVEL_RADIUS_METERS)));
-  edge(bottom,top,1.f);edge(bottom,other,1.f);
-  edge(top,add(other,scale(up,1.8f/float(SEA_LEVEL_RADIUS_METERS))),1.f);
- }
  float p[16],v[16],mvp[16];
  perspective(p,55*PI/180.f,(float)width/height,.0000003f,20.f);
  // Work in units of planetary radius, relative to player for floating-point precision.
@@ -316,6 +429,7 @@ extern "C" JNIEXPORT void JNICALL Java_com_luckynate_quivermobile_MainActivity_n
  v[2]=-f.x;v[6]=-f.y;v[10]=-f.z;
  v[12]=-dot(r,localEye);v[13]=-dot(u,localEye);v[14]=dot(f,localEye);
  multiply(mvp,p,v);
+ glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
  glUseProgram(program);
  glUniformMatrix4fv(glGetUniformLocation(program,"uMVP"),1,GL_FALSE,mvp);
  glUniform3f(glGetUniformLocation(program,"uOrigin"),position.x,position.y,position.z);
@@ -323,6 +437,18 @@ extern "C" JNIEXPORT void JNICALL Java_com_luckynate_quivermobile_MainActivity_n
  glBindBuffer(GL_ARRAY_BUFFER,vbo);
  glBufferSubData(GL_ARRAY_BUFFER,0,visibleLines.size()*sizeof(LineVertex),visibleLines.data());
  glDrawArrays(GL_LINES,0,(GLsizei)visibleLines.size());
+ if(meshIndexCount>0){
+  glEnable(GL_DEPTH_TEST);glDepthFunc(GL_LEQUAL);
+  glUseProgram(meshProgram);
+  glUniformMatrix4fv(glGetUniformLocation(meshProgram,"uMVP"),1,GL_FALSE,mvp);
+  glUniform3f(glGetUniformLocation(meshProgram,"uEast"),east.x,east.y,east.z);
+  glUniform3f(glGetUniformLocation(meshProgram,"uNorth"),north.x,north.y,north.z);
+  glUniform3f(glGetUniformLocation(meshProgram,"uUp"),up.x,up.y,up.z);
+  glUniform1f(glGetUniformLocation(meshProgram,"uWorldScale"),1.f/float(SEA_LEVEL_RADIUS_METERS));
+  glUniform4fv(glGetUniformLocation(meshProgram,"uBaseColor"),1,meshGray);
+  glBindVertexArray(meshVao);glDrawElements(GL_TRIANGLES,meshIndexCount,GL_UNSIGNED_SHORT,nullptr);
+  glDisable(GL_DEPTH_TEST);
+ }
 }
 extern "C" JNIEXPORT void JNICALL Java_com_luckynate_quivermobile_MainActivity_nativeOrbit(JNIEnv*,jobject,jfloat dx,jfloat dy,jfloat zoom){
  yaw+=dx;pitch=std::clamp(pitch+dy,-.1f,1.45f);
