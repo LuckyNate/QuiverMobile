@@ -1,27 +1,14 @@
 import * as THREE from 'three';
 
-// Independent visual sea level. Underwater appearance never affects solidity or Box3D.
+// Plain opaque sea-level mesh. No transparency, animation, or atmospheric effects.
 export class WorldWater {
  constructor(scene,terrainRadius,{seaLevelOffset=-1}={}){
   this.radius=terrainRadius+seaLevelOffset;
   this.geometry=new THREE.IcosahedronGeometry(this.radius,6);
-  this.material=new THREE.MeshStandardMaterial({
-   color:0x236c9d,roughness:.35,metalness:0,side:THREE.FrontSide,
-   transparent:true,opacity:.68,depthWrite:false
-  });
+  this.material=new THREE.MeshBasicMaterial({color:0x236c9d,side:THREE.FrontSide});
   this.mesh=new THREE.Mesh(this.geometry,this.material);
   this.mesh.name='WorldWater';
   scene.add(this.mesh);
-  this.underwaterFog=new THREE.FogExp2(0x174958,.028);
-
  }
- update(scene,camera,renderer){
-  const depth=this.radius-camera.position.length();
-  const underwater=depth>0;
-  scene.fog=underwater?this.underwaterFog:null;
-  renderer.setClearColor(underwater?0x174958:0x0a101c);
-  // Water seen from below is less opaque than its surface from above.
-  this.material.side=underwater?THREE.BackSide:THREE.FrontSide;
-  this.material.opacity=underwater?.26:.68;
- }
+ update(){}
 }
