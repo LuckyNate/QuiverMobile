@@ -6,6 +6,16 @@ export class RollingTerrainCache {
   this.cellSize=cellSize;this.maxRegions=maxRegions;this.lodDistances=lodDistances;this.regions=new Map();this.generation=0;this.pending=null;
  }
  get regionCount(){return this.regions.size;}
+ // All chunks touching the spawn AABB (expanded by a small safety margin)
+ // must be committed before physics can run.
+ spawnCoverage(box,margin=2){
+  const s=this.cellSize,min=box.min.map(v=>Math.floor((v-margin)/s)),max=box.max.map(v=>Math.floor((v+margin)/s));
+  let ready=0,total=0;
+  for(let x=min[0];x<=max[0];x++)for(let y=min[1];y<=max[1];y++)for(let z=min[2];z<=max[2];z++){
+   total++;if(this.regions.has(this.key(x,y,z)))ready++;
+  }
+  return {ready,total,complete:ready===total};
+ }
  key(x,y,z){return x+','+y+','+z;}
  refresh(player,budget=2,actors=[]){
   // Maintain compatibility with initial startup: schedule a limited amount of work.
