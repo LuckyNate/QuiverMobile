@@ -49,6 +49,13 @@ export class PlayerSystem {
   }
   document.getElementById('app').append(this.swimControls);
  }
+ diveByLooking(){
+  // Pitch is positive when looking down; do not dive at the default camera tilt.
+  const forward=Math.max(0,(this.keys.has('w')||this.keys.has('arrowup')?1:0)
+   -(this.keys.has('s')||this.keys.has('arrowdown')?1:0)+this.moveY);
+  return THREE.MathUtils.clamp(forward,0,1)*
+   THREE.MathUtils.smoothstep(this.pitch,.45,1.35);
+ }
  swimAxis(){
   return (this.swimUp||this.keys.has(' ')?1:0)-(this.swimDown||this.keys.has('shift')?1:0);
  }

@@ -199,7 +199,7 @@ function frame(now){
      if(swimming){
       const velocity=playerCollider.getLinearVelocity();
       const radial=velocity.x*up.x+velocity.y*up.y+velocity.z*up.z;
-      const swim=playerSystem.swimAxis();
+      const swim=playerSystem.swimAxis()-playerSystem.diveByLooking();
       // Box3D gravity contributes -9.81 m/s²; buoyancy and radial drag
       // are per-frame velocity increments, not forced position corrections.
       const acceleration=(20*immersion+14*swim*immersion-2.5*radial*immersion);
