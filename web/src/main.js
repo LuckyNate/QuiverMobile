@@ -197,7 +197,6 @@ async function initializePhysics(){
   loadStatus('Initializing Box3D and registering solid terrain...');
   report('Box3D','LOADING');
   const world=await new PhysicsWorld().init();
-  world.setSolidityExclusion(height,RADIUS);
   // The player is a dynamic capsule; the octree's AABB is only broad-phase occupancy.
   world.syncStatic(surface,boundsAt(player,6));
   if(world.staticBodies.size===0)throw new Error('Spawn has no physical ground collider');
