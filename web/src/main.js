@@ -96,7 +96,7 @@ const aabbDisplay=new THREE.Group();scene.add(aabbDisplay);
 aabbDisplay.visible=false;
 function boundsAt(p,half){return {min:[p.x-half,p.y-half,p.z-half],max:[p.x+half,p.y+half,p.z+half]};}
 function activeCollisionAreas(){
- const areas=[boundsAt(player,2)];
+ const areas=[boundsAt(player,4)];
  for(const item of fallingCubes){
   const p=item.body.getPosition();
   areas.push(boundsAt(p,3));
@@ -178,7 +178,7 @@ async function initializePhysics(){
   const world=await new PhysicsWorld().init();
   // The player is a dynamic capsule; the octree's AABB is only broad-phase occupancy.
   playerCollider=world.addPlayerCapsule(player);
-  world.syncStatic(surface,boundsAt(player,2));
+  world.syncStatic(surface,boundsAt(player,4));
   // A floating spawn can be above deep water with no nearby solid surface.
   const spawnOverWater=height.radius(player.clone().normalize(),RADIUS)<water.radius;
   if(world.staticBodies.size===0&&!spawnOverWater)throw new Error('No solid terrain registered near spawn');
@@ -217,6 +217,12 @@ function frame(now){
   physics.movePlayer(playerCollider,playerSystem.movement(dt),10,player.clone().normalize());
  }
  playerSystem.updateView(dt);
+ // Keep the trailing drone camera outside the rendered terrain when the
+ // player walks uphill. Physics still owns all player collision response.
+ const cameraUp=camera.position.clone().normalize();
+ const minimumCameraRadius=height.radius(cameraUp,RADIUS)+1;
+ if(camera.position.length()<minimumCameraRadius)
+  camera.position.copy(cameraUp.multiplyScalar(minimumCameraRadius));
  // Use a wider near plane at globe altitude to restore depth-buffer precision.
  // Keep at least 1 m near at all scales and retain the full planet at far.
  const cameraAltitude=Math.max(0,camera.position.length()-RADIUS);
