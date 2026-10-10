@@ -4,11 +4,11 @@ export const ROOT_EDGE_METERS=8192; // Current experiment, not a fixed engine li
 export const RADIUS=ROOT_EDGE_METERS*Math.sqrt(10+2*Math.sqrt(5))/4;
 // Maximum surface distance at which each subdivision level becomes desirable.
 // Keep approximately 1 m finest nominal edges when root size changes.
-// Each active LOD band is spaced 20 m from the next for this experiment.
+// Each active LOD band is spaced 50 m from the next for this experiment.
 export const MAX_TERRAIN_LOD=Math.round(Math.log2(ROOT_EDGE_METERS));
 export const LOD_MAX_DISTANCE_METERS=Array.from(
  {length:MAX_TERRAIN_LOD+1},
- (_,level)=>level<2?Infinity:20*(MAX_TERRAIN_LOD-level+1)
+ (_,level)=>level<2?Infinity:50*(MAX_TERRAIN_LOD-level+1)
 );
 const MAX_LOD=LOD_MAX_DISTANCE_METERS.length-1;
 const HYSTERESIS=1.2;
@@ -59,7 +59,7 @@ export class WorldTerrain {
    shader.uniforms.morphPlayer={value:this.morphPlayer};
    shader.vertexShader='attribute vec3 morphOrigin;\nattribute float morphRange;\nuniform vec3 morphPlayer;\n'+shader.vertexShader;
    shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>',
-    '#include <begin_vertex>\nfloat morphDistance=length(position-morphPlayer);\nfloat morphFactor=morphRange>0.0?1.0-smoothstep(morphRange-10.0,morphRange,morphDistance):1.0;\ntransformed=mix(morphOrigin,position,morphFactor);');
+    '#include <begin_vertex>\nfloat morphDistance=length(position-morphPlayer);\nfloat morphFactor=morphRange>0.0?1.0-smoothstep(morphRange-25.0,morphRange,morphDistance):1.0;\ntransformed=mix(morphOrigin,position,morphFactor);');
   };
   scene.add(this.mesh);
   this.leafCount=0;
