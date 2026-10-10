@@ -24,7 +24,7 @@ export class PlayerSystem {
   canvas.addEventListener('pointermove',e=>{
    const p=this.touches.get(e.pointerId);if(!p)return;
    const dx=e.clientX-p.x,dy=e.clientY-p.y;p.x=e.clientX;p.y=e.clientY;
-   if(e.pointerId===this.lookPointer){this.yaw+=dx*.007;this.pitch=THREE.MathUtils.clamp(this.pitch+dy*.007,-.1,1.45);}
+   if(e.pointerId===this.lookPointer){this.pitch=THREE.MathUtils.clamp(this.pitch+dy*.007,-.1,1.45);}
    else{this.moveX=THREE.MathUtils.clamp((e.clientX-p.startX)/90,-1,1);this.moveY=THREE.MathUtils.clamp((p.startY-e.clientY)/90,-1,1);}
   });
   const release=e=>{
@@ -95,15 +95,12 @@ export class PlayerSystem {
   const east=north.clone().cross(up).normalize();
   return {up,east,north};
  }
- movement(){
+ movement(dt){
   const {north,east}=this.basis();
-  const ex=(this.keys.has('d')||this.keys.has('arrowright')?1:0)-(this.keys.has('a')||this.keys.has('arrowleft')?1:0)+this.moveX;
-  const ey=(this.keys.has('w')||this.keys.has('arrowup')?1:0)-(this.keys.has('s')||this.keys.has('arrowdown')?1:0)+this.moveY;
-  const facing=north.clone().multiplyScalar(Math.cos(this.yaw)).addScaledVector(east,Math.sin(this.yaw));
-  const side=east.clone().multiplyScalar(Math.cos(this.yaw)).addScaledVector(north,-Math.sin(this.yaw));
-  const motion=facing.multiplyScalar(ey).addScaledVector(side,ex);
-  if(motion.lengthSq()>1)motion.normalize();
-  return motion;
+  const turn=THREE.MathUtils.clamp((this.keys.has('d')||this.keys.has('arrowright')?1:0)-(this.keys.has('a')||this.keys.has('arrowleft')?1:0)+this.moveX,-1,1);
+  const forward=THREE.MathUtils.clamp((this.keys.has('w')||this.keys.has('arrowup')?1:0)-(this.keys.has('s')||this.keys.has('arrowdown')?1:0)+this.moveY,-1,1);
+  this.yaw+=turn*2.2*dt;
+  return north.multiplyScalar(Math.cos(this.yaw)*forward).addScaledVector(east,Math.sin(this.yaw)*forward);
  }
  updateView(){
   const {up,east,north}=this.basis();
