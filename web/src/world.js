@@ -171,11 +171,11 @@ export class WorldTerrain {
     // Only fan centers use a face-plane origin. Shared edge vertices
     // always come from the split/stitch edge definition.
     const shared=vertices.has(key(direction));
-    const coarse=split
-     ?radial(split.a).add(radial(split.b)).multiplyScalar(.5)
-     :shared?p.clone():coarsePoint(direction,leaf.parent);
-    const range=split?LOD_MAX_DISTANCE_METERS[split.level]:
-     (!shared&&leaf.level>=2?LOD_MAX_DISTANCE_METERS[leaf.level]:0);
+    // The stitch boundary is authoritative: a shared vertex must remain
+    // at its sampled position on BOTH sides of the edge on every frame.
+    // Only face-interior fan vertices can morph without opening seams.
+    const coarse=shared?p.clone():coarsePoint(direction,leaf.parent);
+    const range=!shared&&leaf.level>=2?LOD_MAX_DISTANCE_METERS[leaf.level]:0;
     morphOrigins.push(coarse.x,coarse.y,coarse.z);
     morphRanges.push(range);
     const color=terrainColor(p.length()-(RADIUS-1));
