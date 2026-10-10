@@ -106,6 +106,27 @@ function activeCollisionAreas(){
 if(!terrain)throw new Error('Terrain geometry unavailable');
 const worldSystem=new WorldSystem(RADIUS,player,height);
 const {octree,solidity,surface}=worldSystem;
+// Spawn from the physical surface rather than assuming the height sample
+// is identical to the finite-resolution Box3D collision hulls.
+function placePlayerAbovePhysicalGround(){
+ const up=player.clone().normalize();
+ const patches=surface.query(boundsAt(player,6));
+ const candidates=[];
+ for(const patch of patches){
+  const center=patch.corners.reduce((sum,p)=>sum.add(new THREE.Vector3(...p)),new THREE.Vector3()).multiplyScalar(.25);
+  const radial=center.dot(up);
+  const lateral=center.clone().addScaledVector(up,-radial).length();
+  if(lateral<3)candidates.push(...patch.corners.map(v=>new THREE.Vector3(...v).dot(up)));
+ }
+ if(!candidates.length)throw new Error('No physical ground beneath shoreline spawn');
+ const physicalTop=Math.max(...candidates);
+ // Clear the entire capsule plus room for collision contact and interpolation.
+ const safeRadius=Math.max(height.radius(up,RADIUS),physicalTop)+3;
+ player.copy(up.multiplyScalar(safeRadius));
+ octree.update('player',boundsAt(player,.95));
+ report('spawn clearance','READY',(safeRadius-physicalTop).toFixed(2)+' m above physical ground');
+}
+placePlayerAbovePhysicalGround();
 report('terrain geometry','READY',terrain.leafCount+' fixed faces');
 report('octree solidity','READY','Implicit 1 m spherical octree');
 // One reusable line buffer: write current nearby AABB edges every frame.
@@ -177,8 +198,9 @@ async function initializePhysics(){
   report('Box3D','LOADING');
   const world=await new PhysicsWorld().init();
   // The player is a dynamic capsule; the octree's AABB is only broad-phase occupancy.
+  world.syncStatic(surface,boundsAt(player,6));
+  if(world.staticBodies.size===0)throw new Error('Spawn has no physical ground collider');
   playerCollider=world.addPlayerCapsule(player);
-  world.syncStatic(surface,boundsAt(player,4));
   // A floating spawn can be above deep water with no nearby solid surface.
   const spawnOverWater=height.radius(player.clone().normalize(),RADIUS)<water.radius;
   if(world.staticBodies.size===0&&!spawnOverWater)throw new Error('No solid terrain registered near spawn');
