@@ -12,7 +12,6 @@ export const LOD_MAX_DISTANCE_METERS=Array.from(
 );
 const MAX_LOD=LOD_MAX_DISTANCE_METERS.length-1;
 const HYSTERESIS=1.2;
-const LOD_FADE_SECONDS=.35;
 // Elevation in meters above sea level (RADIUS - 1). Palette is visual only.
 const TERRAIN_PALETTE=[
  [-35,0xc6b88a],[0,0xc6b88a],[5,0xc6b88a],
@@ -55,28 +54,12 @@ export class WorldTerrain {
   this.material=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:1,side:THREE.DoubleSide,flatShading:true});
   this.mesh=new THREE.Mesh(this.geometry,this.material);
   this.mesh.frustumCulled=false;
-  this.scene=scene;
-  this.ghost=null;
-  this.fadeElapsed=LOD_FADE_SECONDS;
-  this.fadeShader=null;
-  this.ghostShader=null;
   this.morphPlayer=new THREE.Vector3(0,0,RADIUS);
-  this.morphUniform=null;
-  // Screen-door reveal avoids transparent sorting issues with water.
   this.material.onBeforeCompile=shader=>{
-   shader.uniforms.lodReveal={value:1};
    shader.uniforms.morphPlayer={value:this.morphPlayer};
    shader.vertexShader='attribute vec3 morphOrigin;\nattribute float morphRange;\nuniform vec3 morphPlayer;\n'+shader.vertexShader;
-   shader.vertexShader=shader.vertexShader.replace(
-    '#include <begin_vertex>',
-    '#include <begin_vertex>\nfloat morphDistance=length(position-morphPlayer);\nfloat morphFactor=1.0-smoothstep(morphRange*0.55,morphRange,morphDistance);\ntransformed=mix(morphOrigin,position,morphRange>0.0?morphFactor:1.0);'
-   );
-   shader.fragmentShader='uniform float lodReveal;\n'+shader.fragmentShader;
-   shader.fragmentShader=shader.fragmentShader.replace(
-    '#include <dithering_fragment>',
-    '#include <dithering_fragment>\nif(lodReveal < 1.0 && fract(sin(dot(gl_FragCoord.xy,vec2(12.9898,78.233)))*43758.5453) > lodReveal) discard;'
-   );
-   this.fadeShader=shader;
+   shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>',
+    '#include <begin_vertex>\nfloat morphDistance=length(position-morphPlayer);\nfloat morphFactor=morphRange>0.0?1.0-smoothstep(morphRange-10.0,morphRange,morphDistance):1.0;\ntransformed=mix(morphOrigin,position,morphFactor);');
   };
   scene.add(this.mesh);
   this.leafCount=0;
@@ -87,16 +70,6 @@ export class WorldTerrain {
  update(position,force=false,maxDetail=MAX_LOD){
   maxDetail=Math.max(2,Math.min(MAX_LOD,Math.floor(maxDetail)));
   if(maxDetail!==this.maxDetail){force=true;this.maxDetail=maxDetail;}
-  if(this.ghost){
-   const now=performance.now();
-   this.fadeElapsed+=Math.min(.05,(now-this.fadeClock)/1000);
-   this.fadeClock=now;
-   const t=Math.min(1,this.fadeElapsed/LOD_FADE_SECONDS);
-   const fade=t*t*(3-2*t);
-   if(this.fadeShader)this.fadeShader.uniforms.lodReveal.value=fade;
-   if(this.ghostShader)this.ghostShader.uniforms.lodReveal.value=fade;
-   if(t>=1)this.finishFade();
-  }
   this.morphPlayer.copy(position);
   const normalized=position.clone().normalize();
   const altitude=position.length()-RADIUS;
@@ -174,8 +147,11 @@ export class WorldTerrain {
     // The stitch boundary is authoritative: a shared vertex must remain
     // at its sampled position on BOTH sides of the edge on every frame.
     // Only face-interior fan vertices can morph without opening seams.
-    const coarse=shared?p.clone():coarsePoint(direction,leaf.parent);
-    const range=!shared&&leaf.level>=2?LOD_MAX_DISTANCE_METERS[leaf.level]:0;
+    const coarse=split
+     ?radial(split.a).add(radial(split.b)).multiplyScalar(.5)
+     :shared?p.clone():coarsePoint(direction,leaf.parent);
+    const range=split?LOD_MAX_DISTANCE_METERS[split.level]:
+     (!shared&&leaf.level>=2?LOD_MAX_DISTANCE_METERS[leaf.level]:0);
     morphOrigins.push(coarse.x,coarse.y,coarse.z);
     morphRanges.push(range);
     const color=terrainColor(p.length()-(RADIUS-1));
@@ -201,45 +177,10 @@ export class WorldTerrain {
   geometry.setAttribute('morphOrigin',new THREE.Float32BufferAttribute(morphOrigins,3));
   geometry.setAttribute('morphRange',new THREE.Float32BufferAttribute(morphRanges,1));
   geometry.computeVertexNormals();
-  if(this.ghost)this.finishFade();
-  const oldGeometry=this.geometry;
-  if(!force&&oldGeometry.getAttribute('position')?.count){
-   const oldMaterial=new THREE.MeshStandardMaterial({
-    color:0xffffff,vertexColors:true,roughness:1,side:THREE.DoubleSide,
-    flatShading:true,depthWrite:true
-   });
-   // Complementary fade masks: both meshes write opaque depth ahead of water.
-   this.ghostShader=null;
-   oldMaterial.onBeforeCompile=shader=>{
-    shader.uniforms.lodReveal={value:this.fadeElapsed/LOD_FADE_SECONDS};
-    shader.fragmentShader='uniform float lodReveal;\n'+shader.fragmentShader;
-    shader.fragmentShader=shader.fragmentShader.replace(
-     '#include <dithering_fragment>',
-     '#include <dithering_fragment>\nif(fract(sin(dot(gl_FragCoord.xy,vec2(12.9898,78.233)))*43758.5453) <= lodReveal) discard;'
-    );
-    this.ghostShader=shader;
-   };
-   this.ghost=new THREE.Mesh(oldGeometry,oldMaterial);
-   this.ghost.frustumCulled=false;
-   this.ghost.renderOrder=-1;
-   this.scene.add(this.ghost);
-   this.fadeElapsed=0;
-   this.fadeClock=performance.now();
-   if(this.fadeShader)this.fadeShader.uniforms.lodReveal.value=0;
-  }else oldGeometry.dispose();
+  this.geometry.dispose();
   this.geometry=geometry;
   this.mesh.geometry=geometry;
   this.leafCount=leaves.length;
   return true;
- }
- finishFade(){
-  if(!this.ghost)return;
-  this.scene.remove(this.ghost);
-  this.ghost.geometry.dispose();
-  this.ghost.material.dispose();
-  this.ghost=null;
-  this.ghostShader=null;
-  this.fadeElapsed=LOD_FADE_SECONDS;
-  if(this.fadeShader)this.fadeShader.uniforms.lodReveal.value=1;
  }
 }
