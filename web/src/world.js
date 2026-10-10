@@ -102,6 +102,11 @@ export class WorldTerrain {
   const altitude=position.length()-RADIUS;
   let changed=force;
   const leaves=[];
+  // Register each new edge vertex at the moment its parent is split.
+  // The stitcher and morpher use this SAME direction key; neighboring
+  // triangles therefore share an origin and distance factor.
+  const key=v=>[v.x,v.y,v.z].map(x=>Math.round(x*1e9)).join(',');
+  const splitEdges=new Map();
   const visit=n=>{
    const arc=RADIUS*Math.acos(THREE.MathUtils.clamp(n.center.dot(normalized),-1,1));
    // Conservative distance to triangle; prevents abrupt detail loss at edges.
@@ -115,6 +120,12 @@ export class WorldTerrain {
     }
     if(!n.split)changed=true;
     n.split=true;
+    for(const [a,b] of [[n.a,n.b],[n.b,n.c],[n.c,n.a]]){
+     const midpoint=mid(a,b),id=key(midpoint);
+     if(!splitEdges.has(id))splitEdges.set(id,{
+      a,b,level:n.level+1
+     });
+    }
     for(const child of n.children)visit(child);
    }else{
     if(n.split)changed=true;
@@ -127,7 +138,6 @@ export class WorldTerrain {
   const positions=[],colors=[],morphOrigins=[],morphRanges=[];
   // Every leaf vertex is shared through its direction, independent of LOD.
   // A coarse edge is split wherever a finer neighbor owns its midpoint.
-  const key=v=>[v.x,v.y,v.z].map(x=>Math.round(x*1e9)).join(',');
   const vertices=new Set();
   for(const n of leaves)for(const v of [n.a,n.b,n.c])vertices.add(key(v));
   const edgePoints=(a,b,depth=0)=>{
@@ -137,8 +147,9 @@ export class WorldTerrain {
    return [...edgePoints(a,midpoint,depth+1),...edgePoints(midpoint,b,depth+1)];
   };
   const radial=v=>v.clone().multiplyScalar(this.height.radius(v,RADIUS));
-  // A new subdivision begins on its parent's actual triangle plane.
-  // Its vertices slide toward the finer sampled terrain as the player approaches.
+  // Every split midpoint lerps from its actual parent EDGE chord.
+  // Stitched duplicates look up that same midpoint record, never a
+  // separate parent-face plane. This preserves mixed-LOD boundaries.
   // Collision heights remain authoritative and are never morphed.
   const coarsePoint=(direction,parent)=>{
    if(!parent)return radial(direction);
@@ -155,9 +166,17 @@ export class WorldTerrain {
    const outward=new THREE.Vector3().subVectors(B,A).cross(new THREE.Vector3().subVectors(C,A)).dot(A)>=0;
    for(const p of (outward?[A,B,C]:[A,C,B])){
     positions.push(p.x,p.y,p.z);
-    const coarse=coarsePoint(p.clone().normalize(),leaf.parent);
+    const direction=p.clone().normalize();
+    const split=splitEdges.get(key(direction));
+    // Only fan centers use a face-plane origin. Shared edge vertices
+    // always come from the split/stitch edge definition.
+    const coarse=split
+     ?radial(split.a).add(radial(split.b)).multiplyScalar(.5)
+     :coarsePoint(direction,leaf.parent);
+    const range=split?LOD_MAX_DISTANCE_METERS[split.level]:
+     (leaf.level>=2?LOD_MAX_DISTANCE_METERS[leaf.level]:0);
     morphOrigins.push(coarse.x,coarse.y,coarse.z);
-    morphRanges.push(leaf.level>=2?LOD_MAX_DISTANCE_METERS[leaf.level]:0);
+    morphRanges.push(range);
     const color=terrainColor(p.length()-(RADIUS-1));
     colors.push(color.r,color.g,color.b);
    }
