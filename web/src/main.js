@@ -216,7 +216,7 @@ function frame(now){
  if(simulationReady&&physics&&playerCollider){
   physics.movePlayer(playerCollider,playerSystem.movement(dt),10,player.clone().normalize());
  }
- playerSystem.updateView();
+ playerSystem.updateView(dt);
  // Use a wider near plane at globe altitude to restore depth-buffer precision.
  // Keep at least 1 m near at all scales and retain the full planet at far.
  const cameraAltitude=Math.max(0,camera.position.length()-RADIUS);
