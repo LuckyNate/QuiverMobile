@@ -9,8 +9,6 @@ export class PhysicsWorld {
   this.staticBodies=new Map();
   this.staticRegionCache=[];
   this.accumulator=0;
-  this.exclusion=null;
-  this.dynamicClearances=new Map();
   return this;
  }
  // Check actor regions every frame. Query occupancy only on crossing the
@@ -62,7 +60,6 @@ export class PhysicsWorld {
   const body=this.world.createBody({type:'dynamic',position:{x:position.x,y:position.y,z:position.z},rotation,
    motionLocks:{angularX:true,angularY:true,angularZ:true},linearDamping:0.5});
   body.createCapsule({height:1.1,radius:.35,density:1,friction:.8});
-  this.dynamicClearances.set(body,.9);
   return body;
  }
  movePlayer(body,direction,speed,up) {
@@ -74,40 +71,10 @@ export class PhysicsWorld {
  addDynamicBox(position,half=.3) {
   const body=this.world.createBody({type:'dynamic',position:{x:position[0],y:position[1],z:position[2]}});
   body.createBox({halfExtents:{x:half,y:half,z:half},density:1,friction:.5});
-  this.dynamicClearances.set(body,Math.sqrt(3)*half);
   return body;
- }
- // All dynamic bodies share the same heightmapped interior exclusion.
- setSolidityExclusion(height,radius){
-  this.exclusion={height,radius};
- }
- enforceSolidityExclusion(){
-  if(!this.exclusion)return;
-  const {height,radius}=this.exclusion;
-  for(const [body,clearance] of this.dynamicClearances){
-   const p=body.getPosition();
-   const distance=Math.hypot(p.x,p.y,p.z);
-   if(!Number.isFinite(distance)||distance<1e-6)continue;
-   const up={x:p.x/distance,y:p.y/distance,z:p.z/distance};
-   const surfaceRadius=height.radius(up,radius);
-   const minimum=surfaceRadius+clearance+.02;
-   if(distance>=minimum)continue;
-   body.setPosition({x:up.x*minimum,y:up.y*minimum,z:up.z*minimum});
-   const velocity=body.getLinearVelocity();
-   const inward=Math.min(0,velocity.x*up.x+velocity.y*up.y+velocity.z*up.z);
-   if(inward<0)body.setLinearVelocity({
-    x:velocity.x-inward*up.x,y:velocity.y-inward*up.y,z:velocity.z-inward*up.z
-   });
-   body.setAwake(true);
-  }
  }
  step(dt) {
   this.accumulator=Math.min(.15,this.accumulator+dt);
-  this.enforceSolidityExclusion();
-  while(this.accumulator>=1/60){
-   this.world.step(1/60,4);
-   this.enforceSolidityExclusion();
-   this.accumulator-=1/60;
-  }
+  while(this.accumulator>=1/60){this.world.step(1/60,4);this.accumulator-=1/60;}
  }
 }
