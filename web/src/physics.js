@@ -161,31 +161,29 @@ export class PhysicsWorld {
  }
  // Check actor regions every frame. Query occupancy only on crossing the
  // cached region margin, and incrementally add/remove changed Box3D proxies.
- syncStatic(solidity,queryBounds){
+ syncStatic(surface,queryBounds){
   const areas=Array.isArray(queryBounds)?queryBounds:[queryBounds];
-  const margin=1;
+  const margin=.5;
   let dirty=this.staticRegionCache.length!==areas.length;
   if(dirty)this.staticRegionCache.length=areas.length;
   for(let i=0;i<areas.length;i++){
    const area=areas[i],cached=this.staticRegionCache[i];
    if(cached&&area.min.every((v,k)=>v>=cached.bounds.min[k]&&area.max[k]<=cached.bounds.max[k]))continue;
    const bounds={min:area.min.map(v=>v-margin),max:area.max.map(v=>v+margin)};
-   this.staticRegionCache[i]={bounds,boxes:solidity.query(bounds,{kinds:['static']})};
+   this.staticRegionCache[i]={bounds,boxes:surface.query(bounds)};
    dirty=true;
   }
   if(!dirty)return;
   const wanted=new Map();
   for(const region of this.staticRegionCache)for(const entry of region.boxes)wanted.set(entry.id,entry);
-  // These cubes ARE the physics solids. Do not build a second
-  // triangular/cube-sphere ground layer from the renderer.
+  // The procedural surface provides Box3D's real contacts.
+  // Octree occupancy remains separate and never becomes a Box3D collision cube.
   for(const [id,entry] of wanted)if(!this.staticBodies.has(id)){
-   const b=entry.box;
-   const center={x:(b.min[0]+b.max[0])/2,y:(b.min[1]+b.max[1])/2,z:(b.min[2]+b.max[2])/2};
-   const halfExtents={x:(b.max[0]-b.min[0])/2,y:(b.max[1]-b.min[1])/2,z:(b.max[2]-b.min[2])/2};
-   const body=this.world.createBody({type:'static',position:center});
-   body.createBox({halfExtents,friction:.8});
+   const body=this.world.createBody({type:'static',position:{x:0,y:0,z:0}});
+   body.createHull({points:entry.points.map(([x,y,z])=>({x,y,z})),friction:.7});
    this.staticBodies.set(id,body);
   }
+  // Keep replacement support present before removing stale patches.
   for(const [id,body] of this.staticBodies)if(!wanted.has(id)){
    body.destroy();this.staticBodies.delete(id);
   }
