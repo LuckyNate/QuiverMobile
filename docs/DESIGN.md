@@ -1,4 +1,61 @@
-# QuiverGL / QuiverMobile — Design and Techniques
+# QuiverMobile — Unified Game and Engine Design
+
+QuiverMobile is **one game project**. QuiverGL is the planetary rendering, simulation, and physics technology supporting it, not a separate game. The game combines free planetary exploration, survival and crafting, camp building, deep character progression, action combat, and Metroidvania-style boss progression.
+
+This document separates **intended game design** from **currently implemented engine techniques**. A design requirement below is not a claim that its gameplay system is already implemented.
+
+## Core game experience
+
+- **Free exploration:** One continuous spherical planet, traversable between biomes without level-select transitions. Players can encounter later challenges before being equipped to beat them.
+- **Combat:** A hybrid of *Vampire Survivors*-style action combat and *World of Warcraft*-style character development: substantial combat encounters combined with deep, graduated long-term character progression. Exact targeting, ability, and input details remain to be designed.
+- **Metroidvania progression:** Capabilities and achievements unlock access to further challenges and boss fights. Discovery and travel are open even when progression gates remain.
+- **Survival, gathering, and crafting:** Players gather materials, process them through facilities, craft equipment, build camps, and prepare for more demanding biomes and combat.
+- **Persistent settlement:** Players maintain their own camps. Neighboring camps can naturally form villages without merging ownership.
+
+## Twenty biomes on the D20 planet
+
+The planet is based on an icosahedron with **20 root triangular faces, corresponding to 20 distinct biomes**. Each biome has terrain, vegetation, resources, and challenges characteristic of that environment. Scenery includes trees, bushes, grass, and other biome-appropriate environmental elements, alongside the planet's broader terrain and water systems.
+
+The biomes also form a **graduated progression sequence**. The easiest biome is **Meadows**; the next is **Black Forest**. The remaining biome names, ordering, flora, enemies, and bosses are not yet specified.
+
+### Two-resource dependency rule
+
+Each biome provides the local materials and infrastructure needed for much of its own progression, **except for two essential resources** that must be acquired through exploration outside that biome.
+
+The resource distribution advances as a chain:
+
+1. **Meadows** lacks two progression-essential resources, requiring travel to **Black Forest**.
+2. Each next biome introduces **two new materials** that were unavailable in the preceding biome.
+3. At the same time, each next biome **drops two resources that were essential in the previous biome**: those resources are not locally available there.
+4. This rolling exchange continues through the biome progression sequence, so choosing to live in any one biome never eliminates the need to visit others.
+
+“Drops” here means **ceases to provide locally**, not that the resource becomes useless or is deleted from inventories. Exact resource names, distribution, recipes, and how the final biome's dependencies close are intentionally undecided.
+
+This is a design constraint for resource placement and crafting dependencies: no biome should become self-sufficient enough to bypass inter-biome exploration.
+
+## Combat and progression
+
+Combat supports immediate action and increasingly sophisticated character growth. Long-term progression should feel graduated rather than merely increasing numerical difficulty. Exploration, equipment, resources, and player capabilities contribute to advancing through encounters and unlocking boss fights.
+
+Boss progression uses Metroidvania-style prerequisites; **a one-boss-per-biome rule has not been established**. Boss identities and specific unlock conditions remain open design questions.
+
+## Camps, cooperation, and villages
+
+- Camps are individually owned and persistent. Players can establish adjacent camps and cooperate as a village without requiring a formal party system.
+- Camp entry and use of another player's facilities are **invitation-based**; being nearby does not automatically provide access.
+- An invitation permits temporary access while the inviting owner is present. More permanent cooperation can occur through neighboring camps, without making one camp jointly owned.
+- Players may use permitted equipment such as another player's furnace to process their own materials. Owners may negotiate compensation or allow use freely.
+- Players can help defend neighboring camps and contribute wood to communal bonfires.
+- Attacking a bonfire destroys its stored fuel; protection is lost when that fuel is exhausted.
+- Settlement and raiding mechanics must respect the **no-outcamping rules**, whose exact enforcement details remain to be specified.
+
+## Implementation boundary
+
+The game design above is the intended destination. The current runtime remains an experimental planetary engine prototype. The technical implementation notes below describe its existing and historical approaches and require verification before being treated as rebuild requirements.
+
+---
+
+## QuiverGL — Existing Engine Design and Techniques
 
 **Current experimental implementation, 2026-10-09.** For the authoritative runtime values see `world.js`, `world-system.js` and `main.js`.
 
