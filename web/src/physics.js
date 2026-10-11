@@ -68,6 +68,71 @@ export class DynamicSolidBody {
   }
   throw new Error('No unoccupied spawn position for '+this.id);
  }
+ // Emergency only: if the current body is already embedded, escape in the
+ // shortest sampled direction, then add half its longest dimension of clearance.
+ panicEscape(){
+  const origin=this.getPosition();
+  if(this.terrainClear(origin))return false;
+  const length=Math.hypot(origin.x,origin.y,origin.z);
+  if(length<1e-6)throw new Error('Cannot determine escape direction at planet center');
+  const up={x:origin.x/length,y:origin.y/length,z:origin.z/length};
+  const reference=Math.abs(up.z)<.9?{x:0,y:0,z:1}:{x:0,y:1,z:0};
+  const cross=(a,b)=>({x:a.y*b.z-a.z*b.y,y:a.z*b.x-a.x*b.z,z:a.x*b.y-a.y*b.x});
+  const tangent=cross(up,reference),norm=Math.hypot(tangent.x,tangent.y,tangent.z);
+  for(const k of ['x','y','z'])tangent[k]/=norm;
+  const bitangent=cross(up,tangent);
+  const directions=[up];
+  // Search a full angular grid. Unlike a radial-only rescue this also considers
+  // lateral exits from overhangs and other nonradial occupied regions.
+  for(let ring=1;ring<=8;ring++){
+   const angle=Math.PI*ring/8;
+   for(let j=0;j<24;j++){
+    const phi=2*Math.PI*j/24,c=Math.cos(angle),t=Math.sin(angle);
+    directions.push({x:up.x*c+t*(tangent.x*Math.cos(phi)+bitangent.x*Math.sin(phi)),
+     y:up.y*c+t*(tangent.y*Math.cos(phi)+bitangent.y*Math.sin(phi)),
+     z:up.z*c+t*(tangent.z*Math.cos(phi)+bitangent.z*Math.sin(phi))});
+   }
+  }
+  const longest=this.shape==='capsule'?2*(this.size.halfHeight+this.size.radius):2*this.size.half;
+  const clearance=longest/2;
+  const point=(direction,distance)=>({
+   x:origin.x+direction.x*distance,y:origin.y+direction.y*distance,z:origin.z+direction.z*distance
+  });
+  let best=null;
+  for(const direction of directions){
+   let low=0,high=.25;
+   while(high<=65536&&!this.terrainClear(point(direction,high))){low=high;high*=2;}
+   if(high>65536)continue;
+   for(let i=0;i<20;i++){
+    const mid=(low+high)/2;
+    if(this.terrainClear(point(direction,mid)))high=mid;else low=mid;
+   }
+   const destination=point(direction,high+clearance);
+   if(!this.terrainClear(destination)||!this.pairClear(destination,this.candidates(origin,destination)))continue;
+   if(!best||high<best.distance)best={distance:high,destination};
+  }
+  if(!best)throw new Error('No clear panic escape for '+this.id);
+  this.placeAt(best.destination);
+  return true;
+ }
+ // Use the available body transform API; replace the body only if necessary.
+ placeAt(position){
+  const body=this.body,rotation=body.getRotation();
+  if(typeof body.setTransform==='function')body.setTransform(position,rotation);
+  else if(typeof body.setPosition==='function')body.setPosition(position);
+  else{
+   body.destroy();
+   const replacement=this.world.world.createBody({
+    type:'dynamic',position,rotation,
+    ...(this.shape==='capsule'?{motionLocks:{angularX:true,angularY:true,angularZ:true},linearDamping:.5}:{})
+   });
+   if(this.shape==='capsule')replacement.createCapsule({height:this.size.halfHeight*2,radius:this.size.radius,density:1,friction:.8});
+   else replacement.createBox({halfExtents:{x:this.size.half,y:this.size.half,z:this.size.half},density:1,friction:.5});
+   this.body=replacement;
+  }
+  this.body.setLinearVelocity({x:0,y:0,z:0});
+  this.body.setAwake(true);
+ }
  // Predict the swept path before stepping. Every collision candidate is
  // selected by the octree. Resolve by reducing the velocity, not by
  // allowing a body to travel through occupied space and teleporting afterward.
@@ -91,6 +156,7 @@ export class DynamicSolidBody {
  // Verify any solver motion at the step boundary. Rewind an invalid step
  // instead of accepting an overlapping position.
  validateStep(previous){
+  if(!this.terrainClear(previous))this.panicEscape();
   const now=this.getPosition();
   const candidates=this.candidates(previous,now);
   const travel=Math.hypot(now.x-previous.x,now.y-previous.y,now.z-previous.z);
@@ -103,26 +169,8 @@ export class DynamicSolidBody {
    }
   }
   if(!valid){
-   // Embind builds expose different transform APIs. If no transform setter is
-   // provided, reconstruct the same dynamic shape at its last valid position.
-   const rotation=this.body.getRotation();
-   const body=this.body;
-   if(typeof body.setTransform==='function')body.setTransform(previous,rotation);
-   else if(typeof body.setPosition==='function')body.setPosition(previous);
-   else{
-    const velocity=body.getLinearVelocity();
-    body.destroy();
-    const replacement=this.world.world.createBody({
-     type:'dynamic',position:previous,rotation,
-     motionLocks:this.shape==='capsule'?{angularX:true,angularY:true,angularZ:true}:undefined,
-     linearDamping:this.shape==='capsule'?.5:0
-    });
-    if(this.shape==='capsule')replacement.createCapsule({height:this.size.halfHeight*2,radius:this.size.radius,density:1,friction:.8});
-    else replacement.createBox({halfExtents:{x:this.size.half,y:this.size.half,z:this.size.half},density:1,friction:.5});
-    this.body=replacement;
-   }
-   this.body.setLinearVelocity({x:0,y:0,z:0});
-   this.body.setAwake(true);
+   if(this.terrainClear(previous))this.placeAt(previous);
+   else this.panicEscape();
   }
   const p=this.getPosition(),bounds=this.boundsAt(p);
   if(this.octree.get(this.id))this.octree.update(this.id,bounds);
