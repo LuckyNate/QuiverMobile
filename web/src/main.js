@@ -232,7 +232,6 @@ function frame(now){
   try{
    if(!simulationReady&&!physicsLoading)void initializePhysics();
    const up=player.clone().normalize();
-   octree.update('player',boundsAt(player,.95));
    if(simulationReady&&physics){
     // World-space radial gravity; the frame never rotates independently.
     physics.setPlanetGravity(player);
