@@ -29,7 +29,17 @@ export class DynamicSolidBody {
  }
  // Conservative full-shape terrain clearance, independent of rendered triangles.
  terrainClear(p){
-  return this.solidity.clearSphere(p,this.radius);
+  // Test the same occupied octree cubes used by Box3D, rather than
+  // independently re-sampling terrain height.
+  const r=this.radius-.025;
+  const region={min:[p.x-r,p.y-r,p.z-r],max:[p.x+r,p.y+r,p.z+r]};
+  for(const {box} of this.solidity.query(region,{kinds:['static']})){
+   const dx=Math.max(box.min[0]-p.x,0,p.x-box.max[0]);
+   const dy=Math.max(box.min[1]-p.y,0,p.y-box.max[1]);
+   const dz=Math.max(box.min[2]-p.z,0,p.z-box.max[2]);
+   if(dx*dx+dy*dy+dz*dz<r*r)return false;
+  }
+  return true;
  }
  clear(p,neighbors=this.candidates(p)){
   if(!this.terrainClear(p))return false;
@@ -151,33 +161,36 @@ export class PhysicsWorld {
  }
  // Check actor regions every frame. Query occupancy only on crossing the
  // cached region margin, and incrementally add/remove changed Box3D proxies.
- syncStatic(tree,queryBounds){
+ syncStatic(solidity,queryBounds){
   const areas=Array.isArray(queryBounds)?queryBounds:[queryBounds];
-  const margin=.5;
+  const margin=1;
   let dirty=this.staticRegionCache.length!==areas.length;
   if(dirty)this.staticRegionCache.length=areas.length;
   for(let i=0;i<areas.length;i++){
    const area=areas[i],cached=this.staticRegionCache[i];
-   const inside=cached&&area.min.every((v,k)=>v>=cached.bounds.min[k]&&area.max[k]<=cached.bounds.max[k]);
-   if(inside)continue;
+   if(cached&&area.min.every((v,k)=>v>=cached.bounds.min[k]&&area.max[k]<=cached.bounds.max[k]))continue;
    const bounds={min:area.min.map(v=>v-margin),max:area.max.map(v=>v+margin)};
-   const boxes=tree.query(bounds);
-   this.staticRegionCache[i]={bounds,boxes};
+   this.staticRegionCache[i]={bounds,boxes:solidity.query(bounds,{kinds:['static']})};
    dirty=true;
   }
   if(!dirty)return;
   const wanted=new Map();
-  for(const cached of this.staticRegionCache)for(const entry of cached.boxes)wanted.set(entry.id,entry);
+  for(const region of this.staticRegionCache)for(const entry of region.boxes)wanted.set(entry.id,entry);
+  // These cubes ARE the physics solids. Do not build a second
+  // triangular/cube-sphere ground layer from the renderer.
   for(const [id,entry] of wanted)if(!this.staticBodies.has(id)){
-   const body=this.world.createBody({type:'static',position:{x:0,y:0,z:0}});
-   body.createHull({points:entry.points.map(([x,y,z])=>({x,y,z})),friction:.7});
+   const b=entry.box;
+   const center={x:(b.min[0]+b.max[0])/2,y:(b.min[1]+b.max[1])/2,z:(b.min[2]+b.max[2])/2};
+   const halfExtents={x:(b.max[0]-b.min[0])/2,y:(b.max[1]-b.min[1])/2,z:(b.max[2]-b.min[2])/2};
+   const body=this.world.createBody({type:'static',position:center});
+   body.createBox({halfExtents,friction:.8});
    this.staticBodies.set(id,body);
   }
-  // New support always exists before any stale proxy is retired.
   for(const [id,body] of this.staticBodies)if(!wanted.has(id)){
    body.destroy();this.staticBodies.delete(id);
   }
  }
+
  up(p){
   const length=Math.hypot(p.x,p.y,p.z);
   if(length<1e-9)return {x:0,y:0,z:1};

@@ -10,6 +10,6 @@ export class WorldSystem {
   this.height=height;
   this.octree=new WorldOctree({center:[0,0,0],halfSize:16384,maxDepth:15});
   this.solidity=new ImplicitSphere(radius,{halfSize:16384,minCell:1,height});
-  this.surface=new SphereSurface(radius,{step:1,height});
+  this.surface=new SphereSurface(radius,{step:1,height}); // Visual diagnostic only; physics uses solidity.
  }
 }

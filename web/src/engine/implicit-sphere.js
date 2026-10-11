@@ -30,39 +30,47 @@ export class ImplicitSphere {
   }
   return true;
  }
+ // Lazy solid octree: interior cube first, then subdivide only the
+ // shell where solid terrain and empty space meet.
  query(box,{kinds=null}={}){
   if(kinds&&!kinds.includes('static'))return [];
-  const result=[],r2=this.radiusSquared;
-  const limit=this.radius*TERRAIN_AMPLITUDE_RATIO;
-  const outer=(this.radius+limit)**2,inner=(this.radius-limit)**2;
-  const touches=(c,h)=>c.every((v,i)=>v+h>=box.min[i]&&v-h<=box.max[i]);
-  const visit=(c,h,level,path)=>{
-   if(!touches(c,h))return;
+  const result=[];
+  const minRadius=this.radius*(1-TERRAIN_AMPLITUDE_RATIO);
+  const maxRadius=this.radius*(1+TERRAIN_AMPLITUDE_RATIO);
+  const intersects=(c,h)=>c.every((v,i)=>v+h>=box.min[i]&&v-h<=box.max[i]);
+  const visit=(c,h,path)=>{
+   if(!intersects(c,h))return;
    let nearest=0,farthest=0;
-   for(let i=0;i<3;i++){
-    const v=Math.abs(c[i]);
-    nearest+=Math.max(0,v-h)**2;
-    farthest+=(v+h)**2;
+   for(let axis=0;axis<3;axis++){
+    const a=Math.abs(c[axis]);
+    nearest+=Math.max(0,a-h)**2;
+    farthest+=(a+h)**2;
    }
-   if(nearest>(this.height?outer:r2))return;
-   if(farthest<=(this.height?inner:r2)||2*h<=this.minCell){
-    // At the boundary use the same center-occupancy rule as the old builder.
-    if(farthest>(this.height?inner:r2)){
-     const magnitude=Math.hypot(...c);
-     const direction={x:c[0]/magnitude,y:c[1]/magnitude,z:c[2]/magnitude};
-     if(magnitude>(this.height?this.height.radius(direction,this.radius):this.radius))return;
+   if(nearest>maxRadius*maxRadius)return;
+   // A whole cube fits in the guaranteed inner core: it is solid,
+   // regardless of noise. No more subdivisions are needed.
+   const inside=farthest<=minRadius*minRadius;
+   if(inside||2*h<=this.minCell){
+    if(!inside){
+     // A leaf straddling the mathematical surface is classified by
+     // its center; the octree acts as the discrete collision world.
+     const r=Math.hypot(...c);
+     const surface=r>0?(this.height?this.height.radius({
+      x:c[0]/r,y:c[1]/r,z:c[2]/r
+     },this.radius):this.radius):this.radius;
+     if(r>surface) return;
     }
     result.push({id:'solid:'+path,kind:'static',shape:'box',owner:'planet',
      box:{min:c.map(v=>v-h),max:c.map(v=>v+h)}});
     return;
    }
    const childHalf=h/2;
-   for(let bits=0;bits<8;bits++){
-    const child=c.map((v,i)=>v+((bits>>i&1)?childHalf:-childHalf));
-    visit(child,childHalf,level+1,path+bits);
+   for(let index=0;index<8;index++){
+    const child=c.map((v,i)=>v+((index>>i&1)?childHalf:-childHalf));
+    visit(child,childHalf,path+index);
    }
   };
-  visit([0,0,0],this.halfSize,0,'');
+  visit([0,0,0],this.halfSize,'');
   return result;
  }
 }

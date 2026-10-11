@@ -179,7 +179,7 @@ async function initializePhysics(){
   report('Box3D','LOADING');
   const world=await new PhysicsWorld().init();
   // The player is a dynamic capsule; the octree's AABB is only broad-phase occupancy.
-  world.syncStatic(surface,boundsAt(player,2));
+  world.syncStatic(solidity,boundsAt(player,2));
   playerCollider=world.addPlayerCapsule(player,solidity,octree,'player');
   {const p=playerCollider.getPosition();player.set(p.x,p.y,p.z);}
   // A floating spawn can be above deep water with no nearby solid surface.
@@ -202,7 +202,7 @@ async function initializePhysics(){
    mesh.position.copy(body.getPosition());
    cubes.push({id,body,mesh});
   }
-  world.syncStatic(surface,activeCollisionAreas());
+  world.syncStatic(solidity,activeCollisionAreas());
   physics=world;fallingCubes=cubes;simulationReady=true;
   loading.remove();
   report('Box3D','READY',cubes.length+' dynamic bodies sharing world octree');
@@ -259,7 +259,7 @@ function frame(now){
       });
      }
     }
-    physics.syncStatic(surface,activeCollisionAreas());
+    physics.syncStatic(solidity,activeCollisionAreas());
     physics.step(dt);
     if(playerCollider){const p=playerCollider.getPosition();player.set(p.x,p.y,p.z);}
     for(const item of fallingCubes){
