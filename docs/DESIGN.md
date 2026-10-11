@@ -39,15 +39,42 @@ Combat supports immediate action and increasingly sophisticated character growth
 
 Boss progression uses Metroidvania-style prerequisites; **a one-boss-per-biome rule has not been established**. Boss identities and specific unlock conditions remain open design questions.
 
-## Camps, cooperation, and villages
+## Cabin building and construction
 
-- Camps are individually owned and persistent. Players can establish adjacent camps and cooperate as a village without requiring a formal party system.
-- Camp entry and use of another player's facilities are **invitation-based**; being nearby does not automatically provide access.
-- An invitation permits temporary access while the inviting owner is present. More permanent cooperation can occur through neighboring camps, without making one camp jointly owned.
-- Players may use permitted equipment such as another player's furnace to process their own materials. Owners may negotiate compensation or allow use freely.
-- Players can help defend neighboring camps and contribute wood to communal bonfires.
-- Attacking a bonfire destroys its stored fuel; protection is lost when that fuel is exhausted.
-- Settlement and raiding mechanics must respect the **no-outcamping rules**, whose exact enforcement details remain to be specified.
+Cabin building is a lightweight, hands-on part of survival and settlement life. It should be **simple to start, fun to expand, and moderately layered**, without becoming a detailed carpentry simulator.
+
+- **Standard material:** Twelve-foot logs form the basic modular building unit. Stack logs to construct walls, with convenient automatic alignment and corner connections.
+- **Basic shelter:** Stack walls, fill the enclosed space with a floor, and add a roof. A small functional cabin should be quick to build.
+- **Three opening positions per wall:** Each twelve-foot wall has **left, center, and right** positions for doors or windows. Build a solid wall first; then designate a cutout using an axe. The game performs the cutting and finishes the opening automatically, rather than asking players to cut each log.
+- **Expandable construction:** Add rooms, walls, roofs, and other sections to an existing building without rebuilding from scratch.
+- **Drop-and-play options:** Place ready-made structures or sections as a convenient alternative to building log by log. Prefabs and individually placed construction should be compatible, so a prefabricated cabin can be expanded.
+- **Functional interiors:** Players can place furnishings, storage, crafting equipment, and other usable objects inside their cabins.
+- **Design priority:** Construction is forgiving and physical enough to be satisfying. Avoid manual notch-cutting, individual log trimming, excessive menus, and complex construction requirements.
+
+## Multiplayer, camps, and villages
+
+The game uses **independent players and emergent cooperation**, not a formal party mechanic.
+
+- Camps are individually owned. Players can establish nearby but separate camps, naturally forming villages without merging ownership.
+- Entry to another player's camp and use of its facilities requires an **invitation**. Visitors cannot enter simply because a camp is nearby.
+- Invitations are **temporary and owner-present**: the visitor can share facilities and resources permitted by the owner while they are there together, but the invitation does not transfer ownership or grant permanent access.
+- An invited neighbor might use another player's furnace to process gathered metal. Compensation is a matter of player choice or negotiation, rather than a mandatory service fee.
+- Players can explore, fight, trade, gather, and defend one another without joining a party.
+- Larger groups can cooperate to maintain neighboring campfires, defend their settlement, and divide gathering work. Newer villagers may contribute fuel even if they cannot build advanced facilities.
+
+### Bonfire protection and the no-outcamping rule
+
+**Bonfires are the foundation of camp maintenance and protection.** The world is hostile: enemies are widespread, genuinely safe spaces are scarce, and roaming NPC enemies attack unprotected structures on sight.
+
+- **Universal fueling:** **Any player may add fuel to any fire**, including another player's or an enemy's fire. Fueling does not require ownership, invitation, or alliance. Gathering and delivering fuel costs resources and effort.
+- **Attackable fuel:** Attacking a bonfire **destroys its stored fuel** rather than merely making it burn faster. When fuel runs out, its camp loses bonfire protection.
+- **Owner's map marker:** A burning bonfire anchors the camp to **its owner's own map**. If the fire goes out through neglect, that camp's marker disappears from the owner's map. This is a loss of navigation, not an instantaneous deletion of the building.
+- **Finding a lost camp:** The original structures remain in the physical world if they have survived. To recover a neglected camp, its owner must physically find it again and relight the fire; the map does not simply guide them back to it.
+- **Environmental consequences:** Unprotected buildings are attacked on sight by roaming NPC enemies and may be destroyed. Given the world's widespread hostility, a neglected camp is unlikely to remain intact indefinitely.
+- **No arbitrary abandonment deletion:** Camps are reclaimed by danger and loss of maintenance, **not** by an artificial inactivity countdown. An abandoned camp persists only as long as its actual structures survive.
+- **Village maintenance:** Neighbors can add fuel and defend nearby structures, allowing active communities to keep settlements alive. Even fueling a rival's bonfire is allowed if a player chooses to spend the effort.
+
+The intended **no-outcamping rule** emerges from these interconnected mechanics: camps require ongoing labor, bonfire protection, and defense; neglect removes the owner's map marker and exposes the buildings to the hostile world. No universal timer, claim-expiration menu, or permanent safety guarantee is required.
 
 ## Implementation boundary
 
