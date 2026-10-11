@@ -5,6 +5,7 @@ import {PlayerSystem} from './player.js';
 import {WorldSystem} from './world-system.js';
 import {WorldWater} from './water.js';
 import {PhysicsWorld} from './physics.js';
+import {TreeHarvestSystem} from './trees.js';
 
 const app=document.getElementById('app');
 const bootstrap=document.getElementById('bootstrap');
@@ -88,6 +89,7 @@ function shorelineSpawn(){
  return selected.multiplyScalar(height.radius(selected,RADIUS)+1.3);
 }
 player.copy(shorelineSpawn());
+const harvesting=new TreeHarvestSystem(scene,playerSystem,height,RADIUS);
 // Permanent mathematical solidity is independent of rendered terrain triangles.
 let physics=null,fallingCubes=[],playerCollider=null;
 let physicsLoading=false,simulationReady=false;
@@ -218,6 +220,7 @@ function frame(now){
   physics.movePlayer(playerCollider,playerSystem.movement(dt),10,player.clone().normalize());
  }
  playerSystem.updateView(dt);
+ harvesting.update(dt);
  // Use a wider near plane at globe altitude to restore depth-buffer precision.
  // Keep at least 1 m near at all scales and retain the full planet at far.
  const cameraAltitude=Math.max(0,camera.position.length()-RADIUS);
