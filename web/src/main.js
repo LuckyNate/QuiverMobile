@@ -177,8 +177,9 @@ async function initializePhysics(){
   report('Box3D','LOADING');
   const world=await new PhysicsWorld().init();
   // The player is a dynamic capsule; the octree's AABB is only broad-phase occupancy.
-  playerCollider=world.addPlayerCapsule(player);
   world.syncStatic(surface,boundsAt(player,2));
+  playerCollider=world.addPlayerCapsule(player,solidity,octree,'player');
+  {const p=playerCollider.getPosition();player.set(p.x,p.y,p.z);}
   // A floating spawn can be above deep water with no nearby solid surface.
   const spawnOverWater=height.radius(player.clone().normalize(),RADIUS)<water.radius;
   if(world.staticBodies.size===0&&!spawnOverWater)throw new Error('No solid terrain registered near spawn');
@@ -192,11 +193,11 @@ async function initializePhysics(){
    const position=player.clone().addScaledVector(up,4+i*.85)
     .addScaledVector(east,((i%5)-2)*1.15)
     .addScaledVector(north,(Math.floor(i/5)-1.5)*1.15);
-   const body=world.addDynamicBox(position.toArray(),.4);
+   const id='cube-'+i;
+   const body=world.addDynamicBox(position.toArray(),.4,solidity,octree,id);
    const mesh=new THREE.Mesh(geometry,material);
    mesh.position.copy(position);group.add(mesh);
-   const id='cube-'+i;
-   octree.insert(id,boundsAt(position,.4),{kind:'dynamic',owner:id});
+   mesh.position.copy(body.getPosition());
    cubes.push({id,body,mesh});
   }
   world.syncStatic(surface,activeCollisionAreas());
@@ -256,14 +257,9 @@ function frame(now){
       });
      }
     }
-    for(const item of fallingCubes){
-     const p=item.body.getPosition();
-     const v=new THREE.Vector3(p.x,p.y,p.z);
-     octree.update(item.id,boundsAt(v,.4));
-    }
     physics.syncStatic(surface,activeCollisionAreas());
     physics.step(dt);
-    if(playerCollider){const p=playerCollider.getPosition();player.set(p.x,p.y,p.z);octree.update('player',boundsAt(player,.95));}
+    if(playerCollider){const p=playerCollider.getPosition();player.set(p.x,p.y,p.z);}
     for(const item of fallingCubes){
      const p=item.body.getPosition();
      item.mesh.position.set(p.x,p.y,p.z);
@@ -271,7 +267,6 @@ function frame(now){
       const q=item.body.getRotation();
       if(q)item.mesh.quaternion.set(q.x,q.y,q.z,q.w);
      }
-     octree.update(item.id,boundsAt(item.mesh.position,.4));
     }
    }
    // Cap fine geometry while the zoom slider approaches planetary scale.
