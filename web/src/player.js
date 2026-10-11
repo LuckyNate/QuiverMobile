@@ -15,7 +15,15 @@ export class PlayerSystem {
   this.swimUp=false;this.swimDown=false;
   report('GLB player','LOADING');
   new GLTFLoader().loadAsync(import.meta.env.BASE_URL+'models/debug/player_capsule.glb')
-   .then(capsule=>{this.avatar=capsule.scene;scene.add(this.avatar);report('GLB player','READY');})
+   .then(capsule=>{this.avatar=capsule.scene;this.avatar.traverse(node=>{
+    if(!node.isMesh)return;
+    const materials=Array.isArray(node.material)?node.material:[node.material];
+    node.material=materials.map(material=>{
+     const m=material.clone();m.transparent=true;m.opacity=.15;m.depthWrite=false;return m;
+    });
+    if(!Array.isArray(node.material)||node.material.length===1)node.material=node.material[0];
+   });
+   scene.add(this.avatar);report('GLB player','READY');})
    .catch(error=>report('GLB player','FAILED',error.message));
   window.addEventListener('keydown',e=>{this.keys.add(e.key.toLowerCase());if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key.toLowerCase()))e.preventDefault();});
   window.addEventListener('keyup',e=>this.keys.delete(e.key.toLowerCase()));

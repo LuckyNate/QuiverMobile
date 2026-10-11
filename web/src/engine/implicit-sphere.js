@@ -6,6 +6,30 @@ export class ImplicitSphere {
   this.radius=radius;this.radiusSquared=radius*radius;
   this.halfSize=halfSize;this.minCell=minCell;this.height=height;
  }
+ up(p){
+  const length=Math.hypot(p.x,p.y,p.z);
+  if(length<1e-9)return {x:0,y:0,z:1};
+  return {x:p.x/length,y:p.y/length,z:p.z/length};
+ }
+ // Solid ground has one mathematical definition for spawn, motion and emergency recovery.
+ clearSphere(p,extent){
+  const d=Math.hypot(p.x,p.y,p.z);
+  if(d<=extent)return false;
+  const up=this.up(p);
+  const reference=Math.abs(up.z)<.9?{x:0,y:0,z:1}:{x:0,y:1,z:0};
+  const cross=(a,b)=>({x:a.y*b.z-a.z*b.y,y:a.z*b.x-a.x*b.z,z:a.x*b.y-a.y*b.x});
+  let right=cross(up,reference),n=Math.hypot(right.x,right.y,right.z);
+  right={x:right.x/n,y:right.y/n,z:right.z/n};
+  const forward=cross(up,right);
+  for(const [x,y] of [[0,0],[1,0],[-1,0],[0,1],[0,-1],[.707,.707],[-.707,.707],[.707,-.707],[-.707,-.707]]){
+   const sample={x:p.x+extent*(x*right.x+y*forward.x),
+    y:p.y+extent*(x*right.y+y*forward.y),
+    z:p.z+extent*(x*right.z+y*forward.z)};
+   const radius=this.height?this.height.radius(this.up(sample),this.radius):this.radius;
+   if(d-extent<radius+.02)return false;
+  }
+  return true;
+ }
  query(box,{kinds=null}={}){
   if(kinds&&!kinds.includes('static'))return [];
   const result=[],r2=this.radiusSquared;
