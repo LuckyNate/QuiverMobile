@@ -76,17 +76,28 @@ The game uses **independent players and emergent cooperation**, not a formal par
 
 The intended **no-outcamping rule** emerges from these interconnected mechanics: camps require ongoing labor, bonfire protection, and defense; neglect removes the owner's map marker and exposes the buildings to the hostile world. No universal timer, claim-expiration menu, or permanent safety guarantee is required.
 
+## Planetary volume, bedrock, cavities and water (agreed design)
+
+The planet is **not a hollow terrain shell**. It consists of a permanently FULL spherical bedrock core and a substantial surrounding solid crust. The crust can contain naturally authored or procedurally generated caves, tunnels, holes, overhangs and craters; **player digging or deformable terrain is not a committed gameplay feature**. Crust thickness and bedrock radius are configurable and remain undecided.
+
+- **Core:** An analytic solid sphere; no radial wedges to the center and no individual interior voxels required.
+- **Crust:** A genuinely occupied volume from the core to its outer terrain boundary, except where explicit cavities remove material. Full octree cells may stay coarse; fine cells localize boundary queries without becoming a blocky collision surface.
+- **Physical boundary:** The complete, fixed-resolution procedural outer terrain mesh **plus the surfaces of all holes and internal cavities** define FULL versus EMPTY. Cave walls, ceilings and floors are physical boundaries too. The rendered LOD mesh is purely graphical.
+- **Initialization:** The authoritative physical surface and topology must be established independently of visual LOD before player physics begins. Whether all triangles are materialized upfront or immutable procedural chunks are initialized and materialized on demand remains a performance/engineering decision. No gameplay may rely on temporary camera-dependent geometry for solidity.
+- **Water:** Water occupies open space supported or enclosed by **actual terrain** (including cave floors), never the abstract bedrock datum. Ocean sea level may provide a reference level, but lakes, rivers, crater pools and underground water can occupy other elevations when supported by terrain geometry. Water remains separate from FULL solid occupancy; its simulation/model is not yet decided.
+- **Terrain modification:** Caves and voids do not imply a digging mechanic; no runtime terrain-editing requirement is adopted.
+
 ## Planetary volumetric solidity and collision broad phase (agreed specification)
 
-- The **full-resolution procedural D20 terrain mesh** is the authoritative, closed boundary of the planet. Every point inside that boundary is FULL; outside it is EMPTY. Render-distance LOD must not alter that physical boundary.
+- The **full-resolution procedural D20 outer mesh together with any internal cavity surfaces and the bedrock-core volume** defines the authoritative physical planet. Material inside the crust is FULL except in defined voids; outside the planet and inside cavities is EMPTY. Render-distance LOD must not alter those boundaries.
 - A power-of-two **planet AABB** rejects outer space with one bounds test. At the current radius, the root is 32768 m on each side (half-size 16384 m), with a minimum spatial cell of 1 m and 15 subdivision levels.
-- The octree represents large FULL and EMPTY regions without subdividing them. Boundary nodes retain references to exact surface geometry; **1 m is broad-phase indexing resolution, not the collision surface or a voxelized approximation of the planet**.
+- The octree represents large FULL and EMPTY regions without subdividing them. Boundary nodes retain references to exact outer or cavity surface geometry; **1 m is broad-phase indexing resolution, not the collision surface or a voxelized approximation of the planet**.
 - Every object's complete (including swept) world-space AABB determines the 1 m cells it crosses. Only objects sharing at least one relevant cell may become pairwise physics candidates. Overlap between shapes larger than one cell must not be lost.
 - The world and its stationary objects remain spatially solid even while far away or inactive. Broad-phase filtering governs whether *collision contact checks* are needed, not whether a physical object's volume exists.
-- Box3D resolves contacts against precise collision shapes/terrain triangles, not 1 m cubes. No duplicate shell-versus-filled-cube contact geometry may be used.
-- The candidate path is **universe/planet AABB → octree/cell broad phase → exact shape or full-resolution triangle boundary → Box3D contact**. Radial planetary gravity continues to apply independently.
+- Box3D resolves contacts against precise collision shapes and outer/cavity terrain triangles, not 1 m cubes. No duplicate shell-versus-filled-cube contact geometry may be used.
+- The candidate path is **universe/planet AABB → octree/cell broad phase → exact shape or full-resolution outer/cavity triangle boundary → Box3D contact**. Radial planetary gravity continues to apply independently.
 
-**Implementation caveat (2026-10-11):** the runtime currently generates local procedural cube-sphere hull patches from the same heightfield, and the visible D20 terrain changes geometry with LOD. Local surface sampling is **not** yet the requested single immutable full-resolution D20 triangle mesh. Until that mesh is authoritative for both rendering derivation and Box3D, triangle-perfect coincidence is an open integration requirement. Do not describe current hulls as exact full-resolution D20 triangles.
+**Implementation caveat (2026-10-11):** the runtime currently generates local procedural cube-sphere hull patches from the same heightfield, and the visible D20 terrain changes geometry with LOD. The radial heightfield cannot by itself define cave interiors or overhangs. Local surface sampling is **not** yet the requested single immutable full-resolution D20 triangle mesh. Until immutable outer and cavity boundary geometry is authoritative for both rendering derivation and Box3D, triangle-perfect coincidence and cavity support are open integration requirements. Do not describe current hulls as exact full-resolution D20 triangles.
 
 ## Implementation boundary
 
@@ -119,7 +130,7 @@ When topology changes, the previous mesh briefly stays as a ghost. Complementary
 The implicit octree tests occupied static cells mathematically against a shared radial solid boundary and exposes queries without constructing a global set of cube objects. A separate local `SphereSurface` query constructs outward-facing thin Box3D hull patches near player and demo cubes. `PhysicsWorld.syncStatic` caches nearby regions and adds new support before retiring stale contact bodies. This prevents distant static geometry from becoming thousands of Box3D actors. Frame gravity points toward the planet center. The capsule uses real contact resolution, not renderer raycasts.
 
 ## Water and swimming
-The water mesh is a transparent animated sea-level icosphere; no underwater fog. Water occupies open space above submerged ground. A capsule submerged fraction controls buoyancy and radial drag; forward input and camera pitch permit diving. Ocean rendering and shore-edge masking are areas for further validation, particularly with terrain fade transitions.
+**Existing prototype behavior, not the final terrain-water design:** The water mesh is a transparent animated sea-level icosphere; no underwater fog. Water occupies open space above submerged ground. A capsule submerged fraction controls buoyancy and radial drag; forward input and camera pitch permit diving. Ocean rendering and shore-edge masking are areas for further validation, particularly with terrain fade transitions.
 
 ## Camera and globe navigation
 A player-local tangent frame is parallel transported across the spherical world to preserve heading independently of any fixed geographic pole. Camera distance follows a log-scaled vertical slider; orientation lerps from third-person chase toward outward-radial globe overhead. Movement remains player-relative at any scale. Near clipping starts at 1 m and increases at large camera altitude to improve depth precision, while planet-scale zoom caps fine terrain subdivision.
