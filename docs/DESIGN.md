@@ -39,6 +39,17 @@ This is a design constraint for resource placement and crafting dependencies: no
 
 ## Combat and progression
 
+### Shared perception and automatic combat targeting
+
+Players and NPCs perceive the world through the same basic sensory model. NPCs do not have omniscient knowledge of targets beyond what they can hear or see.
+
+- **Earshot:** A spherical hearing range. Hearing activity can alert an NPC and make it turn toward the source.
+- **Eyeshot:** A directional vision cone. A target must be within the observer's field of view to be seen.
+- **NPC behavior:** Three simple states — **Patrol**, **Alerted**, and **Attacking**. Responses to perception are specific to the enemy type; no elaborate investigation or tactical planning is required.
+- **Territories:** Enemies spawn outside one another's territories, but can wander into each other's sensory ranges and fight. Hostile enemies can attack stronger foes without evaluating their chances of winning.
+- **Player targeting:** Vampire Survivors-style automatic attacks use the shared perception system and each attack's actual reach and targeting constraints. An attack fires only when a valid target can actually be hit; it does not constantly activate against empty space.
+- **Starter difficulty:** Meadows is the introductory biome. Even its strongest enemies are very easy.
+
 Combat supports immediate action and increasingly sophisticated character growth. Long-term progression should feel graduated rather than merely increasing numerical difficulty. Exploration, equipment, resources, and player capabilities contribute to advancing through encounters and unlocking boss fights.
 
 Boss progression uses Metroidvania-style prerequisites; **a one-boss-per-biome rule has not been established**. Boss identities and specific unlock conditions remain open design questions.
