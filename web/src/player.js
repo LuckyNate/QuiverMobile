@@ -15,7 +15,12 @@ export class PlayerSystem {
   this.swimUp=false;this.swimDown=false;
   report('GLB player','LOADING');
   new GLTFLoader().loadAsync(import.meta.env.BASE_URL+'models/debug/player_capsule.glb')
-   .then(capsule=>{this.avatar=capsule.scene;this.avatar.traverse(node=>{
+   .then(capsule=>{this.avatar=capsule.scene;
+   // Align the GLB's actual bounding-box center with the physical capsule center.
+   // The former hard-coded -1.1 m shift placed the visible character underground.
+   const avatarBounds=new THREE.Box3().setFromObject(this.avatar);
+   this.avatarCenterY=(avatarBounds.min.y+avatarBounds.max.y)*.5;
+   this.avatar.traverse(node=>{
     if(!node.isMesh)return;
     const materials=Array.isArray(node.material)?node.material:[node.material];
     node.material=materials.map(material=>{
@@ -218,7 +223,7 @@ export class PlayerSystem {
   this.camera.up.copy(up.clone().lerp(aim,t).normalize());
   this.camera.lookAt(this.position.clone().addScaledVector(up,1));
   if(this.avatar){
-   this.avatar.position.copy(this.position).addScaledVector(up,-1.1);
+   this.avatar.position.copy(this.position).addScaledVector(up,-this.avatarCenterY);
    const forward=north.clone().multiplyScalar(Math.cos(this.facingYaw)).addScaledVector(east,Math.sin(this.facingYaw));
    const right=forward.clone().cross(up).normalize();
    const orientation=new THREE.Matrix4().makeBasis(right,up,forward);

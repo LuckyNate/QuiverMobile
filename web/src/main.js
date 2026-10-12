@@ -94,7 +94,7 @@ const aabbDisplay=new THREE.Group();scene.add(aabbDisplay);
 aabbDisplay.visible=false;
 function boundsAt(p,half){return {min:[p.x-half,p.y-half,p.z-half],max:[p.x+half,p.y+half,p.z+half]};}
 function activeCollisionAreas(){
- const areas=[boundsAt(player,2)];
+ const areas=[boundsAt(player,5)];
  for(const item of fallingCubes){
   const p=item.body.getPosition();
   areas.push(boundsAt(p,3));
@@ -175,7 +175,7 @@ async function initializePhysics(){
   report('Box3D','LOADING');
   const world=await new PhysicsWorld().init();
   // The player is a dynamic capsule; the octree's AABB is only broad-phase occupancy.
-  world.syncStatic(surface,boundsAt(player,2),solidity);
+  world.syncStatic(surface,boundsAt(player,5),solidity);
   playerCollider=world.addPlayerCapsule(player,solidity,octree,'player');
   {const p=playerCollider.getPosition();player.set(p.x,p.y,p.z);}
   // A Meadows start must have dry ground and registered collision support.
