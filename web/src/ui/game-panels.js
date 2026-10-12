@@ -24,7 +24,7 @@ export class GamePanels {
   let profiler=null;
   if(id==='admin'){
    profiler=document.createElement('span');
-   profiler.style.cssText='font:10px monospace;text-align:right;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;flex:1;min-width:0';
+   profiler.style.cssText='font:10px/12px monospace;text-align:right;white-space:normal;overflow-wrap:anywhere;flex:1;min-width:0';
    profiler.textContent='FPS -- | move -- collision -- physics -- LOD -- render -- frame --';
    header.append(profiler);
   }
