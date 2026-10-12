@@ -1,4 +1,5 @@
 import {TerrainHeight} from './engine/terrain-height.js';
+import {rootAddress,appendChild} from './engine/d20-address.js';
 import * as THREE from 'three';
 export const ROOT_EDGE_METERS=8192; // Current experiment, not a fixed engine limit.
 export const RADIUS=ROOT_EDGE_METERS*Math.sqrt(10+2*Math.sqrt(5))/4;
@@ -43,17 +44,17 @@ for(let i=0;i<pos.count;i+=3)roots.push([
 ]);
 base.dispose();
 const mid=(a,b)=>a.clone().add(b).normalize();
-function node(a,b,c,level,parent=null){
+function node(a,b,c,level,parent=null,address=null){
  const center=a.clone().add(b).add(c).normalize();
  const reach=RADIUS*Math.max(center.distanceTo(a),center.distanceTo(b),center.distanceTo(c));
- return {a,b,c,level,parent,center,reach,children:null,split:false};
+ return {a,b,c,level,parent,address,center,reach,children:null,split:false};
 }
 // Render-only spherical triangle hierarchy; physical surface is independent.
 // Retained nodes and split hysteresis avoid rebuilding when walking near a LOD threshold.
 export class WorldTerrain {
  constructor(scene,height=new TerrainHeight()){
   this.height=height;
-  this.roots=roots.map(([a,b,c])=>node(a,b,c,0));
+  this.roots=roots.map(([a,b,c],face)=>node(a,b,c,0,null,rootAddress(face)));
   this.geometry=new THREE.BufferGeometry();
   this.material=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:1,side:THREE.DoubleSide,flatShading:true});
   this.mesh=new THREE.Mesh(this.geometry,this.material);
@@ -96,7 +97,10 @@ export class WorldTerrain {
    if(split){
     if(!n.children){
      const ab=mid(n.a,n.b),bc=mid(n.b,n.c),ca=mid(n.c,n.a),level=n.level+1;
-     n.children=[node(n.a,ab,ca,level,n),node(ab,n.b,bc,level,n),node(ca,bc,n.c,level,n),node(ab,bc,ca,level,n)];
+     n.children=[node(n.a,ab,ca,level,n,appendChild(n.address,0)),
+      node(ab,n.b,bc,level,n,appendChild(n.address,1)),
+      node(ca,bc,n.c,level,n,appendChild(n.address,2)),
+      node(ab,bc,ca,level,n,appendChild(n.address,3))];
     }
     if(!n.split)changed=true;
     n.split=true;
