@@ -207,8 +207,8 @@ report('Box3D','WAITING','Physics initialization');
 window.addEventListener('resize',()=>panels.layout());
 // Lightweight on-device profiler. Accumulate per-frame costs and display a one-second average.
 const perfPanel=document.createElement('div');
-perfPanel.style.cssText='position:fixed;left:8px;top:58px;z-index:6;pointer-events:none;background:#000b;color:white;padding:6px;font:11px monospace;white-space:pre';
-app.append(perfPanel);
+perfPanel.style.cssText='background:#08121b;color:white;padding:10px;margin-bottom:12px;border:1px solid #526477;border-radius:5px;font:12px monospace;white-space:pre';
+panels.top.content.prepend(perfPanel);
 const perfTotals={move:0,collision:0,physics:0,lod:0,render:0,frame:0};
 let perfFrames=0,perfLast=performance.now();
 function profile(name,start){perfTotals[name]+=performance.now()-start;}
