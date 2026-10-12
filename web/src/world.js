@@ -84,7 +84,7 @@ export class WorldTerrain {
    frustum.setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse));
   }
   const visibleForDetail=n=>{
-   if(!camera||n.level===0)return true;
+   if(!camera)return true;
    // Height variation and the size of the recursive triangle expand the bound.
    const margin=n.reach+RADIUS*TERRAIN_AMPLITUDE_RATIO;
    nodeSphere.center.copy(n.center).multiplyScalar(RADIUS);
