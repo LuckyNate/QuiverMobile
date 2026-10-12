@@ -1,4 +1,4 @@
-import {TerrainHeight} from './engine/terrain-height.js';
+import {TerrainHeight,TERRAIN_AMPLITUDE_RATIO} from './engine/terrain-height.js';
 import * as THREE from 'three';
 export const ROOT_EDGE_METERS=8192; // Current experiment, not a fixed engine limit.
 export const RADIUS=ROOT_EDGE_METERS*Math.sqrt(10+2*Math.sqrt(5))/4;
@@ -67,12 +67,37 @@ export class WorldTerrain {
   this.maxDetail=MAX_LOD;
   this.update(new THREE.Vector3(0,0,RADIUS+1.3),true);
  }
- update(position,force=false,maxDetail=MAX_LOD){
+ update(position,force=false,maxDetail=MAX_LOD,camera=null){
   maxDetail=Math.max(2,Math.min(MAX_LOD,Math.floor(maxDetail)));
   if(maxDetail!==this.maxDetail){force=true;this.maxDetail=maxDetail;}
   this.morphPlayer.copy(position);
   const normalized=position.clone().normalize();
   const altitude=position.length()-RADIUS;
+  // Conservative per-node visibility only controls subdivision, never existence.
+  // Keep the 20 root faces rendered even behind the horizon or camera.
+  const frustum=camera?new THREE.Frustum():null;
+  const cameraDirection=camera?camera.position.clone().normalize():null;
+  const cameraRadius=camera?camera.position.length():0;
+  const nodeSphere=new THREE.Sphere();
+  if(camera){
+   camera.updateMatrixWorld();
+   frustum.setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse));
+  }
+  const visibleForDetail=n=>{
+   if(!camera||n.level===0)return true;
+   // Height variation and the size of the recursive triangle expand the bound.
+   const margin=n.reach+RADIUS*TERRAIN_AMPLITUDE_RATIO;
+   nodeSphere.center.copy(n.center).multiplyScalar(RADIUS);
+   nodeSphere.radius=margin;
+   if(!frustum.intersectsSphere(nodeSphere))return false;
+   // A node fully behind the planet's tangent plane cannot need detail.
+   if(cameraRadius>RADIUS*(1+TERRAIN_AMPLITUDE_RATIO)){
+    const projected=cameraDirection.dot(n.center);
+    const horizon=RADIUS*(1-TERRAIN_AMPLITUDE_RATIO)/cameraRadius;
+    if(projected+margin/RADIUS<horizon)return false;
+   }
+   return true;
+  };
   let changed=force;
   const leaves=[];
   // Register each new edge vertex at the moment its parent is split.
@@ -85,7 +110,7 @@ export class WorldTerrain {
    // Conservative distance to triangle; prevents abrupt detail loss at edges.
    const distance=Math.hypot(Math.max(0,arc-n.reach),altitude);
    const threshold=LOD_MAX_DISTANCE_METERS[n.level+1];
-   const split=n.level<maxDetail && distance<(n.split?threshold*HYSTERESIS:threshold);
+   const split=n.level<maxDetail && visibleForDetail(n) && distance<(n.split?threshold*HYSTERESIS:threshold);
    if(split){
     if(!n.children){
      const ab=mid(n.a,n.b),bc=mid(n.b,n.c),ca=mid(n.c,n.a),level=n.level+1;
