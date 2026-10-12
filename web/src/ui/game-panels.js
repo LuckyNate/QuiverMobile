@@ -61,22 +61,35 @@ export class GamePanels {
   const grid=document.createElement('div');
   grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px';
   for(const [id,label] of [['axe','Axe'],['hammer','Hammer'],['logs','4 m Logs'],['tool-1','Empty'],['tool-2','Empty'],['resource-1','Empty'],['resource-2','Empty'],['resource-3','Empty']]){
-   const slot=document.createElement('div');
+   const isTool=id==='axe'||id==='hammer';
+   const slot=document.createElement(isTool?'button':'div');
+   if(isTool){slot.type='button';slot.addEventListener('click',()=>{
+    const current=this.sharedWorld.getEquippedTool(this.playerId);
+    this.sharedWorld.setEquippedTool(this.playerId,current===id?null:id);
+    this.refreshInventory();
+   });}
    slot.style.cssText='min-height:64px;padding:8px;border:1px solid #526477;border-radius:5px;display:flex;flex-direction:column;justify-content:center;gap:4px;background:#172430';
    const name=document.createElement('strong');name.textContent=label;
    const quantity=document.createElement('span');quantity.style.fontSize='12px';
    slot.append(name,quantity);grid.append(slot);
-   this.slots.set(id,{slot,name,quantity});
+   this.slots.set(id,{slot,name,quantity,isTool});
   }
   this.bottom.content.append(heading,grid);
   this.refreshInventory();
  }
  refreshInventory(){
-  const count=this.sharedWorld.getPlayer(this.playerId)?.logs||0;
+  const count=this.sharedWorld.getInventory(this.playerId).logs||0;
+  const equipped=this.sharedWorld.getEquippedTool(this.playerId);
   for(const [id,entry] of this.slots){
+   if(entry.isTool){
+    const active=id===equipped;
+    entry.slot.style.borderColor=active?'#ffe090':'#526477';
+    entry.slot.style.background=active?'#415738':'#172430';
+    entry.slot.setAttribute('aria-pressed',String(active));
+    entry.quantity.textContent=active?'Equipped':'Tap to equip';
+   }
    if(id==='logs')entry.quantity.textContent=count+' collected';
-   else if(id==='axe')entry.quantity.textContent='Chopping tool';
-   else if(id==='hammer')entry.quantity.textContent='Building tool (planned)';
+   else if(entry.isTool)continue;
    else entry.quantity.textContent='Not acquired';
   }
  }

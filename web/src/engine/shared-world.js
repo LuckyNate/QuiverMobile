@@ -16,6 +16,17 @@ export class SharedWorld {
   }catch{}
  }
  join(id,position){this.players.set(id,{id,position,logs:this.inventories.get(id)?.logs||0});}
+ getInventory(id){return this.inventories.get(id)||{logs:0,equippedTool:null};}
+ getEquippedTool(id){return this.getInventory(id).equippedTool||null;}
+ setEquippedTool(id,tool){
+  if(!this.players.has(id)||!(tool===null||tool==='axe'||tool==='hammer'))return false;
+  const previous=this.getInventory(id);
+  if((previous.equippedTool||null)===tool)return true;
+  this.inventories.set(id,{...previous,equippedTool:tool});
+  this.events.push({version:++this.version,type:'equipment',playerId:id,tool});
+  if(this.events.length>256)this.events.shift();
+  this.save();return true;
+ }
  leave(id){this.players.delete(id);}
  getPlayer(id){return this.players.get(id);}
  updatePlayer(id,position){const p=this.players.get(id);if(p)p.position=position;}
@@ -31,7 +42,7 @@ export class SharedWorld {
   const p=this.players.get(id);
   if(!p)return false;
   p.logs=(p.logs||0)+count;
-  this.inventories.set(id,{logs:p.logs});
+  this.inventories.set(id,{...this.getInventory(id),logs:p.logs});
   this.events.push({version:++this.version,type:'log',playerId:id,count});
   if(this.events.length>256)this.events.shift();
   this.save();return true;

@@ -129,7 +129,7 @@ export class TreeHarvestSystem {
   }
   this.attackClock=Math.max(0,this.attackClock-dt);
   // Chopping remains a proximity/axe action; bumping is only impact feedback.
-  if(this.attackClock===0){
+  if(this.shared?.getEquippedTool(this.playerId)==='axe' && this.attackClock===0){
    let nearest=null,distance=2.5;
    for(const t of this.trees){
     if(t.state!=='standing')continue;
