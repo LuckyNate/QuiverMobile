@@ -39,13 +39,16 @@ try{
  renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
  if(!(renderer.getContext() instanceof WebGL2RenderingContext))throw new Error('WebGL2 is required');
  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
- renderer.setClearColor(0x0a101c);
+ renderer.setClearColor(0x87ceeb);
  report('WebGL2','READY');
 }catch(error){report('WebGL2','FAILED',error.message);renderer=null;}
 const scene=new THREE.Scene();
+// Sky-blue distance fog blends the world into the matching background at 5 km.
+scene.background=new THREE.Color(0x87ceeb);
+scene.fog=new THREE.Fog(0x87ceeb,500,5000);
 scene.add(new THREE.HemisphereLight(0xeeeeff,0x263b55,2.1));
 const sun=new THREE.DirectionalLight(0xffffff,2.0);sun.position.set(90,180,70);scene.add(sun);
-const camera=new THREE.PerspectiveCamera(55,1,1,60000);
+const camera=new THREE.PerspectiveCamera(55,1,1,5000);
 const height=new TerrainHeight(TERRAIN_SEED,RADIUS);
 let terrain=null;
 try{terrain=new WorldTerrain(scene,height);report('terrain setup','READY');}
@@ -216,7 +219,7 @@ function frame(now){
  }
  playerSystem.updateView(dt);
  harvesting.update(dt,playerCollider);
- // Fixed 1 m near clipping plane; far clipping remains 60,000 m.
+ // Fixed clipping range: 1 m near, 5,000 m far.
  water.update(scene,camera,renderer,elapsed);
  // The immutable planet is queryable immediately. Player motion never rebuilds it.
  if(octree){
