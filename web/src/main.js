@@ -20,12 +20,14 @@ function loadStatus(message){loading.textContent=message;}
 const stages=new Map();
 function report(name,state,detail=''){
  stages.set(name,{state,detail:String(detail)});
- ui.textContent=[...stages].map(([n,v])=>n+': '+v.state+(v.detail?' — '+v.detail:'')).join('\n');
+ const problems=[...stages].filter(([,v])=>v.state==='FAILED');
+ ui.textContent=problems.map(([n,v])=>n+': '+v.state+(v.detail?' — '+v.detail:'')).join('\n');
+ ui.style.display=problems.length?'block':'none';
  try{localStorage.setItem('quiver-last-stages',ui.textContent);}catch{}
 }
 window.addEventListener('error',e=>report('script','FAILED',e.message));
 window.addEventListener('unhandledrejection',e=>report('promise','FAILED',e.reason?.message||String(e.reason)));
-ui.style.cssText='position:fixed;top:8px;left:8px;z-index:3;background:#000a;padding:8px;font:12px monospace;max-width:92vw;max-height:45vh;overflow:auto;white-space:pre-wrap;pointer-events:none';
+ui.style.cssText='position:fixed;top:8px;left:8px;z-index:3;background:#000a;padding:8px;font:12px monospace;max-width:92vw;max-height:45vh;overflow:auto;white-space:pre-wrap;pointer-events:none;display:none';
 const controls=document.createElement('div');
 controls.style.cssText='position:fixed;bottom:12px;left:12px;z-index:3;display:flex;gap:8px';
 app.append(ui,controls);
