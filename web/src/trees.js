@@ -44,8 +44,8 @@ export class TreeHarvestSystem {
   const visual=new THREE.Group();tree.add(visual);
   const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.24,.31,4,8),this.trunkMaterial);
   trunk.position.y=2;
-  const foliage=new THREE.Mesh(new THREE.ConeGeometry(1.35,3.2,8),this.leafMaterial.clone());
-  foliage.position.y=4.3;
+  const foliage=new THREE.Mesh(new THREE.ConeGeometry(1.35,4.5,8),this.leafMaterial.clone());
+  foliage.position.y=2.55;
   visual.add(trunk,foliage);this.root.add(tree);
   const saved=this.shared?.getEntity(id);
   const state=saved&&saved.state!=='standing'?'collected':'standing';
@@ -89,7 +89,7 @@ export class TreeHarvestSystem {
   }
   return true;
  }
- // Solid standing trunks provide an impulse without causing an axe hit.
+ // Touching a standing trunk or branch pushes back; with the axe equipped, impact chops.
  bump(body,dt){
   if(!body)return;
   const position=body.getPosition(),velocity=body.getLinearVelocity();
@@ -99,10 +99,14 @@ export class TreeHarvestSystem {
    t.bumpCooldown=Math.max(0,t.bumpCooldown-dt);
    const up=t.at.clone().normalize(),relative=p.clone().sub(t.at);
    const elevation=relative.dot(up);
-   if(elevation<-.5||elevation>4.5)continue;
+   if(elevation<-.5||elevation>4.8)continue;
    const lateral=relative.addScaledVector(up,-elevation);
    const distance=lateral.length();
-   if(distance>=.66||distance<.0001||t.bumpCooldown>0)continue;
+   // Foliage cone extends from 0.3m to 4.8m, and trunk to 4m.
+   const canopyRadius=elevation>=.3&&elevation<=4.8
+    ?1.35*(4.8-elevation)/4.5:0;
+   const contactRadius=Math.max(elevation<=4?.66:0,canopyRadius+.35);
+   if(distance>=contactRadius||distance<.0001||t.bumpCooldown>0)continue;
    const normal=lateral.divideScalar(distance);
    const toward=velocity.x*normal.x+velocity.y*normal.y+velocity.z*normal.z;
    if(toward>=0)continue;
@@ -112,6 +116,10 @@ export class TreeHarvestSystem {
    body.setAwake(true);
    body.knockback={x:normal.x*kick,y:normal.y*kick,z:normal.z*kick,remaining:.22};
    t.bumpCooldown=.25;
+   if(this.shared?.getEquippedTool(this.playerId)==='axe'&&this.attackClock===0){
+    this.attackClock=.6;this.player.showAnimation('Axe Attack');
+    if(++t.hits>=2)this.fell(t,this.playerId);
+   }
   }
  }
  fell(t,harvesterId){
@@ -128,19 +136,6 @@ export class TreeHarvestSystem {
    if(t.state==='flying')t.trunk.visible=withinSceneryRange(t.trunk.position,this.player.position);
   }
   this.attackClock=Math.max(0,this.attackClock-dt);
-  // Chopping remains a proximity/axe action; bumping is only impact feedback.
-  if(this.shared?.getEquippedTool(this.playerId)==='axe' && this.attackClock===0){
-   let nearest=null,distance=2.5;
-   for(const t of this.trees){
-    if(t.state!=='standing')continue;
-    const d=t.at.distanceTo(this.player.position);
-    if(d<distance){nearest=t;distance=d;}
-   }
-   if(nearest){
-    this.attackClock=.6;this.player.showAnimation('Axe Attack');
-    if(++nearest.hits>=2)this.fell(nearest,this.playerId);
-   }
-  }
   this.bump(body,dt);
   for(const t of this.trees){
    if(t.state==='falling'){
