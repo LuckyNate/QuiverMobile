@@ -151,7 +151,7 @@ export class PhysicsWorld {
  // cached region margin, and incrementally add/remove changed Box3D proxies.
  syncStatic(surface,queryBounds,solidity=null){
   const areas=Array.isArray(queryBounds)?queryBounds:[queryBounds];
-  const margin=.5;
+  const margin=2; // Retain support across several meters of player travel.
   let dirty=this.staticRegionCache.length!==areas.length;
   if(dirty)this.staticRegionCache.length=areas.length;
   for(let i=0;i<areas.length;i++){
