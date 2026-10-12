@@ -31,7 +31,9 @@ export class DynamicSolidBody {
  terrainClear(p){
   // Octree voxels accelerate lookup; never treat their centers as a
   // substitute for the full-resolution procedural solid boundary.
-  return this.shape==='capsule'\n   ?this.solidity.clearCapsule(p,this.size.halfHeight,this.size.radius)\n   :this.solidity.clearSphere(p,this.radius);
+  return this.shape==='capsule'
+   ?this.solidity.clearCapsule(p,this.size.halfHeight,this.size.radius)
+   :this.solidity.clearSphere(p,this.radius);
  }
  clear(p,neighbors=this.candidates(p)){
   if(!this.terrainClear(p))return false;
@@ -58,28 +60,17 @@ export class DynamicSolidBody {
   if(this.octree.get(this.id))this.octree.update(this.id,bounds);
   else this.octree.insert(this.id,bounds,{kind:this.shape==='capsule'?'player':'dynamic',owner:this.id});
  }
- // Normal movement never teleports: only feasible displacement is passed
- // to Box3D. Iterate short segments to avoid tunneling at high speed.
+ // Dynamic actors retain swept checks. The player uses slope-following
+ // velocity and Box3D contacts rather than treating touching ground as a wall.
  constrainVelocity(dt){
+  if(this.shape==='capsule')return;
   const p=this.getPosition(),v=this.getLinearVelocity();
   const goal={x:p.x+v.x*dt,y:p.y+v.y*dt,z:p.z+v.z*dt};
   const neighbors=this.candidates(p,goal);
   const steps=Math.max(1,Math.ceil(Math.hypot(v.x,v.y,v.z)*dt/.15));
-  let fraction=1;
   for(let i=1;i<=steps;i++){
    const t=i/steps,at={x:p.x+(goal.x-p.x)*t,y:p.y+(goal.y-p.y)*t,z:p.z+(goal.z-p.z)*t};
-   if(!this.clear(at,neighbors)){fraction=(i-1)/steps;break;}
-  }
-  if(fraction<1){
-   const up=this.world.up(p);
-   const radial=v.x*up.x+v.y*up.y+v.z*up.z;
-   const inward=Math.min(0,radial);
-   // Preserve tangential movement for sliding; eliminate inward velocity
-   // when terrain blocks it. Dynamic obstacles constrain the full step.
-   if(!this.terrainClear(goal))this.body.setLinearVelocity({
-    x:v.x-up.x*inward,y:v.y-up.y*inward,z:v.z-up.z*inward
-   });
-   else this.body.setLinearVelocity({x:v.x*fraction,y:v.y*fraction,z:v.z*fraction});
+   if(!this.clear(at,neighbors)){this.body.setLinearVelocity({x:0,y:0,z:0});break;}
   }
  }
  // Position correction is not normal physics. Only use in an emergency.
@@ -130,6 +121,11 @@ export class DynamicSolidBody {
  }
  validateStep(previous){
   const now=this.getPosition();
+  if(this.shape==='capsule'){
+   // The contact solver may have slight overlap at rest. Avoid teleporting
+   // the player back downhill every time an uphill contact is registered.
+   this.register();return;
+  }
   if(!this.clear(now)){
    // If Box3D moved the actor illegally, use its previous legal pose.
    if(this.clear(previous))this.placeAt(previous);
@@ -219,8 +215,37 @@ export class PhysicsWorld {
  }
  movePlayer(body,direction,speed,up) {
   const velocity=body.getLinearVelocity();
+  const p=body.getPosition();
+  // Follow the deterministic ground elevation ahead of the player.
+  // Ground normal is calculated from the local terrain-height gradient.
+  const tangent={x:direction.x-up.x*(direction.x*up.x+direction.y*up.y+direction.z*up.z),
+   y:direction.y-up.y*(direction.x*up.x+direction.y*up.y+direction.z*up.z),
+   z:direction.z-up.z*(direction.x*up.x+direction.y*up.y+direction.z*up.z)};
+  const magnitude=Math.hypot(tangent.x,tangent.y,tangent.z);
   const radial=velocity.x*up.x+velocity.y*up.y+velocity.z*up.z;
-  body.setLinearVelocity({x:direction.x*speed+up.x*radial,y:direction.y*speed+up.y*radial,z:direction.z*speed+up.z*radial});
+  if(magnitude<.001){
+   body.setLinearVelocity({x:up.x*radial,y:up.y*radial,z:up.z*radial});return;
+  }
+  const dir={x:tangent.x/magnitude,y:tangent.y/magnitude,z:tangent.z/magnitude};
+  const step=.5;
+  const forward={x:p.x+dir.x*step,y:p.y+dir.y*step,z:p.z+dir.z*step};
+  const backward={x:p.x-dir.x*step,y:p.y-dir.y*step,z:p.z-dir.z*step};
+  const groundAt=q=>{
+   const length=Math.hypot(q.x,q.y,q.z);
+   const n={x:q.x/length,y:q.y/length,z:q.z/length};
+   return body.solidity.height?body.solidity.height.radius(n,body.solidity.radius):body.solidity.radius;
+  };
+  const slope=(groundAt(forward)-groundAt(backward))/(step*2);
+  const currentGround=groundAt(p),foot=Math.hypot(p.x,p.y,p.z)-(body.size.halfHeight+body.size.radius);
+  const grounded=foot-currentGround<.4;
+  const maxSlope=1; // 45 degrees; steeper terrain is non-walkable.
+  const uphill=grounded&&slope>0&&slope<=maxSlope?slope*speed*magnitude:0;
+  const horizontal=grounded&&slope>maxSlope?0:speed*magnitude;
+  body.setLinearVelocity({
+   x:dir.x*horizontal+up.x*(grounded?Math.max(radial,uphill):radial),
+   y:dir.y*horizontal+up.y*(grounded?Math.max(radial,uphill):radial),
+   z:dir.z*horizontal+up.z*(grounded?Math.max(radial,uphill):radial)
+  });
   body.setAwake(true);
  }
  addDynamicBox(position,half=.3,solidity,octree,id) {
@@ -238,7 +263,7 @@ export class PhysicsWorld {
   while(this.accumulator>=1/60){
    const before=this.dynamicObjects.map(object=>object.getPosition());
    for(const object of this.dynamicObjects){
-    if(!object.clear(object.getPosition()))object.panicEscape();
+    if(object.shape!=='capsule'&&!object.clear(object.getPosition()))object.panicEscape();
     object.constrainVelocity(1/60);
    }
    this.world.step(1/60,4);
