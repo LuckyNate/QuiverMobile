@@ -213,8 +213,10 @@ export class PhysicsWorld {
   object.register();
   return object;
  }
- movePlayer(body,direction,speed,up) {
+ movePlayer(body,direction,speed,up,dt=1/60) {
   const velocity=body.getLinearVelocity();
+  const knock=body.knockback;
+  if(knock){knock.remaining=Math.max(0,knock.remaining-dt);if(knock.remaining===0)body.knockback=null;}
   const p=body.getPosition();
   // Follow the deterministic ground elevation ahead of the player.
   // Ground normal is calculated from the local terrain-height gradient.
@@ -241,10 +243,11 @@ export class PhysicsWorld {
   const maxSlope=1; // 45 degrees; steeper terrain is non-walkable.
   const uphill=grounded&&slope>0&&slope<=maxSlope?slope*speed*magnitude:0;
   const horizontal=grounded&&slope>maxSlope?0:speed*magnitude;
+  const kick=knock?knock.remaining/.22:0;
   body.setLinearVelocity({
-   x:dir.x*horizontal+up.x*(grounded?Math.max(radial,uphill):radial),
-   y:dir.y*horizontal+up.y*(grounded?Math.max(radial,uphill):radial),
-   z:dir.z*horizontal+up.z*(grounded?Math.max(radial,uphill):radial)
+   x:dir.x*horizontal+up.x*(grounded?Math.max(radial,uphill):radial)+(knock?.x||0)*kick,
+   y:dir.y*horizontal+up.y*(grounded?Math.max(radial,uphill):radial)+(knock?.y||0)*kick,
+   z:dir.z*horizontal+up.z*(grounded?Math.max(radial,uphill):radial)+(knock?.z||0)*kick
   });
   body.setAwake(true);
  }

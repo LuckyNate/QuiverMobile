@@ -11,9 +11,8 @@ export class TreeHarvestSystem {
   const reference=Math.abs(this.origin.z)<.9?new THREE.Vector3(0,0,1):new THREE.Vector3(0,1,0);
   this.east=new THREE.Vector3().crossVectors(this.origin,reference).normalize();
   this.north=new THREE.Vector3().crossVectors(this.east,this.origin).normalize();
-  this.chunks=[0,1,2,3];
+  this.chunks=[0,1,2,3];this.nextSerial=new Map(this.chunks.map(chunk=>[chunk,256]));
   this.population=new BiomePopulation({biomeId:0,childCount:4,targets:{trees:18},tolerances:{trees:2}});
-  this.root.add(new THREE.AxesHelper(0)); // No visible debug axes.
   this.trunkMaterial=new THREE.MeshStandardMaterial({color:0x705038,roughness:1});
   this.leafMaterial=new THREE.MeshStandardMaterial({color:0x315934,roughness:1,transparent:true});
   this.woodLabel=document.createElement('div');
@@ -48,7 +47,7 @@ export class TreeHarvestSystem {
   foliage.position.y=4.3;
   visual.add(trunk,foliage);this.root.add(tree);
   const saved=this.shared?.getEntity(id);
-  const state=saved?.state==='collected'?'collected':'standing';
+  const state=saved&&saved.state!=='standing'?'collected':'standing';
   tree.visible=state==='standing';
   const entry={id,chunk,serial,tree,visual,trunk,foliage,at:position,state,hits:0,progress:0,ownerId:null,respawnTime:0,bumpCooldown:0};
   this.trees.push(entry);
@@ -64,6 +63,13 @@ export class TreeHarvestSystem {
     }
     serial++;
    }
+  }
+  // Restore previously respawned instances from the world owner's save.
+  for(const [id,saved] of this.shared?.entities||[]){
+   if(!id.startsWith('meadows:tree:')||saved.state!=='standing'||saved.serial<256||!saved.position)continue;
+   if(this.trees.some(t=>t.id===id))continue;
+   this.makeTree(saved.chunk,saved.serial,new THREE.Vector3(...saved.position));
+   this.nextSerial.set(saved.chunk,Math.max(this.nextSerial.get(saved.chunk)||256,saved.serial+1));
   }
  }
  hiddenFromPlayers(at){
@@ -102,7 +108,9 @@ export class TreeHarvestSystem {
    const kick=Math.min(2,Math.max(.4,-toward*.35));
    body.setLinearVelocity({x:velocity.x+normal.x*(-toward+kick),
     y:velocity.y+normal.y*(-toward+kick),z:velocity.z+normal.z*(-toward+kick)});
-   body.setAwake(true);t.bumpCooldown=.25;
+   body.setAwake(true);
+   body.knockback={x:normal.x*kick,y:normal.y*kick,z:normal.z*kick,remaining:.22};
+   t.bumpCooldown=.25;
   }
  }
  fell(t,harvesterId){
@@ -166,13 +174,14 @@ export class TreeHarvestSystem {
    const retired=this.trees.find(t=>t.chunk===chunk&&t.state==='collected'&&t.respawnTime===0);
    if(!retired)continue;
    for(let trial=0;trial<32;trial++){
-    const serial=retired.serial+256*(trial+1)+Math.floor(this.hash(Date.now()+trial)*128);
+    const serial=(this.nextSerial.get(chunk)||256)+trial;
     const at=this.location(chunk,serial);
     if(!at||!this.hiddenFromPlayers(at))continue;
     if(this.trees.some(t=>t.state!=='collected'&&t.at.distanceTo(at)<3))continue;
     // A harvested tree is never regenerated at its old location.
     this.makeTree(chunk,serial,at);
-    this.shared?.setEntity(retired.id,{state:'collected',chunk,serial:retired.serial});
+    this.nextSerial.set(chunk,serial+1);
+    this.shared?.setEntity('meadows:tree:'+chunk+':'+serial,{state:'standing',chunk,serial,position:at.toArray()});
     break;
    }
   }

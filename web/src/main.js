@@ -202,7 +202,7 @@ function frame(now){
  const dt=Math.min(.05,(now-last)/1000);last=now;elapsed+=dt;frames++;
  if(innerWidth!==resizeW||innerHeight!==resizeH){resizeW=innerWidth;resizeH=innerHeight;renderer.setSize(resizeW,resizeH,false);camera.aspect=resizeW/resizeH;camera.updateProjectionMatrix();}
  if(simulationReady&&physics&&playerCollider){
-  physics.movePlayer(playerCollider,playerSystem.movement(dt),10,player.clone().normalize());
+  physics.movePlayer(playerCollider,playerSystem.movement(dt),10,player.clone().normalize(),dt);
  }
  playerSystem.updateView(dt);
  harvesting.update(dt,playerCollider);
