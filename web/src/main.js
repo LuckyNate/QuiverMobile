@@ -49,6 +49,7 @@ try{terrain=new WorldTerrain(scene,height);report('terrain setup','READY');}
 catch(error){report('terrain setup','FAILED',error.message);}
 const water=new WorldWater(scene,RADIUS);
 const playerSystem=new PlayerSystem(scene,camera,canvas,RADIUS,report);
+playerSystem.setCameraCollision(height,RADIUS);
 const player=playerSystem.position;
 // Select a deterministic dry, gently sloped Meadows starting location.
 // Sample the surrounding capsule footprint, not just the center point.

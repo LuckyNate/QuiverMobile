@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {PlayerControls} from './player-controls.js';
 import {PlayerAvatar} from './player-avatar.js';
+import {CameraCollision} from './engine/camera-collision.js';
 
 // GTA-style third-person navigation adapted to radial planetary gravity.
 // Physics in main.js remains the sole authority for world-space position.
@@ -13,7 +14,9 @@ export class PlayerSystem {
   this.frameUp=null;this.forward=null;
   this.heading=0;this.cameraHeading=0;this.cameraPitch=.22;
   this.viewZoom=8;this.cameraPosition=null;this.lastTurn=0;
+  this.cameraCollision=null;
  }
+ setCameraCollision(height,radius){this.cameraCollision=new CameraCollision(height,radius);}
  basis(){
   const up=this.position.clone().normalize();
   if(!this.frameUp){
@@ -67,8 +70,16 @@ export class PlayerSystem {
    .addScaledVector(cameraForward,-Math.cos(this.cameraPitch)*distance);
   const overhead=focus.clone().addScaledVector(up,distance);
   const desired=chase.lerp(overhead,globalZoom);
-  if(!this.cameraPosition)this.cameraPosition=desired.clone();
-  else this.cameraPosition.lerp(desired,alpha);
+  // Immediately shorten on obstruction, slowly extend when the view clears.
+  const clearGoal=this.cameraCollision?this.cameraCollision.resolve(focus,desired):desired;
+  if(!this.cameraPosition)this.cameraPosition=clearGoal.clone();
+  else {
+   const currentDistance=this.cameraPosition.distanceTo(focus);
+   const wantedDistance=clearGoal.distanceTo(focus);
+   this.cameraPosition.lerp(clearGoal,wantedDistance<currentDistance?1:alpha);
+   // Smoothing must never push the camera into intervening ground.
+   if(this.cameraCollision)this.cameraPosition.copy(this.cameraCollision.resolve(focus,this.cameraPosition));
+  }
   this.camera.position.copy(this.cameraPosition);
   this.camera.up.copy(up);
   this.camera.lookAt(focus);
