@@ -39,9 +39,10 @@ export class TerrainHeight {
   const plains=.0005*r*this.noise(x*38,y*38,z*38);
   const hills=.018*r*foothill*this.noise(x*27,y*27,z*27);
   const ridge=.009*r*mountain*(1-Math.abs(this.noise(x*85,y*85,z*85)));
-  const detail=.003*r*highland*this.noise(x*190,y*190,z*190);
+  // Retain broad terrain while reducing high-frequency walking-scale roughness.
+  const detail=.001*r*highland*this.noise(x*190,y*190,z*190);
   const crevice=-.006*r*mountain*Math.pow(1-Math.abs(this.noise(x*130,y*130,z*130)),8);
-  const surface=.0006*r*this.noise(x*650,y*650,z*650);
+  const surface=.0001*r*this.noise(x*650,y*650,z*650);
   return broad+plains+hills+ridge+detail+crevice+surface;
  }
  radius(direction,baseRadius){return baseRadius+this.height(direction);}
