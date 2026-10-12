@@ -7,6 +7,7 @@ import {WorldWater} from './water.js';
 import {PhysicsWorld} from './physics.js';
 import {TreeHarvestSystem} from './trees.js';
 import {SharedWorld} from './engine/shared-world.js';
+import {GamePanels} from './ui/game-panels.js';
 
 const app=document.getElementById('app');
 const bootstrap=document.getElementById('bootstrap');
@@ -91,6 +92,8 @@ player.copy(meadowsSpawn());
 const sharedWorld=new SharedWorld({ownerId:'local-owner',seed:TERRAIN_SEED});
 sharedWorld.join('local-owner',player);
 const harvesting=new TreeHarvestSystem(scene,playerSystem,height,RADIUS,{shared:sharedWorld,playerId:'local-owner',camera});
+const panels=new GamePanels({app,canvas,controls:playerSystem.controls,sharedWorld,playerId:'local-owner'});
+let lastLogCount=-1;
 report('starter biome','READY','Meadows (other biomes unpopulated)');
 // Permanent mathematical solidity is independent of rendered terrain triangles.
 let physics=null,fallingCubes=[],playerCollider=null;
@@ -198,12 +201,16 @@ async function initializePhysics(){
 }
 report('octree solidity','READY','Implicit planet');
 report('Box3D','WAITING','Physics initialization');
+window.addEventListener('resize',()=>panels.layout());
 let last=performance.now(),elapsed=0,frames=0,lastTerrain=0,resizeW=0,resizeH=0;
 function frame(now){
  requestAnimationFrame(frame);
  try{
  const dt=Math.min(.05,(now-last)/1000);last=now;elapsed+=dt;frames++;
- if(innerWidth!==resizeW||innerHeight!==resizeH){resizeW=innerWidth;resizeH=innerHeight;renderer.setSize(resizeW,resizeH,false);camera.aspect=resizeW/resizeH;camera.updateProjectionMatrix();}
+ const logs=sharedWorld.getPlayer('local-owner')?.logs||0;
+ if(logs!==lastLogCount){panels.refreshInventory();lastLogCount=logs;}
+ const viewWidth=canvas.clientWidth,viewHeight=canvas.clientHeight;
+ if(viewWidth!==resizeW||viewHeight!==resizeH){resizeW=viewWidth;resizeH=viewHeight;renderer.setSize(resizeW,resizeH,false);camera.aspect=resizeW/Math.max(1,resizeH);camera.updateProjectionMatrix();}
  if(simulationReady&&physics&&playerCollider){
   physics.movePlayer(playerCollider,playerSystem.movement(dt),10,player.clone().normalize(),dt);
  }

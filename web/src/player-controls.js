@@ -7,7 +7,7 @@ export class PlayerControls {
   this.moveId=null;this.lookId=null;this.mode='one';
   this.x=0;this.y=0;this.lookDX=0;this.lookDY=0;
   this.swimUp=false;this.swimDown=false;this.zoom=8;
-  this.onKeyDown=e=>{const key=e.key.toLowerCase();this.keys.add(key);if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(key))e.preventDefault();};
+  this.onKeyDown=e=>{if(e.target?.matches?.('input,textarea,[contenteditable]'))return;const key=e.key.toLowerCase();this.keys.add(key);if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(key))e.preventDefault();};
   this.onKeyUp=e=>this.keys.delete(e.key.toLowerCase());
   window.addEventListener('keydown',this.onKeyDown);
   window.addEventListener('keyup',this.onKeyUp);

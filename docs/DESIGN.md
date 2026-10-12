@@ -4,6 +4,10 @@ QuiverMobile is **one game project**. QuiverGL is the planetary rendering, simul
 
 This document separates **intended game design** from **currently implemented engine techniques**. A design requirement below is not a claim that its gameplay system is already implemented.
 
+## Gameplay interface — fixed inventory and owner console
+
+Two matching collapsible panels reserve a narrow strip at the top and bottom of the screen. The top **Admin** panel expands downward to half-screen with a registered-command console. Only the world owner may execute commands; new commands register through explicit handlers, never arbitrary evaluation. The bottom **Inventory** panel expands upward to half-screen with predetermined item slots (axe, hammer, 4-meter logs and reserved future items). Only one panel may expand at once. The gameplay canvas resizes to the unobstructed middle region; movement controls and zoom follow the remaining viewport. The inventory is the shared interface for equipment and contextual tools, not separate build/craft menus. This first iteration supplies UI infrastructure and an owner-console help/clear command; it does not implement the future building actions or networking permissions.
+
 ## Core game experience
 
 - **Free exploration:** One continuous spherical planet, traversable between biomes without level-select transitions. Players can encounter later challenges before being equipped to beat them.
