@@ -266,10 +266,8 @@ function frame(now){
      }
     }
    }
-   // Cap fine geometry while the zoom slider approaches planetary scale.
-   const zoom=playerSystem.viewZoom;
-   const maxDetail=zoom>=5000?3:zoom>=1500?5:zoom>=500?8:terrain.maxDetailLevel;
-   terrain.update(player,false,maxDetail,camera);
+   // Terrain detail follows the capsule, independent of camera and zoom.
+   terrain.update(player);
    if(greenSurface.visible)drawSurface(boundsAt(player,3));
   }catch(error){report('Box3D','FAILED',error.message);physics=null;}
  }
