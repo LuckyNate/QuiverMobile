@@ -206,16 +206,19 @@ report('octree solidity','READY','Implicit planet');
 report('Box3D','WAITING','Physics initialization');
 window.addEventListener('resize',()=>panels.layout());
 // Lightweight on-device profiler. Accumulate per-frame costs and display a one-second average.
-const perfPanel=document.createElement('div');
-perfPanel.style.cssText='background:#08121b;color:white;padding:10px;margin-bottom:12px;border:1px solid #526477;border-radius:5px;font:12px monospace;white-space:pre';
+const perfPanel=document.createElement('pre');
+perfPanel.setAttribute('aria-label','Performance profiler');
+perfPanel.style.cssText='display:block;margin:0 0 12px;padding:10px;background:#08121b;color:#fff;border:1px solid #526477;border-radius:5px;font:12px monospace;white-space:pre-wrap;overflow-wrap:anywhere';
+perfPanel.textContent='PERFORMANCE PROFILER\nCollecting frame timings...';
 panels.top.content.prepend(perfPanel);
 const perfTotals={move:0,collision:0,physics:0,lod:0,render:0,frame:0};
 let perfFrames=0,perfLast=performance.now();
 function profile(name,start){perfTotals[name]+=performance.now()-start;}
-function showProfile(now){
+function showProfile(){
+ const now=performance.now();
  if(now-perfLast<1000)return;
  const divisor=Math.max(1,perfFrames);
- perfPanel.textContent='ms/frame ('+perfFrames+' fps)\n'
+ perfPanel.textContent='PERFORMANCE PROFILER\nms/frame ('+perfFrames+' fps)\n'
   +Object.entries(perfTotals).map(([name,total])=>name+': '+(total/divisor).toFixed(2)).join('\n');
  for(const name in perfTotals)perfTotals[name]=0;
  perfFrames=0;perfLast=now;
@@ -297,7 +300,7 @@ function frame(now){
  }
  }catch(error){report('frame logic','FAILED',error.message);}
  profile('frame',perfFrameStart);
- showProfile(now);
+ showProfile();
 
 }
 report('frame loop','RUNNING');
