@@ -2,87 +2,87 @@ import * as THREE from 'three';
 import {PlayerControls} from './player-controls.js';
 import {PlayerAvatar} from './player-avatar.js';
 
-// Player position is written by the physics engine in main.js.
-// This adapter supplies controls, tangent-frame navigation and a following view.
+// GTA-style third-person navigation adapted to radial planetary gravity.
+// Physics in main.js remains the sole authority for world-space position.
 export class PlayerSystem {
  constructor(scene,camera,canvas,radius,report){
-  this.scene=scene;this.camera=camera;
-  this.position=new THREE.Vector3(0,0,radius+1.3);
+  this.position=new THREE.Vector3(0,0,radius+2);
+  this.camera=camera;
   this.controls=new PlayerControls(canvas);
   this.visual=new PlayerAvatar(scene,report);
-  this.facingYaw=0;this.cameraYaw=0;this.cameraPitch=.35;
-  this.frameUp=null;this.frameForward=null;this.cameraTarget=null;
-  this.viewZoom=8;this.lastTurn=0;
+  this.frameUp=null;this.forward=null;
+  this.heading=0;this.cameraHeading=0;this.cameraPitch=.22;
+  this.viewZoom=8;this.cameraPosition=null;this.lastTurn=0;
  }
  basis(){
   const up=this.position.clone().normalize();
   if(!this.frameUp){
-   const reference=Math.abs(up.y)<.9?new THREE.Vector3(0,1,0):new THREE.Vector3(0,0,1);
-   this.frameForward=reference.addScaledVector(up,-reference.dot(up)).normalize();
+   const ref=Math.abs(up.y)<.9?new THREE.Vector3(0,1,0):new THREE.Vector3(0,0,1);
+   this.forward=ref.addScaledVector(up,-ref.dot(up)).normalize();
   }else{
-   const transport=new THREE.Quaternion().setFromUnitVectors(this.frameUp,up);
-   this.frameForward.applyQuaternion(transport);
-   this.frameForward.addScaledVector(up,-this.frameForward.dot(up)).normalize();
+   this.forward.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(this.frameUp,up));
+   this.forward.addScaledVector(up,-this.forward.dot(up)).normalize();
   }
-  this.frameUp=up;
-  const north=this.frameForward.clone();
-  const east=new THREE.Vector3().crossVectors(north,up).normalize();
-  return {up,north,east};
+  this.frameUp=up.clone();
+  return {up,north:this.forward.clone(),east:new THREE.Vector3().crossVectors(this.forward,up).normalize()};
  }
+ // GTA-like movement: stick direction is relative to the orbit camera,
+ // character turns smoothly into travel direction instead of tank steering.
  movement(dt){
-  const {north,east}=this.basis();
-  const {x,y}=this.controls.axes();
-  const two=this.controls.mode==='two';
-  let turn=0;
-  if(!two){turn=x;this.facingYaw+=turn*2.2*dt;}
-  else{
-   const difference=THREE.MathUtils.euclideanModulo(this.cameraYaw-this.facingYaw+Math.PI,2*Math.PI)-Math.PI;
-   turn=THREE.MathUtils.clamp(difference/(2.2*Math.max(dt,.001)),-1,1);
-   this.facingYaw+=difference*(1-Math.exp(-12*dt));
-  }
-  this.lastTurn=turn;
-  if(Math.abs(y)+(two?Math.abs(x):0)<.12)
-   this.showAnimation(Math.abs(turn)>.18?(turn<0?'Turn Left':'Turn Right'):'Idle');
-  else this.showAnimation('Walking ('+(two?(y<0?'Back':Math.abs(x)>Math.abs(y)?x<0?'Left':'Right':'Forward'):turn<-.3?'Left':turn>.3?'Right':y<0?'Back':'Forward')+')');
-  const facing=north.clone().multiplyScalar(Math.cos(this.facingYaw)).addScaledVector(east,Math.sin(this.facingYaw));
-  const right=east.clone().multiplyScalar(Math.cos(this.facingYaw)).addScaledVector(north,-Math.sin(this.facingYaw));
-  return facing.multiplyScalar(y).addScaledVector(right,two?x:0).clampLength(0,1);
+  const {north,east}=this.basis(),{x,y}=this.controls.axes();
+  const cameraForward=north.clone().multiplyScalar(Math.cos(this.cameraHeading))
+   .addScaledVector(east,Math.sin(this.cameraHeading));
+  const cameraRight=east.clone().multiplyScalar(Math.cos(this.cameraHeading))
+   .addScaledVector(north,-Math.sin(this.cameraHeading));
+  const move=cameraForward.multiplyScalar(y).addScaledVector(cameraRight,x).clampLength(0,1);
+  if(move.lengthSq()>.01){
+   const target=Math.atan2(move.dot(east),move.dot(north));
+   const diff=THREE.MathUtils.euclideanModulo(target-this.heading+Math.PI,Math.PI*2)-Math.PI;
+   const step=THREE.MathUtils.clamp(diff,-9*dt,9*dt);
+   this.heading+=step;this.lastTurn=step/Math.max(dt,.001);
+   this.showAnimation('Walking');
+   // One-handed steering naturally guides the chase camera, while the
+   // two-finger/right stick mode leaves the camera free to orbit.
+   if(this.controls.mode==='one'){
+    const offset=THREE.MathUtils.euclideanModulo(this.heading-this.cameraHeading+Math.PI,Math.PI*2)-Math.PI;
+    this.cameraHeading+=offset*(1-Math.exp(-2.5*dt));
+   }
+  }else{this.lastTurn=0;this.showAnimation('Idle');}
+  return move;
  }
  updateView(dt=1/60){
   const {up,north,east}=this.basis();
   const look=this.controls.consumeLook();
-  if(this.controls.mode==='two'){
-   this.cameraYaw+=look.x*.007;
-   this.cameraPitch=THREE.MathUtils.clamp(this.cameraPitch+look.y*.007,-.1,1.45);
-  }else{
-   const diff=THREE.MathUtils.euclideanModulo(this.facingYaw-this.cameraYaw+Math.PI,2*Math.PI)-Math.PI;
-   this.cameraYaw+=diff*(1-Math.exp(-3*dt));
-  }
-  const aim=north.clone().multiplyScalar(Math.cos(this.cameraYaw)).addScaledVector(east,Math.sin(this.cameraYaw));
-  this.viewZoom+=(this.controls.zoom-this.viewZoom)*(1-Math.exp(-5*dt));
-  const t=THREE.MathUtils.smoothstep(Math.log(this.viewZoom),Math.log(30),Math.log(5000));
-  const chase=this.position.clone().addScaledVector(up,2+this.viewZoom*Math.sin(this.cameraPitch))
-   .addScaledVector(aim,-this.viewZoom*Math.cos(this.cameraPitch));
-  const overhead=this.position.clone().addScaledVector(up,this.viewZoom+2);
-  const target=chase.lerp(overhead,t);
-  if(!this.cameraTarget)this.cameraTarget=target.clone();
-  else this.cameraTarget.lerp(target,1-Math.exp(-8*dt));
-  this.camera.position.copy(this.cameraTarget);
-  this.camera.up.copy(up.clone().lerp(aim,t).normalize());
-  this.camera.lookAt(this.position.clone().addScaledVector(up,1));
-  const facing=north.clone().multiplyScalar(Math.cos(this.facingYaw)).addScaledVector(east,Math.sin(this.facingYaw));
+  this.cameraHeading+=look.x*.006;
+  this.cameraPitch=THREE.MathUtils.clamp(this.cameraPitch+look.y*.004,-.35,1.15);
+  const facing=north.clone().multiplyScalar(Math.cos(this.heading)).addScaledVector(east,Math.sin(this.heading));
+  const cameraForward=north.clone().multiplyScalar(Math.cos(this.cameraHeading))
+   .addScaledVector(east,Math.sin(this.cameraHeading));
+  const alpha=1-Math.exp(-6*dt);
+  this.viewZoom+=(this.controls.zoom-this.viewZoom)*alpha;
+  const distance=this.viewZoom;
+  const globalZoom=THREE.MathUtils.smoothstep(Math.log(distance),Math.log(40),Math.log(5000));
+  const focus=this.position.clone().addScaledVector(up,1.1);
+  const chase=focus.clone().addScaledVector(up,Math.sin(this.cameraPitch)*distance)
+   .addScaledVector(cameraForward,-Math.cos(this.cameraPitch)*distance);
+  const overhead=focus.clone().addScaledVector(up,distance);
+  const desired=chase.lerp(overhead,globalZoom);
+  if(!this.cameraPosition)this.cameraPosition=desired.clone();
+  else this.cameraPosition.lerp(desired,alpha);
+  this.camera.position.copy(this.cameraPosition);
+  this.camera.up.copy(up);
+  this.camera.lookAt(focus);
   this.visual.update(this.position,up,facing);
  }
  showAnimation(name){this.visual.show(name);}
  playIdle(){this.showAnimation('Idle');}
- playWalking(direction='Forward'){this.showAnimation('Walking ('+direction+')');}
- playStrafeLeft(){this.showAnimation('Strafe Left');}
- playStrafeRight(){this.showAnimation('Strafe Right');}
- playBackpedal(){this.showAnimation('Backpedal');}
- playTurnLeft(){this.showAnimation('Turn Left');}
- playTurnRight(){this.showAnimation('Turn Right');}
- setZoom(value){this.controls.setZoom(value);}
+ playWalking(){this.showAnimation('Walking');}
+ playStrafeLeft(){this.showAnimation('Walking');}
+ playStrafeRight(){this.showAnimation('Walking');}
+ playBackpedal(){this.showAnimation('Walking');}
+ playTurnLeft(){this.showAnimation('Turning');}
+ playTurnRight(){this.showAnimation('Turning');}
  setSwimming(enabled){this.controls.setSwimming(enabled);}
  swimAxis(){return this.controls.swimAxis();}
- diveByLooking(){return Math.max(0,this.controls.axes().y)*THREE.MathUtils.smoothstep(this.cameraPitch,.45,1.35);}
+ diveByLooking(){return Math.max(0,this.controls.axes().y)*THREE.MathUtils.smoothstep(this.cameraPitch,.45,1.15);}
 }
