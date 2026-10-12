@@ -11,7 +11,13 @@ export const LOD_MAX_DISTANCE_METERS=Array.from(
  (_,level)=>level<2?Infinity:30*(MAX_TERRAIN_LOD-level+1)
 );
 const MAX_LOD=LOD_MAX_DISTANCE_METERS.length-1;
-const HYSTERESIS=1.2;
+// Enter a level while every newly created vertex is still at its parent surface.
+// The wider exit boundary prevents topology thrash, but both boundaries are
+// beyond the zero-morph distance so splitting and collapsing are invisible.
+const SPLIT_RATIO=1.25;
+const MERGE_RATIO=1.35;
+const MORPH_START_RATIO=1.2;
+const MORPH_FULL_RATIO=.55;
 // Elevation in meters above sea level (RADIUS - 1). Palette is visual only.
 const TERRAIN_PALETTE=[
  [-35,0xc6b88a],[0,0xc6b88a],[5,0xc6b88a],
@@ -59,7 +65,7 @@ export class WorldTerrain {
    shader.uniforms.morphPlayer={value:this.morphPlayer};
    shader.vertexShader='attribute vec3 morphOrigin;\nattribute float morphRange;\nuniform vec3 morphPlayer;\n'+shader.vertexShader;
    shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>',
-    '#include <begin_vertex>\nfloat morphDistance=length(position-morphPlayer);\nfloat morphFactor=morphRange>0.0?1.0-smoothstep(morphRange-15.0,morphRange,morphDistance):1.0;\ntransformed=mix(morphOrigin,position,morphFactor);');
+    '#include <begin_vertex>\nfloat morphDistance=length(position-morphPlayer);\nfloat morphFactor=morphRange>0.0?1.0-smoothstep(morphRange*0.55,morphRange*1.2,morphDistance):1.0;\ntransformed=mix(morphOrigin,position,morphFactor);');
   };
   scene.add(this.mesh);
   this.leafCount=0;
@@ -85,7 +91,10 @@ export class WorldTerrain {
    // Conservative distance to triangle; prevents abrupt detail loss at edges.
    const distance=Math.hypot(Math.max(0,arc-n.reach),altitude);
    const threshold=LOD_MAX_DISTANCE_METERS[n.level+1];
-   const split=n.level<maxDetail && distance<(n.split?threshold*HYSTERESIS:threshold);
+   // Split before the morph starts, and merge only after it has returned
+   // to the parent surface. Infinite coarse thresholds remain permanent.
+   const split=n.level<maxDetail && (threshold===Infinity ||
+    distance<threshold*(n.split?MERGE_RATIO:SPLIT_RATIO));
    if(split){
     if(!n.children){
      const ab=mid(n.a,n.b),bc=mid(n.b,n.c),ca=mid(n.c,n.a),level=n.level+1;
@@ -150,8 +159,11 @@ export class WorldTerrain {
     const coarse=split
      ?radial(split.a).add(radial(split.b)).multiplyScalar(.5)
      :shared?p.clone():coarsePoint(direction,leaf.parent);
-    const range=split?LOD_MAX_DISTANCE_METERS[split.level]:
+    const candidateRange=split?LOD_MAX_DISTANCE_METERS[split.level]:
      (!shared&&leaf.level>=2?LOD_MAX_DISTANCE_METERS[leaf.level]:0);
+    // Levels with infinite thresholds never transition and must not pass
+    // Infinity into smoothstep (which would generate undefined positions).
+    const range=Number.isFinite(candidateRange)?candidateRange:0;
     morphOrigins.push(coarse.x,coarse.y,coarse.z);
     morphRanges.push(range);
     const color=terrainColor(p.length()-(RADIUS-1));
