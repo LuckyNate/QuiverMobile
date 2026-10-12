@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {BiomePopulation} from './engine/biome-population.js';
+import {withinSceneryRange} from './engine/scenery-visibility.js';
 
 // All player/world mutations use stable IDs. Only Meadows is populated now.
 export class TreeHarvestSystem {
@@ -118,6 +119,14 @@ export class TreeHarvestSystem {
   this.shared?.setEntity(t.id,{state:'felled',ownerId:harvesterId,chunk:t.chunk,serial:t.serial});
  }
  update(dt,body=null){
+  // Visibility is always centered on the avatar, never the camera.
+  // Keep trees and their simulation alive outside the render range.
+  for(const t of this.trees){
+   const visible=withinSceneryRange(t.at,this.player.position);
+   if(t.state==='standing'||t.state==='falling'||t.state==='fading')
+    t.tree.visible=visible;
+   if(t.state==='flying')t.trunk.visible=withinSceneryRange(t.trunk.position,this.player.position);
+  }
   this.attackClock=Math.max(0,this.attackClock-dt);
   // Chopping remains a proximity/axe action; bumping is only impact feedback.
   if(this.attackClock===0){
