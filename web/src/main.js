@@ -49,46 +49,41 @@ catch(error){report('terrain setup','FAILED',error.message);}
 const water=new WorldWater(scene,RADIUS);
 const playerSystem=new PlayerSystem(scene,camera,canvas,RADIUS,report);
 const player=playerSystem.position;
-// Find a dry, near-datum shoreline deterministically using the same height function
-// as the renderer and collider. Search once at startup; never scan during frames.
-function shorelineSpawn(){
+// Select a deterministic dry, gently sloped Meadows starting location.
+// Sample the surrounding capsule footprint, not just the center point.
+function meadowsSpawn(){
  const radial=(latitude,longitude)=>{
   const c=Math.cos(latitude);
   return new THREE.Vector3(c*Math.cos(longitude),c*Math.sin(longitude),Math.sin(latitude));
  };
- const rows=36,columns=144;
- let selected=null,selectedScore=Infinity;
- for(let row=1;row<rows;row++){
-  const latitude=-Math.PI/2+Math.PI*row/rows;
-  let previous=radial(latitude,0);
-  let previousHeight=height.height(previous);
-  for(let col=1;col<=columns;col++){
-   const next=radial(latitude,2*Math.PI*col/columns);
-   const nextHeight=height.height(next);
-   // Shore is 0 m terrain elevation, 1 m above water at -1 m.
-   if((previousHeight<=0&&nextHeight>=0)||(previousHeight>=0&&nextHeight<=0)){
-    let dry=previousHeight>=0?previous:next;
-    let wet=previousHeight>=0?next:previous;
-    for(let i=0;i<15;i++){
-     const mid=dry.clone().add(wet).normalize();
-     if(height.height(mid)>=0)dry=mid;else wet=mid;
-    }
-    const land=dry.clone();
-    const elevation=height.height(land);
-    const neighborWater=height.height(wet);
-    if(elevation<0||elevation>5||neighborWater>=0){previous=next;previousHeight=nextHeight;continue;}
-    // Prefer shallow beach slopes; retain deterministic tie breaking.
-    const gradient=Math.abs(previousHeight-nextHeight);
-    const score=elevation*8+gradient*.05;
-    if(score<selectedScore){selected=land;selectedScore=score;}
-   }
-   previous=next;previousHeight=nextHeight;
+ let best=null,bestScore=Infinity;
+ const sea=RADIUS-1;
+ for(let row=1;row<36;row++)for(let col=0;col<144;col++){
+  const direction=radial(-Math.PI/2+Math.PI*row/36,2*Math.PI*col/144);
+  const surface=height.radius(direction,RADIUS);
+  const elevation=surface-RADIUS;
+  // Low, green Meadows land, comfortably above the ocean.
+  if(elevation<8||elevation>35||surface-sea<5)continue;
+  const reference=Math.abs(direction.z)<.9?new THREE.Vector3(0,0,1):new THREE.Vector3(0,1,0);
+  const east=new THREE.Vector3().crossVectors(direction,reference).normalize();
+  const north=new THREE.Vector3().crossVectors(east,direction).normalize();
+  let variation=0,valid=true;
+  for(const [x,y] of [[4,0],[-4,0],[0,4],[0,-4],[3,3],[-3,-3]]){
+   const neighbor=direction.clone().addScaledVector(east,x/RADIUS)
+    .addScaledVector(north,y/RADIUS).normalize();
+   const candidateRadius=height.radius(neighbor,RADIUS);
+   variation=Math.max(variation,Math.abs(candidateRadius-surface));
+   if(candidateRadius-sea<4||Math.abs(candidateRadius-surface)>2){valid=false;break;}
   }
+  if(!valid)continue;
+  const score=variation*10+Math.abs(elevation-15);
+  if(score<bestScore){best=direction;bestScore=score;}
  }
- if(!selected)throw new Error('Seeded terrain contains no shoreline spawn candidate');
- return selected.multiplyScalar(height.radius(selected,RADIUS)+1.3);
+ if(!best)throw new Error('No suitable dry Meadows spawn in seeded terrain');
+ // Full capsule has clearance; leave room for Box3D contact settling.
+ return best.multiplyScalar(height.radius(best,RADIUS)+2);
 }
-player.copy(shorelineSpawn());
+player.copy(meadowsSpawn());
 const harvesting=new TreeHarvestSystem(scene,playerSystem,height,RADIUS);
 report('starter biome','READY','Meadows (other biomes unpopulated)');
 // Permanent mathematical solidity is independent of rendered terrain triangles.
@@ -183,9 +178,10 @@ async function initializePhysics(){
   world.syncStatic(surface,boundsAt(player,2),solidity);
   playerCollider=world.addPlayerCapsule(player,solidity,octree,'player');
   {const p=playerCollider.getPosition();player.set(p.x,p.y,p.z);}
-  // A floating spawn can be above deep water with no nearby solid surface.
-  const spawnOverWater=height.radius(player.clone().normalize(),RADIUS)<water.radius;
-  if(world.staticBodies.size===0&&!spawnOverWater)throw new Error('No solid terrain registered near spawn');
+  // A Meadows start must have dry ground and registered collision support.
+  if(height.radius(player.clone().normalize(),RADIUS)<=water.radius+3)
+   throw new Error('Meadows spawn is too close to the waterline');
+  if(world.staticBodies.size===0)throw new Error('No solid terrain registered near Meadows spawn');
   // Meadows starter: no diagnostic falling cubes or other biome content.
   const cubes=[];
   world.syncStatic(surface,activeCollisionAreas(),solidity);
