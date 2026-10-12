@@ -19,12 +19,19 @@ loading.textContent='Preparing planet...';
 app.append(loading);
 function loadStatus(message){loading.textContent=message;}
 const stages=new Map();
+const reportedErrors=new Map();
+let adminPanels=null;
 function report(name,state,detail=''){
  stages.set(name,{state,detail:String(detail)});
  const problems=[...stages].filter(([,v])=>v.state==='FAILED');
- ui.textContent=problems.map(([n,v])=>n+': '+v.state+(v.detail?' — '+v.detail:'')).join('\n');
- ui.style.display=problems.length?'block':'none';
- try{localStorage.setItem('quiver-last-stages',ui.textContent);}catch{}
+ const details=problems.map(([n,v])=>n+': '+v.state+(v.detail?' — '+v.detail:'')).join('\n');
+ ui.textContent=details;
+ ui.style.display='none';
+ if(adminPanels)for(const [name,value] of problems){
+  const message=name+': FAILED'+(value.detail?' — '+value.detail:'');
+  if(reportedErrors.get(name)!==message){adminPanels.print(message);reportedErrors.set(name,message);}
+ }
+ try{localStorage.setItem('quiver-last-stages',details);}catch{}
 }
 window.addEventListener('error',e=>report('script','FAILED',e.message));
 window.addEventListener('unhandledrejection',e=>report('promise','FAILED',e.reason?.message||String(e.reason)));
@@ -96,6 +103,8 @@ const sharedWorld=new SharedWorld({ownerId:'local-owner',seed:TERRAIN_SEED});
 sharedWorld.join('local-owner',player);
 const harvesting=new TreeHarvestSystem(scene,playerSystem,height,RADIUS,{shared:sharedWorld,playerId:'local-owner',camera});
 const panels=new GamePanels({app,canvas,controls:playerSystem.controls,sharedWorld,playerId:'local-owner'});
+adminPanels=panels;
+for(const [name,value] of stages)if(value.state==='FAILED')report(name,value.state,value.detail);
 let lastLogCount=-1;
 report('starter biome','READY','Meadows (other biomes unpopulated)');
 // Permanent mathematical solidity is independent of rendered terrain triangles.
