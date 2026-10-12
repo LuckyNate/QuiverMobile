@@ -45,7 +45,7 @@ export class TreeHarvestSystem {
   const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.24,.31,4,8),this.trunkMaterial);
   trunk.position.y=2;
   const foliage=new THREE.Mesh(new THREE.ConeGeometry(1.35,4.5,8),this.leafMaterial.clone());
-  foliage.position.y=2.55;
+  foliage.position.y=3.25;
   visual.add(trunk,foliage);this.root.add(tree);
   const saved=this.shared?.getEntity(id);
   const state=saved&&saved.state!=='standing'?'collected':'standing';
@@ -99,12 +99,12 @@ export class TreeHarvestSystem {
    t.bumpCooldown=Math.max(0,t.bumpCooldown-dt);
    const up=t.at.clone().normalize(),relative=p.clone().sub(t.at);
    const elevation=relative.dot(up);
-   if(elevation<-.5||elevation>4.8)continue;
+   if(elevation<-.5||elevation>5.5)continue;
    const lateral=relative.addScaledVector(up,-elevation);
    const distance=lateral.length();
-   // Foliage cone extends from 0.3m to 4.8m, and trunk to 4m.
-   const canopyRadius=elevation>=.3&&elevation<=4.8
-    ?1.35*(4.8-elevation)/4.5:0;
+   // Foliage cone extends from 1m to 5.5m, and trunk to 4m.
+   const canopyRadius=elevation>=1&&elevation<=5.5
+    ?1.35*(5.5-elevation)/4.5:0;
    const contactRadius=Math.max(elevation<=4?.66:0,canopyRadius+.35);
    if(distance>=contactRadius||distance<.0001||t.bumpCooldown>0)continue;
    const normal=lateral.divideScalar(distance);
