@@ -54,6 +54,8 @@ function node(a,b,c,level,parent=null,address=null){
 export class WorldTerrain {
  constructor(scene,height=new TerrainHeight()){
   this.height=height;
+  // Reuse deterministic surface samples across LOD topology changes.
+  this.surfaceSamples=new Map();
   this.roots=roots.map(([a,b,c],face)=>node(a,b,c,0,null,rootAddress(face)));
   this.geometry=new THREE.BufferGeometry();
   this.material=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:1,side:THREE.DoubleSide,flatShading:true});
@@ -130,7 +132,19 @@ export class WorldTerrain {
    if(!vertices.has(key(midpoint)))return [a];
    return [...edgePoints(a,midpoint,depth+1),...edgePoints(midpoint,b,depth+1)];
   };
-  const radial=v=>v.clone().multiplyScalar(this.height.radius(v,RADIUS));
+  const sample=v=>{
+   const id=key(v);
+   let cached=this.surfaceSamples.get(id);
+   if(!cached){
+    const position=v.clone().multiplyScalar(this.height.radius(v,RADIUS));
+    cached={position,color:terrainColor(position.length()-(RADIUS-1))};
+    // Bound the sample cache on long-distance travel.
+    if(this.surfaceSamples.size>=100000)this.surfaceSamples.clear();
+    this.surfaceSamples.set(id,cached);
+   }
+   return cached;
+  };
+  const radial=v=>sample(v).position.clone();
   // Every split midpoint lerps from its actual parent EDGE chord.
   // Stitched duplicates look up that same midpoint record, never a
   // separate parent-face plane. This preserves mixed-LOD boundaries.
@@ -168,7 +182,7 @@ export class WorldTerrain {
     const range=Number.isFinite(candidateRange)?candidateRange:0;
     morphOrigins.push(coarse.x,coarse.y,coarse.z);
     morphRanges.push(range);
-    const color=terrainColor(p.length()-(RADIUS-1));
+    const color=sample(direction).color;
     colors.push(color.r,color.g,color.b);
    }
   };
