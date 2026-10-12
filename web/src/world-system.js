@@ -9,6 +9,7 @@ import {ChunkedSurface} from './engine/chunked-surface.js';
 export class WorldSystem {
  constructor(radius,playerPosition,height=new TerrainHeight()){
   this.height=height;
+  // Root biomes are the 20 triangular D20 faces; cache chunks remain separate.
   this.octree=new WorldOctree({center:[0,0,0],halfSize:16384,maxDepth:15});
   this.solidity=new ImplicitSphere(radius,{halfSize:16384,minCell:1,height});
   this.surface=new ChunkedSurface(new SphereSurface(radius,{step:1,height}),{chunkSize:32,maxChunks:128}); // Deterministic on-demand surface chunks.

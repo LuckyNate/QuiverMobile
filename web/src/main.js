@@ -6,6 +6,7 @@ import {WorldSystem} from './world-system.js';
 import {WorldWater} from './water.js';
 import {PhysicsWorld} from './physics.js';
 import {TreeHarvestSystem} from './trees.js';
+import {SharedWorld} from './engine/shared-world.js';
 
 const app=document.getElementById('app');
 const bootstrap=document.getElementById('bootstrap');
@@ -84,7 +85,9 @@ function meadowsSpawn(){
  return best.multiplyScalar(height.radius(best,RADIUS)+2);
 }
 player.copy(meadowsSpawn());
-const harvesting=new TreeHarvestSystem(scene,playerSystem,height,RADIUS);
+const sharedWorld=new SharedWorld({ownerId:'local-owner',seed:TERRAIN_SEED});
+sharedWorld.join('local-owner',player);
+const harvesting=new TreeHarvestSystem(scene,playerSystem,height,RADIUS,{shared:sharedWorld,playerId:'local-owner',camera});
 report('starter biome','READY','Meadows (other biomes unpopulated)');
 // Permanent mathematical solidity is independent of rendered terrain triangles.
 let physics=null,fallingCubes=[],playerCollider=null;
@@ -202,7 +205,7 @@ function frame(now){
   physics.movePlayer(playerCollider,playerSystem.movement(dt),10,player.clone().normalize());
  }
  playerSystem.updateView(dt);
- harvesting.update(dt);
+ harvesting.update(dt,playerCollider);
  // Use a wider near plane at globe altitude to restore depth-buffer precision.
  // Keep at least 1 m near at all scales and retain the full planet at far.
  const cameraAltitude=Math.max(0,camera.position.length()-RADIUS);

@@ -51,6 +51,12 @@ Cabin building is a lightweight, hands-on part of survival and settlement life. 
 - **Functional interiors:** Players can place furnishings, storage, crafting equipment, and other usable objects inside their cabins.
 - **Design priority:** Construction is forgiving and physical enough to be satisfying. Avoid manual notch-cutting, individual log trimming, excessive menus, and complex construction requirements.
 
+## Peer-simulated multiplayer foundation
+
+The player creating a world **owns the save and must remain connected for the session to exist**. Each joining device simulates its own experience. The owner stores the authoritative persistent changes, while peers exchange shared world events; simultaneous harvest claims must resolve once through the owner's event log. Ownership is distinct from processing workload. The current local `SharedWorld` event/snapshot model and stable entity IDs are preparation for this architecture, **not an implemented networking transport**.
+
+Each of the 20 D20 face biomes defines per-type target population and tolerance; child chunks inherit their quotas (biome total divided among children, with deterministic remainder allocation). Chunks replenish depleted trees, enemies and resources at new valid locations hidden from all players. Only starter Meadows trees are currently instantiated; other population types remain planned. Standing trunks push a colliding player back slightly without causing a chop. Automatic axe harvesting is separate; felled 4-meter trunks topple, lose foliage, and fly toward the player who made the final hit, shrinking before the inventory award.
+
 ## Multiplayer, camps, and villages
 
 The game uses **independent players and emergent cooperation**, not a formal party mechanic.
