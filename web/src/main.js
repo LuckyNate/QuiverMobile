@@ -215,8 +215,8 @@ function profile(name,start){perfTotals[name]+=performance.now()-start;}
 function showProfile(now){
  if(now-perfLast<1000)return;
  const divisor=Math.max(1,perfFrames);
- perfPanel.textContent='ms/frame ('+perfFrames+' fps)\\n'
-  +Object.entries(perfTotals).map(([name,total])=>name+': '+(total/divisor).toFixed(2)).join('\\n');
+ perfPanel.textContent='ms/frame ('+perfFrames+' fps)\n'
+  +Object.entries(perfTotals).map(([name,total])=>name+': '+(total/divisor).toFixed(2)).join('\n');
  for(const name in perfTotals)perfTotals[name]=0;
  perfFrames=0;perfLast=now;
 }
