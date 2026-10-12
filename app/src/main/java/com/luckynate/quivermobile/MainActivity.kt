@@ -9,6 +9,9 @@ import android.os.Handler
 import android.os.Looper
 import android.graphics.Color
 import android.view.Gravity
+import android.view.View
+import android.view.WindowInsets
+import android.widget.LinearLayout
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebResourceRequest
@@ -45,21 +48,46 @@ class MainActivity : Activity() {
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?) =
                 request?.url?.let { assetLoader.shouldInterceptRequest(it) }
         }
-        val frame = FrameLayout(this)
-        frame.addView(web)
+        // Status/navigation bars are reserved by the OS; a real title strip
+        // occupies its own row rather than obscuring the WebGL surface.
+        window.statusBarColor = 0xFF152737.toInt()
+        window.navigationBarColor = 0xFF152737.toInt()
+        @Suppress("DEPRECATION")
+        window.decorView.systemUiVisibility = 0
+        val column = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(0xFF090C14.toInt())
+        }
         val versionLabel = TextView(this).apply {
             text = "QuiverMobile v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
             setTextColor(Color.MAGENTA)
-            textSize = 12f
-            setPadding(12, 8, 12, 8)
-            setBackgroundColor(0x88000000.toInt())
+            textSize = 14f
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(12, 0, 12, 0)
+            setBackgroundColor(0xFF152737.toInt())
         }
-        frame.addView(versionLabel, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            Gravity.TOP or Gravity.START
+        val density = resources.displayMetrics.density
+        column.addView(versionLabel, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, (40 * density).toInt()
         ))
-        setContentView(frame)
+        column.addView(web, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+        ))
+        // Android 15 edge-to-edge enforcement requires explicitly applying
+        // system bar insets to app content, including gesture navigation.
+        column.setOnApplyWindowInsetsListener { view, insets ->
+            val bars = if (android.os.Build.VERSION.SDK_INT >= 30) {
+                insets.getInsets(WindowInsets.Type.systemBars())
+            } else null
+            @Suppress("DEPRECATION")
+            val top = bars?.top ?: insets.systemWindowInsetTop
+            @Suppress("DEPRECATION")
+            val bottom = bars?.bottom ?: insets.systemWindowInsetBottom
+            view.setPadding(0, top, 0, bottom)
+            insets
+        }
+        setContentView(column)
+        column.requestApplyInsets()
         web.loadUrl("https://appassets.androidplatform.net/assets/web/index.html")
     }
 

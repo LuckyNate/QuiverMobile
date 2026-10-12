@@ -32,7 +32,7 @@ ui.style.cssText='position:fixed;top:8px;left:8px;z-index:3;background:#000a;pad
 const controls=document.createElement('div');
 controls.style.cssText='position:fixed;bottom:12px;left:12px;z-index:3;display:flex;gap:8px';
 app.append(ui,controls);
-const canvas=document.createElement('canvas');canvas.style.cssText='width:100vw;height:100dvh;display:block;touch-action:none';app.prepend(canvas);
+const canvas=document.createElement('canvas');canvas.style.cssText='position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none';app.prepend(canvas);
 report('document','READY');
 let renderer=null;
 try{

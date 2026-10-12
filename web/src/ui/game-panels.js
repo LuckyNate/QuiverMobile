@@ -1,5 +1,5 @@
-// Fixed-layout inventory and admin console. Panels resize the WebGL canvas
-// rather than covering it. Registered commands are explicit, never eval'd.
+// Fixed-layout inventory and admin console overlay the full-size WebGL canvas.
+// Registered commands are explicit, never eval'd.
 export class GamePanels {
  constructor({app,canvas,controls,sharedWorld,playerId}){
   this.canvas=canvas;this.controls=controls;this.sharedWorld=sharedWorld;
@@ -40,19 +40,19 @@ export class GamePanels {
    panel.header.setAttribute('aria-expanded',String(open));
    panel.header.textContent=(panel.id==='admin'?'ADMIN':'INVENTORY')+(open?'  ×':'  ▾');
   }
-  const top=this.openPanel==='admin'?window.innerHeight*.5:44;
-  const bottom=this.openPanel==='inventory'?window.innerHeight*.5:44;
+  // Overlay the same WebGL viewport. Opening a panel cannot change canvas size.
   this.canvas.style.position='fixed';
-  this.canvas.style.left='0';
-  this.canvas.style.top=top+'px';
-  this.canvas.style.bottom=bottom+'px';
-  this.canvas.style.width='100vw';
-  this.canvas.style.height='auto';
+  this.canvas.style.inset='0';
+  this.canvas.style.width='100%';
+  this.canvas.style.height='100%';
+  this.canvas.style.bottom='auto';
+  const occupiedTop=this.openPanel==='admin'?window.innerHeight*.5:44;
+  const occupiedBottom=this.openPanel==='inventory'?window.innerHeight*.5:44;
   if(this.controls?.slider){
-   this.controls.slider.style.top=(top+12)+'px';
-   this.controls.slider.style.height=Math.max(40,window.innerHeight-top-bottom-24)+'px';
+   this.controls.slider.style.top=(occupiedTop+12)+'px';
+   this.controls.slider.style.height=Math.max(40,window.innerHeight-occupiedTop-occupiedBottom-24)+'px';
   }
-  if(this.controls?.swimButtons)this.controls.swimButtons.style.bottom=(bottom+12)+'px';
+  if(this.controls?.swimButtons)this.controls.swimButtons.style.bottom=(occupiedBottom+12)+'px';
  }
  makeInventory(){
   const heading=document.createElement('div');
