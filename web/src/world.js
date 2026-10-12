@@ -16,8 +16,6 @@ const MAX_LOD=LOD_MAX_DISTANCE_METERS.length-1;
 // beyond the zero-morph distance so splitting and collapsing are invisible.
 const SPLIT_RATIO=1.25;
 const MERGE_RATIO=1.35;
-const MORPH_START_RATIO=1.2;
-const MORPH_FULL_RATIO=.55;
 // Elevation in meters above sea level (RADIUS - 1). Palette is visual only.
 const TERRAIN_PALETTE=[
  [-35,0xc6b88a],[0,0xc6b88a],[5,0xc6b88a],
