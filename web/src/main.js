@@ -216,14 +216,7 @@ function frame(now){
  }
  playerSystem.updateView(dt);
  harvesting.update(dt,playerCollider);
- // Use a wider near plane at globe altitude to restore depth-buffer precision.
- // Keep at least 1 m near at all scales and retain the full planet at far.
- const cameraAltitude=Math.max(0,camera.position.length()-RADIUS);
- const near=Math.max(1,cameraAltitude*.06);
- if(Math.abs(camera.near-near)>.05){
-  camera.near=near;
-  camera.updateProjectionMatrix();
- }
+ // Fixed 1 m near clipping plane; far clipping remains 60,000 m.
  water.update(scene,camera,renderer,elapsed);
  // The immutable planet is queryable immediately. Player motion never rebuilds it.
  if(octree){
