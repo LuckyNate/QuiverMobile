@@ -205,17 +205,35 @@ async function initializePhysics(){
 report('octree solidity','READY','Implicit planet');
 report('Box3D','WAITING','Physics initialization');
 window.addEventListener('resize',()=>panels.layout());
+// Lightweight on-device profiler. Accumulate per-frame costs and display a one-second average.
+const perfPanel=document.createElement('div');
+perfPanel.style.cssText='position:fixed;left:8px;top:58px;z-index:6;pointer-events:none;background:#000b;color:white;padding:6px;font:11px monospace;white-space:pre';
+app.append(perfPanel);
+const perfTotals={move:0,collision:0,physics:0,lod:0,render:0,frame:0};
+let perfFrames=0,perfLast=performance.now();
+function profile(name,start){perfTotals[name]+=performance.now()-start;}
+function showProfile(now){
+ if(now-perfLast<1000)return;
+ const divisor=Math.max(1,perfFrames);
+ perfPanel.textContent='ms/frame ('+perfFrames+' fps)\\n'
+  +Object.entries(perfTotals).map(([name,total])=>name+': '+(total/divisor).toFixed(2)).join('\\n');
+ for(const name in perfTotals)perfTotals[name]=0;
+ perfFrames=0;perfLast=now;
+}
 let last=performance.now(),elapsed=0,frames=0,lastTerrain=0,resizeW=0,resizeH=0;
 function frame(now){
  requestAnimationFrame(frame);
  try{
+ const perfFrameStart=performance.now();perfFrames++;
  const dt=Math.min(.05,(now-last)/1000);last=now;elapsed+=dt;frames++;
  const logs=sharedWorld.getPlayer('local-owner')?.logs||0;
  if(logs!==lastLogCount){panels.refreshInventory();lastLogCount=logs;}
  const viewWidth=canvas.clientWidth,viewHeight=canvas.clientHeight;
  if(viewWidth!==resizeW||viewHeight!==resizeH){resizeW=viewWidth;resizeH=viewHeight;renderer.setSize(resizeW,resizeH,false);camera.aspect=resizeW/Math.max(1,resizeH);camera.updateProjectionMatrix();}
  if(simulationReady&&physics&&playerCollider){
+  const start=performance.now();
   physics.movePlayer(playerCollider,playerSystem.movement(dt),10,player.clone().normalize(),dt);
+  profile('move',start);
  }
  playerSystem.updateView(dt);
  harvesting.update(dt,playerCollider);
@@ -250,8 +268,12 @@ function frame(now){
       });
      }
     }
+    let start=performance.now();
     physics.syncStatic(surface,activeCollisionAreas(),solidity);
+    profile('collision',start);
+    start=performance.now();
     physics.step(dt);
+    profile('physics',start);
     if(playerCollider){const p=playerCollider.getPosition();player.set(p.x,p.y,p.z);}
     for(const item of fallingCubes){
      const p=item.body.getPosition();
@@ -263,15 +285,19 @@ function frame(now){
     }
    }
    // Terrain detail follows the capsule, independent of camera and zoom.
+   const terrainStart=performance.now();
    terrain.update(player);
+   profile('lod',terrainStart);
    if(greenSurface.visible)drawSurface(boundsAt(player,3));
   }catch(error){report('Box3D','FAILED',error.message);physics=null;}
  }
  if(renderer){
-  try{renderer.render(scene,camera);if(frames===1)report('first frame','READY');}
+  try{const renderStart=performance.now();renderer.render(scene,camera);profile('render',renderStart);if(frames===1)report('first frame','READY');}
   catch(error){report('render','FAILED',error.message);renderer=null;}
  }
  }catch(error){report('frame logic','FAILED',error.message);}
+ profile('frame',perfFrameStart);
+ showProfile(now);
 
 }
 report('frame loop','RUNNING');
