@@ -16,13 +16,8 @@ export class TreeHarvestSystem {
   this.population=new BiomePopulation({biomeId:0,childCount:4,targets:{trees:18},tolerances:{trees:2}});
   this.trunkMaterial=new THREE.MeshStandardMaterial({color:0x705038,roughness:1});
   this.leafMaterial=new THREE.MeshStandardMaterial({color:0x315934,roughness:1,transparent:true});
-  this.woodLabel=document.createElement('div');
-  this.woodLabel.style.cssText='position:fixed;right:12px;bottom:12px;color:white;background:#0009;padding:8px;font:14px monospace;z-index:4;pointer-events:none';
-  document.getElementById('app').append(this.woodLabel);
-  this.showWood();
   this.populate();
  }
- showWood(){this.woodLabel.textContent='Logs: '+(this.shared?.getPlayer(this.playerId)?.logs||this.wood);}
  hash(n){let x=(n+0x9e3779b9)|0;x=Math.imul(x^(x>>>16),0x21f0aaad);x=Math.imul(x^(x>>>15),0x735a2d97);return ((x^(x>>>15))>>>0)/4294967296;}
  // Four 32m child areas surrounding the Meadows landing site.
  location(chunk,serial){
@@ -166,7 +161,6 @@ export class TreeHarvestSystem {
      t.state='collected';this.scene.remove(t.trunk);
      if(this.shared)this.shared.awardLog(t.ownerId,1);
      else this.wood++;
-     this.showWood();
      this.shared?.setEntity(t.id,{state:'collected',chunk:t.chunk,serial:t.serial});
      t.respawnTime=8;
     }
