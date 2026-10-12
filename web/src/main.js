@@ -206,11 +206,6 @@ report('octree solidity','READY','Implicit planet');
 report('Box3D','WAITING','Physics initialization');
 window.addEventListener('resize',()=>panels.layout());
 // Lightweight on-device profiler. Accumulate per-frame costs and display a one-second average.
-const perfPanel=document.createElement('pre');
-perfPanel.setAttribute('aria-label','Performance profiler');
-perfPanel.style.cssText='display:block;margin:0 0 12px;padding:10px;background:#08121b;color:#fff;border:1px solid #526477;border-radius:5px;font:12px monospace;white-space:pre-wrap;overflow-wrap:anywhere';
-perfPanel.textContent='PERFORMANCE PROFILER\nCollecting frame timings...';
-panels.top.content.prepend(perfPanel);
 const perfTotals={move:0,collision:0,physics:0,lod:0,render:0,frame:0};
 let perfFrames=0,perfLast=performance.now();
 function profile(name,start){perfTotals[name]+=performance.now()-start;}
@@ -218,8 +213,13 @@ function showProfile(){
  const now=performance.now();
  if(now-perfLast<1000)return;
  const divisor=Math.max(1,perfFrames);
- perfPanel.textContent='PERFORMANCE PROFILER\nms/frame ('+perfFrames+' fps)\n'
-  +Object.entries(perfTotals).map(([name,total])=>name+': '+(total/divisor).toFixed(2)).join('\n');
+ panels.top.profiler.textContent='FPS '+perfFrames
+  +' | move '+(perfTotals.move/divisor).toFixed(1)
+  +' col '+(perfTotals.collision/divisor).toFixed(1)
+  +' phys '+(perfTotals.physics/divisor).toFixed(1)
+  +' LOD '+(perfTotals.lod/divisor).toFixed(1)
+  +' rnd '+(perfTotals.render/divisor).toFixed(1)
+  +' frame '+(perfTotals.frame/divisor).toFixed(1)+' ms';
  for(const name in perfTotals)perfTotals[name]=0;
  perfFrames=0;perfLast=now;
 }
