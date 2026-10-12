@@ -90,6 +90,7 @@ function shorelineSpawn(){
 }
 player.copy(shorelineSpawn());
 const harvesting=new TreeHarvestSystem(scene,playerSystem,height,RADIUS);
+report('starter biome','READY','Meadows (other biomes unpopulated)');
 // Permanent mathematical solidity is independent of rendered terrain triangles.
 let physics=null,fallingCubes=[],playerCollider=null;
 let physicsLoading=false,simulationReady=false;
@@ -185,27 +186,12 @@ async function initializePhysics(){
   // A floating spawn can be above deep water with no nearby solid surface.
   const spawnOverWater=height.radius(player.clone().normalize(),RADIUS)<water.radius;
   if(world.staticBodies.size===0&&!spawnOverWater)throw new Error('No solid terrain registered near spawn');
-  const group=new THREE.Group();scene.add(group);
-  const cubes=[],geometry=new THREE.BoxGeometry(.8,.8,.8);
-  const material=new THREE.MeshStandardMaterial({color:0xffa540,roughness:.8});
-  const up=player.clone().normalize();
-  const east=new THREE.Vector3(0,1,0).cross(up).normalize();
-  const north=up.clone().cross(east).normalize();
-  for(let i=0;i<20;i++){
-   const position=player.clone().addScaledVector(up,4+i*.85)
-    .addScaledVector(east,((i%5)-2)*1.15)
-    .addScaledVector(north,(Math.floor(i/5)-1.5)*1.15);
-   const id='cube-'+i;
-   const body=world.addDynamicBox(position.toArray(),.4,solidity,octree,id);
-   const mesh=new THREE.Mesh(geometry,material);
-   mesh.position.copy(position);group.add(mesh);
-   mesh.position.copy(body.getPosition());
-   cubes.push({id,body,mesh});
-  }
+  // Meadows starter: no diagnostic falling cubes or other biome content.
+  const cubes=[];
   world.syncStatic(surface,activeCollisionAreas(),solidity);
   physics=world;fallingCubes=cubes;simulationReady=true;
   loading.remove();
-  report('Box3D','READY',cubes.length+' dynamic bodies sharing world octree');
+  report('Box3D','READY','Meadows starter; player and terrain contacts');
  }catch(error){loadStatus('Physics initialization failed: '+error.message);report('Box3D','FAILED',error.stack||error.message);}
 }
 report('octree solidity','READY','Implicit planet');

@@ -43,9 +43,9 @@ Boss progression uses Metroidvania-style prerequisites; **a one-boss-per-biome r
 
 Cabin building is a lightweight, hands-on part of survival and settlement life. It should be **simple to start, fun to expand, and moderately layered**, without becoming a detailed carpentry simulator.
 
-- **Standard material:** Twelve-foot logs form the basic modular building unit. Stack logs to construct walls, with convenient automatic alignment and corner connections.
+- **Standard material:** Four-meter logs form the basic modular building unit. Stack logs to construct walls, with convenient automatic alignment and corner connections.
 - **Basic shelter:** Stack walls, fill the enclosed space with a floor, and add a roof. A small functional cabin should be quick to build.
-- **Three opening positions per wall:** Each twelve-foot wall has **left, center, and right** positions for doors or windows. Build a solid wall first; then designate a cutout using an axe. The game performs the cutting and finishes the opening automatically, rather than asking players to cut each log.
+- **Three opening positions per wall:** Each four-meter wall has **left, center, and right** positions for doors or windows. Build a solid wall first; then designate a cutout using an axe. The game performs the cutting and finishes the opening automatically, rather than asking players to cut each log.
 - **Expandable construction:** Add rooms, walls, roofs, and other sections to an existing building without rebuilding from scratch.
 - **Drop-and-play options:** Place ready-made structures or sections as a convenient alternative to building log by log. Prefabs and individually placed construction should be compatible, so a prefabricated cabin can be expanded.
 - **Functional interiors:** Players can place furnishings, storage, crafting equipment, and other usable objects inside their cabins.
@@ -75,6 +75,12 @@ The game uses **independent players and emergent cooperation**, not a formal par
 - **Village maintenance:** Neighbors can add fuel and defend nearby structures, allowing active communities to keep settlements alive. Even fueling a rival's bonfire is allowed if a player chooses to spend the effort.
 
 The intended **no-outcamping rule** emerges from these interconnected mechanics: camps require ongoing labor, bonfire protection, and defense; neglect removes the owner's map marker and exposes the buildings to the hostile world. No universal timer, claim-expiration menu, or permanent safety guarantee is required.
+
+## Meadows-only starter implementation
+
+During the initial world prototype, **Meadows is the sole populated starter biome**. Other planetary areas remain navigable but contain no biome-specific trees, resources, enemies, or settlements. The 20-face biome plan remains a future design, not current generated gameplay. The prototype uses 4-meter harvested logs and 4-meter cabin wall modules. This does not imply a complete crafting/building implementation.
+
+Physical terrain surface queries are cached in deterministic **32-meter world-space chunks** as an initial streaming layer, independent of graphics LOD. Chunks may be discarded from memory and regenerated from the same seed. This is not yet a full volumetric crust or immutable full-resolution D20 collision mesh; caves, local cavity triangulation, persistence of terrain modifications, and complete per-chunk physics lifecycle still require implementation and validation.
 
 ## Planetary volume, bedrock, cavities and water (agreed design)
 

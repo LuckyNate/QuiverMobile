@@ -7,15 +7,16 @@ export class TreeHarvestSystem {
  constructor(scene,player,height,radius){
   Object.assign(this,{scene,player,height,radius});
   this.trees=[];this.wood=0;this.attackClock=0;
+  this.logLength=4;
   this.root=new THREE.Group();scene.add(this.root);
   this.woodLabel=document.createElement('div');
   this.woodLabel.style.cssText='position:fixed;right:12px;bottom:12px;color:white;background:#0009;padding:8px;font:14px monospace;z-index:4;pointer-events:none';
   document.getElementById('app').append(this.woodLabel);
   this.showWood();
-  const trunkGeometry=new THREE.CylinderGeometry(.24,.31,3.66,7);
-  trunkGeometry.translate(0,1.83,0);
+  const trunkGeometry=new THREE.CylinderGeometry(.24,.31,4,7);
+  trunkGeometry.translate(0,2,0);
   const canopyGeometry=new THREE.ConeGeometry(1.35,3.2,7);
-  canopyGeometry.translate(0,4.1,0);
+  canopyGeometry.translate(0,4.3,0);
   this.fallback=new THREE.Group();
   this.fallback.add(new THREE.Mesh(trunkGeometry,new THREE.MeshStandardMaterial({color:0x705038,roughness:1})));
   this.fallback.add(new THREE.Mesh(canopyGeometry,new THREE.MeshStandardMaterial({color:0x315934,roughness:1,transparent:true})));

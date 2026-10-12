@@ -2,6 +2,7 @@ import {TerrainHeight} from './engine/terrain-height.js';
 import {WorldOctree} from './engine/world-octree.js';
 import {ImplicitSphere} from './engine/implicit-sphere.js';
 import {SphereSurface} from './engine/sphere-surface.js';
+import {ChunkedSurface} from './engine/chunked-surface.js';
 
 // World owns the spatial index and solid planet construction.
 // Do not mix renderer terrain, sea level or input into collision geometry.
@@ -10,6 +11,6 @@ export class WorldSystem {
   this.height=height;
   this.octree=new WorldOctree({center:[0,0,0],halfSize:16384,maxDepth:15});
   this.solidity=new ImplicitSphere(radius,{halfSize:16384,minCell:1,height});
-  this.surface=new SphereSurface(radius,{step:1,height}); // Visual diagnostic only; physics uses solidity.
+  this.surface=new ChunkedSurface(new SphereSurface(radius,{step:1,height}),{chunkSize:32,maxChunks:128}); // Deterministic on-demand surface chunks.
  }
 }
