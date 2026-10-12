@@ -30,6 +30,21 @@ export class ImplicitSphere {
   }
   return true;
  }
+ // A conservative planet-AABB and radial-band broad phase.
+ // Actual boundary placement is governed by the procedural surface,
+ // never by occupancy-cell centers.
+ mayContainBoundary(box){
+  const outer=this.radius*(1+TERRAIN_AMPLITUDE_RATIO);
+  const inner=this.radius*(1-TERRAIN_AMPLITUDE_RATIO);
+  let nearest2=0,farthest2=0;
+  for(let i=0;i<3;i++){
+   const nearest=Math.max(0,box.min[i],-box.max[i]);
+   nearest2+=nearest*nearest;
+   const farthest=Math.max(Math.abs(box.min[i]),Math.abs(box.max[i]));
+   farthest2+=farthest*farthest;
+  }
+  return nearest2<=outer*outer&&farthest2>=inner*inner;
+ }
  // Lazy solid octree: interior cube first, then subdivide only the
  // shell where solid terrain and empty space meet.
  query(box,{kinds=null}={}){

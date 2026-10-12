@@ -76,6 +76,18 @@ The game uses **independent players and emergent cooperation**, not a formal par
 
 The intended **no-outcamping rule** emerges from these interconnected mechanics: camps require ongoing labor, bonfire protection, and defense; neglect removes the owner's map marker and exposes the buildings to the hostile world. No universal timer, claim-expiration menu, or permanent safety guarantee is required.
 
+## Planetary volumetric solidity and collision broad phase (agreed specification)
+
+- The **full-resolution procedural D20 terrain mesh** is the authoritative, closed boundary of the planet. Every point inside that boundary is FULL; outside it is EMPTY. Render-distance LOD must not alter that physical boundary.
+- A power-of-two **planet AABB** rejects outer space with one bounds test. At the current radius, the root is 32768 m on each side (half-size 16384 m), with a minimum spatial cell of 1 m and 15 subdivision levels.
+- The octree represents large FULL and EMPTY regions without subdividing them. Boundary nodes retain references to exact surface geometry; **1 m is broad-phase indexing resolution, not the collision surface or a voxelized approximation of the planet**.
+- Every object's complete (including swept) world-space AABB determines the 1 m cells it crosses. Only objects sharing at least one relevant cell may become pairwise physics candidates. Overlap between shapes larger than one cell must not be lost.
+- The world and its stationary objects remain spatially solid even while far away or inactive. Broad-phase filtering governs whether *collision contact checks* are needed, not whether a physical object's volume exists.
+- Box3D resolves contacts against precise collision shapes/terrain triangles, not 1 m cubes. No duplicate shell-versus-filled-cube contact geometry may be used.
+- The candidate path is **universe/planet AABB → octree/cell broad phase → exact shape or full-resolution triangle boundary → Box3D contact**. Radial planetary gravity continues to apply independently.
+
+**Implementation caveat (2026-10-11):** the runtime currently generates local procedural cube-sphere hull patches from the same heightfield, and the visible D20 terrain changes geometry with LOD. Local surface sampling is **not** yet the requested single immutable full-resolution D20 triangle mesh. Until that mesh is authoritative for both rendering derivation and Box3D, triangle-perfect coincidence is an open integration requirement. Do not describe current hulls as exact full-resolution D20 triangles.
+
 ## Implementation boundary
 
 The game design above is the intended destination. The current runtime remains an experimental planetary engine prototype. The technical implementation notes below describe its existing and historical approaches and require verification before being treated as rebuild requirements.

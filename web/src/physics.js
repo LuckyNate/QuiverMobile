@@ -22,24 +22,16 @@ export class DynamicSolidBody {
  }
  candidates(from,to=from){
   const a=this.bounds(from),b=this.bounds(to);
-  return this.octree.query({
+  return this.octree.queryCells({
    min:a.min.map((v,i)=>Math.min(v,b.min[i])),
    max:a.max.map((v,i)=>Math.max(v,b.max[i]))
-  },{exclude:this.id,kinds:['dynamic','player']});
+  },{exclude:this.id,kinds:['dynamic','player'],cellSize:1});
  }
  // Conservative full-shape terrain clearance, independent of rendered triangles.
  terrainClear(p){
-  // Test the same occupied octree cubes used by Box3D, rather than
-  // independently re-sampling terrain height.
-  const r=this.radius-.025;
-  const region={min:[p.x-r,p.y-r,p.z-r],max:[p.x+r,p.y+r,p.z+r]};
-  for(const {box} of this.solidity.query(region,{kinds:['static']})){
-   const dx=Math.max(box.min[0]-p.x,0,p.x-box.max[0]);
-   const dy=Math.max(box.min[1]-p.y,0,p.y-box.max[1]);
-   const dz=Math.max(box.min[2]-p.z,0,p.z-box.max[2]);
-   if(dx*dx+dy*dy+dz*dz<r*r)return false;
-  }
-  return true;
+  // Octree voxels accelerate lookup; never treat their centers as a
+  // substitute for the full-resolution procedural solid boundary.
+  return this.solidity.clearSphere(p,this.radius);
  }
  clear(p,neighbors=this.candidates(p)){
   if(!this.terrainClear(p))return false;
@@ -161,7 +153,7 @@ export class PhysicsWorld {
  }
  // Check actor regions every frame. Query occupancy only on crossing the
  // cached region margin, and incrementally add/remove changed Box3D proxies.
- syncStatic(surface,queryBounds){
+ syncStatic(surface,queryBounds,solidity=null){
   const areas=Array.isArray(queryBounds)?queryBounds:[queryBounds];
   const margin=.5;
   let dirty=this.staticRegionCache.length!==areas.length;
@@ -170,7 +162,9 @@ export class PhysicsWorld {
    const area=areas[i],cached=this.staticRegionCache[i];
    if(cached&&area.min.every((v,k)=>v>=cached.bounds.min[k]&&area.max[k]<=cached.bounds.max[k]))continue;
    const bounds={min:area.min.map(v=>v-margin),max:area.max.map(v=>v+margin)};
-   this.staticRegionCache[i]={bounds,boxes:surface.query(bounds)};
+   // Reject outer space and all-solid/empty regions before surface sampling.
+   const potential=solidity?solidity.mayContainBoundary(bounds):true;
+   this.staticRegionCache[i]={bounds,boxes:potential?surface.query(bounds):[]};
    dirty=true;
   }
   if(!dirty)return;

@@ -74,6 +74,19 @@ export class WorldOctree {
   if(contains(node.bounds(),next)&&(node.level===this.maxDepth||node.childIndex(next)===-1))return;
   node.ids.delete(id);this._index(entry);
  }
+ // Two swept bounds that share no 1 m grid cell cannot interact.
+ // This is a conservative floor-based broad phase; exact shapes stay in Box3D.
+ static shareCells(a,b,cellSize=1){
+  for(let axis=0;axis<3;axis++){
+   const a0=Math.floor(a.min[axis]/cellSize),a1=Math.floor(a.max[axis]/cellSize);
+   const b0=Math.floor(b.min[axis]/cellSize),b1=Math.floor(b.max[axis]/cellSize);
+   if(a1<b0||b1<a0)return false;
+  }
+  return true;
+ }
+ queryCells(bounds,{exclude=null,kinds=null,cellSize=1}={}){
+  return this.query(bounds,{exclude,kinds}).filter(entry=>WorldOctree.shareCells(bounds,entry.box,cellSize));
+ }
  get(id){return this.objects.get(id);}
  query(box,{exclude=null,kinds=null}={}){
   if(!valid(box))throw new TypeError('Invalid query AABB');
