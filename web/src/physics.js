@@ -31,7 +31,7 @@ export class DynamicSolidBody {
  terrainClear(p){
   // Octree voxels accelerate lookup; never treat their centers as a
   // substitute for the full-resolution procedural solid boundary.
-  return this.solidity.clearSphere(p,this.radius);
+  return this.shape==='capsule'\n   ?this.solidity.clearCapsule(p,this.size.halfHeight,this.size.radius)\n   :this.solidity.clearSphere(p,this.radius);
  }
  clear(p,neighbors=this.candidates(p)){
   if(!this.terrainClear(p))return false;

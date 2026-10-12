@@ -30,6 +30,31 @@ export class ImplicitSphere {
   }
   return true;
  }
+ // Capsule clearance against the physical ground, aligned with local radial up.
+ // Unlike the old enclosing sphere, this samples the capsule's actual radius
+ // and its segment endpoints rather than requiring a 0.9 m spherical gap.
+ clearCapsule(p,halfHeight,radius){
+  const up=this.up(p);
+  const reference=Math.abs(up.z)<.9?{x:0,y:0,z:1}:{x:0,y:1,z:0};
+  const cross=(a,b)=>({x:a.y*b.z-a.z*b.y,y:a.z*b.x-a.x*b.z,z:a.x*b.y-a.y*b.x});
+  let right=cross(up,reference),n=Math.hypot(right.x,right.y,right.z);
+  right={x:right.x/n,y:right.y/n,z:right.z/n};
+  const forward=cross(up,right);
+  // Bottom cap is the limiting ground contact. Upper portions are included
+  // for steep terrain, but the test never expands the horizontal radius.
+  for(const along of [-halfHeight,0,halfHeight]){
+   const center={x:p.x+up.x*along,y:p.y+up.y*along,z:p.z+up.z*along};
+   for(const [x,y] of [[0,0],[1,0],[-1,0],[0,1],[0,-1],[.707,.707],[-.707,.707],[.707,-.707],[-.707,-.707]]){
+    const radial={x:center.x+radius*(x*right.x+y*forward.x),
+     y:center.y+radius*(x*right.y+y*forward.y),
+     z:center.z+radius*(x*right.z+y*forward.z)};
+    const dist=Math.hypot(radial.x,radial.y,radial.z);
+    const surface=this.height?this.height.radius(this.up(radial),this.radius):this.radius;
+    if(dist-radius<surface-.025)return false;
+   }
+  }
+  return true;
+ }
  // A conservative planet-AABB and radial-band broad phase.
  // Actual boundary placement is governed by the procedural surface,
  // never by occupancy-cell centers.
