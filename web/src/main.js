@@ -104,6 +104,28 @@ sharedWorld.join('local-owner',player);
 const harvesting=new TreeHarvestSystem(scene,playerSystem,height,RADIUS,{shared:sharedWorld,playerId:'local-owner',camera});
 const panels=new GamePanels({app,canvas,controls:playerSystem.controls,sharedWorld,playerId:'local-owner'});
 adminPanels=panels;
+// Visual-only owner commands. Physics and game simulation remain active.
+const renderLayers={terrain:true,water:true,trees:true,player:true,objects:true};
+function applyRenderLayers(){
+ terrain.setRenderEnabled(renderLayers.terrain);
+ water.mesh.visible=renderLayers.water;
+ harvesting.renderEnabled=renderLayers.trees;
+ harvesting.root.visible=renderLayers.trees;
+ playerSystem.visual.root.visible=renderLayers.player;
+ aabbDisplay.visible=renderLayers.objects&&debugAabbRequested;
+ greenSurface.visible=renderLayers.objects&&debugSurfaceRequested;
+ for(const item of fallingCubes)item.mesh.visible=renderLayers.objects;
+}
+function setRenderLayer(enabled,args){
+ if(args.length!==1)return 'Usage: /render'+(enabled?'on':'off')+' [terrain|water|trees|player|objects|all]';
+ const target=args[0].toLowerCase();
+ if(target!=='all'&&!Object.prototype.hasOwnProperty.call(renderLayers,target))return 'Unknown render layer: '+target;
+ for(const name of target==='all'?Object.keys(renderLayers):[target])renderLayers[name]=enabled;
+ applyRenderLayers();
+ return (enabled?'Rendering enabled: ':'Rendering disabled: ')+target;
+}
+panels.registerCommand('renderon',args=>setRenderLayer(true,args),'Show visual world layer');
+panels.registerCommand('renderoff',args=>setRenderLayer(false,args),'Hide visual world layer');
 for(const [name,value] of stages)if(value.state==='FAILED')report(name,value.state,value.detail);
 let lastLogCount=-1;
 report('starter biome','READY','Meadows (other biomes unpopulated)');
@@ -111,6 +133,7 @@ report('starter biome','READY','Meadows (other biomes unpopulated)');
 let physics=null,fallingCubes=[],playerCollider=null;
 let physicsLoading=false,simulationReady=false;
 const cyan=new THREE.LineBasicMaterial({color:0x00ffff,depthTest:true,depthWrite:false});
+let debugAabbRequested=false,debugSurfaceRequested=false;
 const aabbDisplay=new THREE.Group();scene.add(aabbDisplay);
 aabbDisplay.visible=false;
 function boundsAt(p,half){return {min:[p.x-half,p.y-half,p.z-half],max:[p.x+half,p.y+half,p.z+half]};}
