@@ -144,19 +144,30 @@ export class WorldTerrain {
   g.computeVertexNormals();
   return g;
  }
- // Coarse nodes represent distant regions, while near nodes remain bounded
- // render chunks. Each outward pixelated radial band lowers detail by one.
+ // Distance is tested at EVERY hierarchical node. Distant parents remain
+ // coarse chunks; only nearby nodes are subdivided to the render-chunk level.
+ // This avoids creating thousands of 32 m chunks across distant biomes.
  select(anchor){
   const selected=[];
   const origin=anchor.center;
+  const chunkLevel=Math.max(0,MAX_LOD-5);
   const visit=n=>{
    const arc=RADIUS*Math.acos(THREE.MathUtils.clamp(origin.dot(n.center),-1,1));
    const distance=Math.max(0,arc-n.reach);
-   const ring=Math.max(0,Math.floor(Math.max(0,distance-48)/48)+ (distance>48?1:0));
-   const target=Math.max(2,MAX_LOD-ring);
-   const chunkLevel=Math.min(target,Math.max(0,MAX_LOD-5));
-   if(n.level<chunkLevel){for(const child of children(n))visit(child);}
-   else selected.push({node:n,detail:target});
+   // A parent only splits while its surface intersects the near-detail region.
+   // The region contracts with each level and follows the player's chunk.
+   const splitRange=Math.max(64,n.reach*1.5);
+   if(n.level<chunkLevel&&distance<splitRange){
+    for(const child of children(n))visit(child);
+    return;
+   }
+   // Within the 32 m render chunks, sample full 1 m detail. Outside,
+   // progressively reduce the tessellation of the persistent D20 nodes.
+   const rings=Math.max(0,Math.ceil((distance-48)/48));
+   const detail=n.level>=chunkLevel
+    ?Math.max(n.level,MAX_LOD-rings)
+    :n.level;
+   selected.push({node:n,detail});
   };
   for(const root of this.roots)visit(root);
   return selected;
