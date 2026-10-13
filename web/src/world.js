@@ -69,6 +69,15 @@ export class WorldTerrain {
   this.scene=scene;
   this.cache=new Map();
   this.active=new Set();
+  this.pending=[];
+  this.requested=new Set();
+  this.renderEnabled=true;
+  this.rootFallbacks=[];
+  // A complete low-detail planet is always drawable while detail streams in.
+  for(const root of this.roots){
+   const mesh=new THREE.Mesh(this.geometry(root,2),this.material);
+   this.rootFallbacks.push(mesh);this.scene.add(mesh);
+  }
   this.maxDetail=MAX_LOD;
   this.anchorAddress=null;
   this.leafCount=0;
@@ -91,7 +100,7 @@ export class WorldTerrain {
  // Render a chunk at a chosen discrete detail. Sampling uses the same seeded
  // height provider as the physical terrain, without GPU morphs or fade ghosts.
  geometry(n,detail){
-  const positions=[],colors=[],triangles=[];
+  const positions=[],colors=[];
   const sample=v=>{
    const r=this.height.radius(v,RADIUS),p=v.clone().multiplyScalar(r);
    const color=terrainColor(r-(RADIUS-1));
@@ -156,48 +165,61 @@ export class WorldTerrain {
   for(const root of this.roots)visit(root);
   return selected;
  }
+ setRenderEnabled(enabled){
+  this.renderEnabled=Boolean(enabled);
+  for(const mesh of this.rootFallbacks)mesh.visible=this.renderEnabled;
+  for(const entry of this.cache.values())entry.mesh.visible=this.renderEnabled&&this.active.has(entry.key);
+ }
+ // A chunk address change only alters the target set; mesh work is streamed.
  update(position,force=false,maxDetail=MAX_LOD){
   const detailCap=Math.max(2,Math.min(MAX_LOD,Math.floor(maxDetail)));
   const anchor=this.anchor(position);
   const address=String(anchor.address);
-  if(!force&&address===this.anchorAddress&&detailCap===this.maxDetail)return false;
-  this.anchorAddress=address;
-  this.maxDetail=detailCap;
-  const selected=this.select(anchor);
-  const required=new Set();
-  // Geometry is created only on cache misses, never recreated for each frame.
-  for(const {node:n,detail} of selected){
-   const level=Math.max(n.level,Math.min(detail,detailCap));
-   const key=String(n.address)+':'+level;
-   required.add(key);
-   let entry=this.cache.get(key);
-   if(!entry){
-    const geometry=this.geometry(n,level);
+  if(force||address!==this.anchorAddress||detailCap!==this.maxDetail){
+   this.anchorAddress=address;this.maxDetail=detailCap;
+   const selected=this.select(anchor),required=new Set();
+   const queue=[];
+   for(const {node:n,detail} of selected){
+    const level=Math.max(n.level,Math.min(detail,detailCap));
+    const key=String(n.address)+':'+level;
+    required.add(key);
+    if(!this.cache.has(key))queue.push({key,node:n,level});
+   }
+   this.requested=required;
+   // Near chunks are built before distant ones.
+   queue.sort((a,b)=>b.level-a.level);
+   this.pending=queue;
+   this.leafCount=required.size;
+   // Keep a complete coarse globe until replacement terrain covers each root.
+   for(const [key,entry] of this.cache)entry.mesh.visible=this.renderEnabled&&required.has(key);
+  }
+  // At most one new mesh per frame. No traversal/rebuild on ordinary movement.
+  if(this.pending.length){
+   const job=this.pending.shift();
+   if(this.requested.has(job.key)&&!this.cache.has(job.key)){
+    const geometry=this.geometry(job.node,job.level);
     const mesh=new THREE.Mesh(geometry,this.material);
     mesh.frustumCulled=true;
-    entry={mesh};
-    this.cache.set(key,entry);
     this.scene.add(mesh);
+    this.cache.set(job.key,{key:job.key,mesh});
+    mesh.visible=this.renderEnabled;
    }
-   entry.mesh.visible=true;
-   // Recent entries are kept for nearby backtracking.
-   this.cache.delete(key);this.cache.set(key,entry);
   }
-  for(const key of this.active)if(!required.has(key)){
-   const entry=this.cache.get(key);
-   if(entry)entry.mesh.visible=false;
+  // Only release a root fallback after every selected patch on that face exists.
+  for(let face=0;face<this.roots.length;face++){
+   const prefix=String(this.roots[face].address);
+   const covered=[...this.requested].filter(key=>key.startsWith(prefix+':'));
+   this.rootFallbacks[face].visible=this.renderEnabled&&!covered.every(key=>this.cache.has(key));
   }
-  this.active=required;
-  this.leafCount=required.size;
-  // Bounded geometry cache. Never evict a currently visible chunk.
+  // Evict inactive geometry, never evict chunks required by the current view.
   if(this.cache.size>2200){
    for(const [key,entry] of this.cache){
     if(this.cache.size<=1800)break;
-    if(required.has(key))continue;
+    if(this.requested.has(key))continue;
     this.scene.remove(entry.mesh);entry.mesh.geometry.dispose();
     this.cache.delete(key);
    }
   }
-  return true;
+  return this.pending.length>0;
  }
 }
