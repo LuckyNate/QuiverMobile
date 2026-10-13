@@ -7,6 +7,7 @@ export class TreeHarvestSystem {
  constructor(scene,player,height,radius,{shared=null,playerId='local-owner',camera=null}={}){
   Object.assign(this,{scene,player,height,radius,shared,playerId,camera});
   this.trees=[];this.wood=0;this.attackClock=0;this.logLength=4;
+  this.renderEnabled=true;
   this.root=new THREE.Group();scene.add(this.root);
   this.origin=player.position.clone().normalize();
   const reference=Math.abs(this.origin.z)<.9?new THREE.Vector3(0,0,1):new THREE.Vector3(0,1,0);
@@ -127,8 +128,8 @@ export class TreeHarvestSystem {
   for(const t of this.trees){
    const visible=withinSceneryRange(t.at,this.player.position);
    if(t.state==='standing'||t.state==='falling'||t.state==='fading')
-    t.tree.visible=visible;
-   if(t.state==='flying')t.trunk.visible=withinSceneryRange(t.trunk.position,this.player.position);
+    t.tree.visible=this.renderEnabled&&visible;
+   if(t.state==='flying')t.trunk.visible=this.renderEnabled&&withinSceneryRange(t.trunk.position,this.player.position);
   }
   this.attackClock=Math.max(0,this.attackClock-dt);
   this.bump(body,dt);
