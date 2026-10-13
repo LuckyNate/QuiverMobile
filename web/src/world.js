@@ -3,20 +3,8 @@ import {rootAddress,appendChild} from './engine/d20-address.js';
 import * as THREE from 'three';
 export const ROOT_EDGE_METERS=8192; // Current experiment, not a fixed engine limit.
 export const RADIUS=ROOT_EDGE_METERS*Math.sqrt(10+2*Math.sqrt(5))/4;
-// Maximum surface distance at which each subdivision level becomes desirable.
-// Keep approximately 1 m finest nominal edges when root size changes.
-// Each active LOD band is spaced 30 m from the next for this experiment.
 export const MAX_TERRAIN_LOD=Math.round(Math.log2(ROOT_EDGE_METERS));
-export const LOD_MAX_DISTANCE_METERS=Array.from(
- {length:MAX_TERRAIN_LOD+1},
- (_,level)=>level<2?Infinity:30*(MAX_TERRAIN_LOD-level+1)
-);
-const MAX_LOD=LOD_MAX_DISTANCE_METERS.length-1;
-// Enter a level while every newly created vertex is still at its parent surface.
-// The wider exit boundary prevents topology thrash, but both boundaries are
-// beyond the zero-morph distance so splitting and collapsing are invisible.
-const SPLIT_RATIO=1.25;
-const MERGE_RATIO=1.35;
+const MAX_LOD=MAX_TERRAIN_LOD;
 // Elevation in meters above sea level (RADIUS - 1). Palette is visual only.
 const TERRAIN_PALETTE=[
  [-35,0xc6b88a],[0,0xc6b88a],[5,0xc6b88a],
@@ -35,6 +23,7 @@ function terrainColor(elevation){
  return TERRAIN_PALETTE[TERRAIN_PALETTE.length-1].color.clone();
 }
 
+
 const base=new THREE.IcosahedronGeometry(1,0),pos=base.getAttribute('position');
 const roots=[];
 for(let i=0;i<pos.count;i+=3)roots.push([
@@ -47,168 +36,168 @@ const mid=(a,b)=>a.clone().add(b).normalize();
 function node(a,b,c,level,parent=null,address=null){
  const center=a.clone().add(b).add(c).normalize();
  const reach=RADIUS*Math.max(center.distanceTo(a),center.distanceTo(b),center.distanceTo(c));
- return {a,b,c,level,parent,address,center,reach,children:null,split:false};
+ return {a,b,c,level,parent,address,center,reach,children:null};
 }
-// Render-only spherical triangle hierarchy; physical surface is independent.
-// Retained nodes and split hysteresis avoid rebuilding when walking near a LOD threshold.
+function children(n){
+ if(!n.children){
+  const ab=mid(n.a,n.b),bc=mid(n.b,n.c),ca=mid(n.c,n.a),l=n.level+1;
+  n.children=[node(n.a,ab,ca,l,n,appendChild(n.address,0)),
+   node(ab,n.b,bc,l,n,appendChild(n.address,1)),
+   node(ca,bc,n.c,l,n,appendChild(n.address,2)),
+   node(ab,bc,ca,l,n,appendChild(n.address,3))];
+ }
+ return n.children;
+}
+function contains(n,p){
+ const vs=[n.a,n.b,n.c];
+ let sign=0;
+ for(let i=0;i<3;i++){
+  const d=new THREE.Vector3().crossVectors(vs[i],vs[(i+1)%3]).dot(p);
+  if(Math.abs(d)<1e-10)continue;
+  if(sign&&d*sign<0)return false;
+  sign=d;
+ }
+ return true;
+}
+// Render chunks ARE the persistent D20 hierarchy nodes. Geometry is cached
+// per node/detail pair; Box3D and the world-space collision cache are separate.
 export class WorldTerrain {
  constructor(scene,height=new TerrainHeight()){
   this.height=height;
-  // Reuse deterministic surface samples across LOD topology changes.
-  this.surfaceSamples=new Map();
   this.roots=roots.map(([a,b,c],face)=>node(a,b,c,0,null,rootAddress(face)));
-  this.geometry=new THREE.BufferGeometry();
   this.material=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:1,side:THREE.DoubleSide,flatShading:true});
-  this.mesh=new THREE.Mesh(this.geometry,this.material);
-  this.mesh.frustumCulled=false;
-  this.morphPlayer=new THREE.Vector3(0,0,RADIUS);
-  this.material.onBeforeCompile=shader=>{
-   shader.uniforms.morphPlayer={value:this.morphPlayer};
-   shader.vertexShader='attribute vec3 morphOrigin;\nattribute float morphRange;\nuniform vec3 morphPlayer;\n'+shader.vertexShader;
-   shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>',
-    '#include <begin_vertex>\nfloat morphDistance=length(position-morphPlayer);\nfloat morphFactor=morphRange>0.0?1.0-smoothstep(morphRange*0.55,morphRange*1.2,morphDistance):1.0;\ntransformed=mix(morphOrigin,position,morphFactor);');
-  };
-  scene.add(this.mesh);
-  this.leafCount=0;
-  this.maxDetailLevel=MAX_LOD;
+  this.scene=scene;
+  this.cache=new Map();
+  this.active=new Set();
   this.maxDetail=MAX_LOD;
+  this.anchorAddress=null;
+  this.leafCount=0;
   this.update(new THREE.Vector3(0,0,RADIUS+1.3),true);
  }
- update(position,force=false,maxDetail=MAX_LOD){
-  maxDetail=Math.max(2,Math.min(MAX_LOD,Math.floor(maxDetail)));
-  if(maxDetail!==this.maxDetail){force=true;this.maxDetail=maxDetail;}
-  this.morphPlayer.copy(position);
-  const normalized=position.clone().normalize();
-  const altitude=position.length()-RADIUS;
-  let changed=force;
-  const leaves=[];
-  // Register each new edge vertex at the moment its parent is split.
-  // The stitcher and morpher use this SAME direction key; neighboring
-  // triangles therefore share an origin and distance factor.
-  const key=v=>[v.x,v.y,v.z].map(x=>Math.round(x*1e9)).join(',');
-  const splitEdges=new Map();
-  const visit=n=>{
-   const arc=RADIUS*Math.acos(THREE.MathUtils.clamp(n.center.dot(normalized),-1,1));
-   // Conservative distance to triangle; prevents abrupt detail loss at edges.
-   const distance=Math.hypot(Math.max(0,arc-n.reach),altitude);
-   const threshold=LOD_MAX_DISTANCE_METERS[n.level+1];
-   // Split before the morph starts, and merge only after it has returned
-   // to the parent surface. Infinite coarse thresholds remain permanent.
-   const split=n.level<maxDetail && (threshold===Infinity ||
-    distance<threshold*(n.split?MERGE_RATIO:SPLIT_RATIO));
-   if(split){
-    if(!n.children){
-     const ab=mid(n.a,n.b),bc=mid(n.b,n.c),ca=mid(n.c,n.a),level=n.level+1;
-     n.children=[node(n.a,ab,ca,level,n,appendChild(n.address,0)),
-      node(ab,n.b,bc,level,n,appendChild(n.address,1)),
-      node(ca,bc,n.c,level,n,appendChild(n.address,2)),
-      node(ab,bc,ca,level,n,appendChild(n.address,3))];
+ // A stable ~32 m triangular address prevents meter-by-meter LOD reassignment.
+ // All outer rings are measured radially from this chunk's center.
+ anchor(position){
+  const p=position.clone().normalize();
+  let n=this.roots.find(root=>contains(root,p));
+  if(!n)n=this.roots.reduce((best,item)=>item.center.dot(p)>best.center.dot(p)?item:best);
+  const anchorLevel=Math.max(0,MAX_LOD-5);
+  while(n.level<anchorLevel){
+   const options=children(n);
+   n=options.find(child=>contains(child,p))||
+    options.reduce((best,item)=>item.center.dot(p)>best.center.dot(p)?item:best);
+  }
+  return n;
+ }
+ // Render a chunk at a chosen discrete detail. Sampling uses the same seeded
+ // height provider as the physical terrain, without GPU morphs or fade ghosts.
+ geometry(n,detail){
+  const positions=[],colors=[],triangles=[];
+  const sample=v=>{
+   const r=this.height.radius(v,RADIUS),p=v.clone().multiplyScalar(r);
+   const color=terrainColor(r-(RADIUS-1));
+   return {p,color};
+  };
+  const addTriangle=(a,b,c)=>{
+   const A=sample(a),B=sample(b),C=sample(c);
+   const outward=new THREE.Vector3().subVectors(B.p,A.p).cross(new THREE.Vector3().subVectors(C.p,A.p)).dot(A.p)>0;
+   const verts=outward?[A,B,C]:[A,C,B];
+   for(const v of verts){positions.push(v.p.x,v.p.y,v.p.z);colors.push(v.color.r,v.color.g,v.color.b);}
+  };
+  const subdivide=(a,b,c,level)=>{
+   if(level>=detail){addTriangle(a,b,c);return;}
+   const ab=mid(a,b),bc=mid(b,c),ca=mid(c,a);
+   subdivide(a,ab,ca,level+1);
+   subdivide(ab,b,bc,level+1);
+   subdivide(ca,bc,c,level+1);
+   subdivide(ab,bc,ca,level+1);
+  };
+  subdivide(n.a,n.b,n.c,n.level);
+  // Render-only skirts conceal T junctions across unequal-detail chunk edges.
+  // No skirt contributes to collision or modifies sampled surface heights.
+  const edge=(a,b)=>{
+   const segments=1<<Math.max(0,detail-n.level),depth=12;
+   let prev=a;
+   for(let i=1;i<=segments;i++){
+    const t=i/segments;
+    const v=i===segments?b:a.clone().lerp(b,t).normalize();
+    const A=sample(prev),B=sample(v);
+    const aLow=A.p.clone().addScaledVector(prev,-depth);
+    const bLow=B.p.clone().addScaledVector(v,-depth);
+    const strip=[[A.p,B.p,aLow],[B.p,bLow,aLow]];
+    for(const triple of strip)for(let j=0;j<3;j++){
+     const point=triple[j],color=j===0?A.color:B.color;
+     positions.push(point.x,point.y,point.z);
+     colors.push(color.r,color.g,color.b);
     }
-    if(!n.split)changed=true;
-    n.split=true;
-    for(const [a,b] of [[n.a,n.b],[n.b,n.c],[n.c,n.a]]){
-     const midpoint=mid(a,b),id=key(midpoint);
-     if(!splitEdges.has(id))splitEdges.set(id,{
-      a,b,level:n.level+1
-     });
-    }
-    for(const child of n.children)visit(child);
-   }else{
-    if(n.split)changed=true;
-    n.split=false;
-    leaves.push(n);
+    prev=v;
    }
+  };
+  edge(n.a,n.b);edge(n.b,n.c);edge(n.c,n.a);
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+  g.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
+  g.computeVertexNormals();
+  return g;
+ }
+ // Coarse nodes represent distant regions, while near nodes remain bounded
+ // render chunks. Each outward pixelated radial band lowers detail by one.
+ select(anchor){
+  const selected=[];
+  const origin=anchor.center;
+  const visit=n=>{
+   const arc=RADIUS*Math.acos(THREE.MathUtils.clamp(origin.dot(n.center),-1,1));
+   const distance=Math.max(0,arc-n.reach);
+   const ring=Math.max(0,Math.floor(Math.max(0,distance-48)/48)+ (distance>48?1:0));
+   const target=Math.max(2,MAX_LOD-ring);
+   const chunkLevel=Math.min(target,Math.max(0,MAX_LOD-5));
+   if(n.level<chunkLevel){for(const child of children(n))visit(child);}
+   else selected.push({node:n,detail:target});
   };
   for(const root of this.roots)visit(root);
-  if(!changed)return false;
-  const positions=[],colors=[],morphOrigins=[],morphRanges=[];
-  // Every leaf vertex is shared through its direction, independent of LOD.
-  // A coarse edge is split wherever a finer neighbor owns its midpoint.
-  const vertices=new Set();
-  for(const n of leaves)for(const v of [n.a,n.b,n.c])vertices.add(key(v));
-  const edgePoints=(a,b,depth=0)=>{
-   if(depth>=MAX_LOD)return [a];
-   const midpoint=mid(a,b);
-   if(!vertices.has(key(midpoint)))return [a];
-   return [...edgePoints(a,midpoint,depth+1),...edgePoints(midpoint,b,depth+1)];
-  };
-  const sample=v=>{
-   const id=key(v);
-   let cached=this.surfaceSamples.get(id);
-   if(!cached){
-    const position=v.clone().multiplyScalar(this.height.radius(v,RADIUS));
-    cached={position,color:terrainColor(position.length()-(RADIUS-1))};
-    // Bound the sample cache on long-distance travel.
-    if(this.surfaceSamples.size>=100000)this.surfaceSamples.clear();
-    this.surfaceSamples.set(id,cached);
+  return selected;
+ }
+ update(position,force=false,maxDetail=MAX_LOD){
+  const detailCap=Math.max(2,Math.min(MAX_LOD,Math.floor(maxDetail)));
+  const anchor=this.anchor(position);
+  const address=String(anchor.address);
+  if(!force&&address===this.anchorAddress&&detailCap===this.maxDetail)return false;
+  this.anchorAddress=address;
+  this.maxDetail=detailCap;
+  const selected=this.select(anchor);
+  const required=new Set();
+  // Geometry is created only on cache misses, never recreated for each frame.
+  for(const {node:n,detail} of selected){
+   const level=Math.max(n.level,Math.min(detail,detailCap));
+   const key=String(n.address)+':'+level;
+   required.add(key);
+   let entry=this.cache.get(key);
+   if(!entry){
+    const geometry=this.geometry(n,level);
+    const mesh=new THREE.Mesh(geometry,this.material);
+    mesh.frustumCulled=true;
+    entry={mesh};
+    this.cache.set(key,entry);
+    this.scene.add(mesh);
    }
-   return cached;
-  };
-  const radial=v=>sample(v).position.clone();
-  // Every split midpoint lerps from its actual parent EDGE chord.
-  // Stitched duplicates look up that same midpoint record, never a
-  // separate parent-face plane. This preserves mixed-LOD boundaries.
-  // Collision heights remain authoritative and are never morphed.
-  const coarsePoint=(direction,parent)=>{
-   if(!parent)return radial(direction);
-   const A=radial(parent.a),B=radial(parent.b),C=radial(parent.c);
-   const normal=B.clone().sub(A).cross(C.clone().sub(A));
-   const divisor=normal.dot(direction);
-   if(Math.abs(divisor)<1e-7)return radial(direction);
-   const radius=normal.dot(A)/divisor;
-   if(!(radius>0&&Number.isFinite(radius)))return radial(direction);
-   return direction.clone().multiplyScalar(radius);
-  };
-  const add=(a,b,c,leaf)=>{
-   const A=radial(a),B=radial(b),C=radial(c);
-   const outward=new THREE.Vector3().subVectors(B,A).cross(new THREE.Vector3().subVectors(C,A)).dot(A)>=0;
-   for(const p of (outward?[A,B,C]:[A,C,B])){
-    positions.push(p.x,p.y,p.z);
-    const direction=p.clone().normalize();
-    const split=splitEdges.get(key(direction));
-    // Only fan centers use a face-plane origin. Shared edge vertices
-    // always come from the split/stitch edge definition.
-    const shared=vertices.has(key(direction));
-    // The stitch boundary is authoritative: a shared vertex must remain
-    // at its sampled position on BOTH sides of the edge on every frame.
-    // Only face-interior fan vertices can morph without opening seams.
-    const coarse=split
-     ?radial(split.a).add(radial(split.b)).multiplyScalar(.5)
-     :shared?p.clone():coarsePoint(direction,leaf.parent);
-    const candidateRange=split?LOD_MAX_DISTANCE_METERS[split.level]:
-     (!shared&&leaf.level>=2?LOD_MAX_DISTANCE_METERS[leaf.level]:0);
-    // Levels with infinite thresholds never transition and must not pass
-    // Infinity into smoothstep (which would generate undefined positions).
-    const range=Number.isFinite(candidateRange)?candidateRange:0;
-    morphOrigins.push(coarse.x,coarse.y,coarse.z);
-    morphRanges.push(range);
-    const color=sample(direction).color;
-    colors.push(color.r,color.g,color.b);
-   }
-  };
-  for(const n of leaves){
-   const boundary=[
-    ...edgePoints(n.a,n.b),
-    ...edgePoints(n.b,n.c),
-    ...edgePoints(n.c,n.a)
-   ];
-   if(boundary.length===3){add(n.a,n.b,n.c,n);continue;}
-   // Fan from a shared-height interior point to the stitched boundary.
-   // No skirts or collider changes: neighboring edges now have identical vertices.
-   const center=n.a.clone().add(n.b).add(n.c).normalize();
-   for(let i=0;i<boundary.length;i++)
-    add(center,boundary[i],boundary[(i+1)%boundary.length],n);
+   entry.mesh.visible=true;
+   // Recent entries are kept for nearby backtracking.
+   this.cache.delete(key);this.cache.set(key,entry);
   }
-  const geometry=new THREE.BufferGeometry();
-  geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
-  geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
-  geometry.setAttribute('morphOrigin',new THREE.Float32BufferAttribute(morphOrigins,3));
-  geometry.setAttribute('morphRange',new THREE.Float32BufferAttribute(morphRanges,1));
-  geometry.computeVertexNormals();
-  this.geometry.dispose();
-  this.geometry=geometry;
-  this.mesh.geometry=geometry;
-  this.leafCount=leaves.length;
+  for(const key of this.active)if(!required.has(key)){
+   const entry=this.cache.get(key);
+   if(entry)entry.mesh.visible=false;
+  }
+  this.active=required;
+  this.leafCount=required.size;
+  // Bounded geometry cache. Never evict a currently visible chunk.
+  if(this.cache.size>2200){
+   for(const [key,entry] of this.cache){
+    if(this.cache.size<=1800)break;
+    if(required.has(key))continue;
+    this.scene.remove(entry.mesh);entry.mesh.geometry.dispose();
+    this.cache.delete(key);
+   }
+  }
   return true;
  }
 }
