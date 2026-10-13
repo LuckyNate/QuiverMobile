@@ -62,7 +62,7 @@ function contains(n,p){
 // Render chunks ARE the persistent D20 hierarchy nodes. Geometry is cached
 // per node/detail pair; Box3D and the world-space collision cache are separate.
 export class WorldTerrain {
- constructor(scene,height=new TerrainHeight(),startPosition=new THREE.Vector3(0,0,RADIUS+1.3)){
+ constructor(scene,height=new TerrainHeight(),startPosition=new THREE.Vector3(0,0,RADIUS+1.3),zFar=5000){
   this.height=height;
   this.roots=roots.map(([a,b,c],face)=>node(a,b,c,0,null,rootAddress(face)));
   this.material=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:1,side:THREE.DoubleSide,flatShading:true});
@@ -73,6 +73,7 @@ export class WorldTerrain {
   this.requested=new Set();
   this.renderEnabled=true;
   this.maxDetail=MAX_LOD;
+  this.zFar=zFar;
   this.anchorAddress=null;
   this.leafCount=0;
   this.update(startPosition,true);
@@ -144,30 +145,26 @@ export class WorldTerrain {
   g.computeVertexNormals();
   return g;
  }
- // Distance is tested at EVERY hierarchical node. Distant parents remain
- // coarse chunks; only nearby nodes are subdivided to the render-chunk level.
- // This avoids creating thousands of 32 m chunks across distant biomes.
+ // One D20 hierarchy: a parent is rendered instead of its descendants.
+ // Each node's detail follows player-centered radial distance, not camera position.
+ // At zFar and beyond only the coarsest applicable ancestor is retained.
  select(anchor){
   const selected=[];
   const origin=anchor.center;
   const chunkLevel=Math.max(0,MAX_LOD-5);
+  const far=Math.max(1,this.zFar);
+  const range=Math.log2(1+far/16);
   const visit=n=>{
    const arc=RADIUS*Math.acos(THREE.MathUtils.clamp(origin.dot(n.center),-1,1));
+   // Distance to the node footprint, not its distant center.
    const distance=Math.max(0,arc-n.reach);
-   // A parent only splits while its surface intersects the near-detail region.
-   // The region contracts with each level and follows the player's chunk.
-   const splitRange=Math.max(64,n.reach*1.5);
-   if(n.level<chunkLevel&&distance<splitRange){
+   const fraction=Math.min(1,Math.log2(1+distance/16)/range);
+   const target=Math.max(0,Math.floor(MAX_LOD*(1-fraction)));
+   if(n.level<Math.min(chunkLevel,target)){
     for(const child of children(n))visit(child);
-    return;
+   }else{
+    selected.push({node:n,detail:Math.max(n.level,target)});
    }
-   // Within the 32 m render chunks, sample full 1 m detail. Outside,
-   // progressively reduce the tessellation of the persistent D20 nodes.
-   const rings=Math.max(0,Math.ceil((distance-48)/48));
-   const detail=n.level>=chunkLevel
-    ?Math.max(n.level,MAX_LOD-rings)
-    :n.level;
-   selected.push({node:n,detail});
   };
   for(const root of this.roots)visit(root);
   return selected;
@@ -177,11 +174,13 @@ export class WorldTerrain {
   for(const entry of this.cache.values())entry.mesh.visible=this.renderEnabled&&this.requested.has(entry.key);
  }
  // A chunk address change only alters the target set; mesh work is streamed.
- update(position,force=false,maxDetail=MAX_LOD){
+ update(position,force=false,maxDetail=MAX_LOD,zFar=this.zFar){
   const detailCap=Math.max(2,Math.min(MAX_LOD,Math.floor(maxDetail)));
   const anchor=this.anchor(position);
   const address=String(anchor.address);
-  if(force||address!==this.anchorAddress||detailCap!==this.maxDetail){
+  const farChanged=zFar!==this.zFar;
+  this.zFar=zFar;
+  if(force||address!==this.anchorAddress||detailCap!==this.maxDetail||farChanged){
    this.anchorAddress=address;this.maxDetail=detailCap;
    const selected=this.select(anchor),required=new Set();
    const queue=[];
