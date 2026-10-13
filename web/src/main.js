@@ -58,8 +58,6 @@ const sun=new THREE.DirectionalLight(0xffffff,2.0);sun.position.set(90,180,70);s
 const camera=new THREE.PerspectiveCamera(55,1,1,5000);
 const height=new TerrainHeight(TERRAIN_SEED,RADIUS);
 let terrain=null;
-try{terrain=new WorldTerrain(scene,height);report('terrain setup','READY');}
-catch(error){report('terrain setup','FAILED',error.message);}
 const water=new WorldWater(scene,RADIUS);
 const playerSystem=new PlayerSystem(scene,camera,canvas,RADIUS,report);
 playerSystem.setCameraCollision(height,RADIUS);
@@ -99,6 +97,9 @@ function meadowsSpawn(){
  return best.multiplyScalar(height.radius(best,RADIUS)+2);
 }
 player.copy(meadowsSpawn());
+// Initialize visual LOD from the actual deterministic spawn, not a placeholder pole.
+try{terrain=new WorldTerrain(scene,height,player);report('terrain setup','READY');}
+catch(error){report('terrain setup','FAILED',error.message);}
 const sharedWorld=new SharedWorld({ownerId:'local-owner',seed:TERRAIN_SEED});
 sharedWorld.join('local-owner',player);
 const harvesting=new TreeHarvestSystem(scene,playerSystem,height,RADIUS,{shared:sharedWorld,playerId:'local-owner',camera});
