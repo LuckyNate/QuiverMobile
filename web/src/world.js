@@ -148,9 +148,9 @@ export class WorldTerrain {
  // One D20 hierarchy: a parent is rendered instead of its descendants.
  // Each node's detail follows player-centered radial distance, not camera position.
  // At zFar and beyond only the coarsest applicable ancestor is retained.
- select(anchor){
+ select(anchor,position){
   const selected=[];
-  const origin=anchor.center;
+  const origin=position.clone().normalize();
   const chunkLevel=Math.max(0,MAX_LOD-5);
   const far=Math.max(1,this.zFar);
   const range=Math.log2(1+far/16);
@@ -182,7 +182,7 @@ export class WorldTerrain {
   this.zFar=zFar;
   if(force||address!==this.anchorAddress||detailCap!==this.maxDetail||farChanged){
    this.anchorAddress=address;this.maxDetail=detailCap;
-   const selected=this.select(anchor),required=new Set();
+   const selected=this.select(anchor,position),required=new Set();
    const queue=[];
    for(const {node:n,detail} of selected){
     const level=Math.max(n.level,Math.min(detail,detailCap));
