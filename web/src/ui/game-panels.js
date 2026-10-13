@@ -132,7 +132,8 @@ export class GamePanels {
  }
  execute(line){
   if(this.sharedWorld.ownerId!==this.playerId)return 'Owner permissions required.';
-  const [name,...args]=line.split(/\s+/);
+  const [rawName,...args]=line.split(/\s+/);
+  const name=rawName.replace(/^\//,'');
   const command=this.commands.get(name.toLowerCase());
   if(!command)return 'Unknown command: '+name;
   try{return String(command.handler(args)||'');}
