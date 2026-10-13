@@ -72,20 +72,11 @@ export class WorldTerrain {
   this.pending=[];
   this.requested=new Set();
   this.renderEnabled=true;
-  this.rootFallbacks=[];
-  this.fallbackMaterial=this.material.clone();
-  this.fallbackMaterial.depthWrite=false;
-  // A complete low-detail planet is always drawable while detail streams in.
-  for(const root of this.roots){
-   const mesh=new THREE.Mesh(this.geometry(root,2),this.fallbackMaterial);
-   mesh.renderOrder=-10;
-   this.rootFallbacks.push(mesh);this.scene.add(mesh);
-  }
   this.maxDetail=MAX_LOD;
   this.anchorAddress=null;
   this.leafCount=0;
   this.update(startPosition,true);
-  // The immediate terrain is present before gameplay, while distant chunks stream.
+  // Ensure the player and immediate neighborhood have real node meshes before play.
   this.loadNear(startPosition,64);
  }
  // A stable ~32 m triangular address prevents meter-by-meter LOD reassignment.
@@ -172,7 +163,6 @@ export class WorldTerrain {
  }
  setRenderEnabled(enabled){
   this.renderEnabled=Boolean(enabled);
-  for(const mesh of this.rootFallbacks)mesh.visible=this.renderEnabled;
   for(const entry of this.cache.values())entry.mesh.visible=this.renderEnabled&&this.requested.has(entry.key);
  }
  // A chunk address change only alters the target set; mesh work is streamed.
@@ -210,12 +200,6 @@ export class WorldTerrain {
     this.cache.set(job.key,{key:job.key,mesh});
     mesh.visible=this.renderEnabled;
    }
-  }
-  // Keep a cheap, non-depth-writing backdrop for regions still streaming.
-  for(let face=0;face<this.roots.length;face++){
-   const prefix=String(this.roots[face].address);
-   const covered=[...this.requested].filter(key=>key.startsWith(prefix+':'));
-   this.rootFallbacks[face].visible=this.renderEnabled&&!covered.every(key=>this.cache.has(key));
   }
   // Evict inactive geometry, never evict chunks required by the current view.
   if(this.cache.size>2200){
