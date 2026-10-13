@@ -98,7 +98,7 @@ function meadowsSpawn(){
 }
 player.copy(meadowsSpawn());
 // Initialize visual LOD from the actual deterministic spawn, not a placeholder pole.
-try{terrain=new WorldTerrain(scene,height,player);report('terrain setup','READY');}
+try{terrain=new WorldTerrain(scene,height,player,camera.far);report('terrain setup','READY');}
 catch(error){report('terrain setup','FAILED',error.message);}
 const sharedWorld=new SharedWorld({ownerId:'local-owner',seed:TERRAIN_SEED});
 sharedWorld.join('local-owner',player);
@@ -322,7 +322,7 @@ function frame(now){
    }
    // Terrain detail follows the capsule, independent of camera and zoom.
    const terrainStart=performance.now();
-   terrain.update(player);
+   terrain.update(player,false,undefined,camera.far);
    profile('lod',terrainStart);
    if(greenSurface.visible)drawSurface(boundsAt(player,3));
   }catch(error){report('Box3D','FAILED',error.message);physics=null;}
