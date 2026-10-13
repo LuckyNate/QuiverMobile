@@ -62,7 +62,7 @@ function contains(n,p){
 // Render chunks ARE the persistent D20 hierarchy nodes. Geometry is cached
 // per node/detail pair; Box3D and the world-space collision cache are separate.
 export class WorldTerrain {
- constructor(scene,height=new TerrainHeight()){
+ constructor(scene,height=new TerrainHeight(),startPosition=new THREE.Vector3(0,0,RADIUS+1.3)){
   this.height=height;
   this.roots=roots.map(([a,b,c],face)=>node(a,b,c,0,null,rootAddress(face)));
   this.material=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:1,side:THREE.DoubleSide,flatShading:true});
@@ -73,15 +73,20 @@ export class WorldTerrain {
   this.requested=new Set();
   this.renderEnabled=true;
   this.rootFallbacks=[];
+  this.fallbackMaterial=this.material.clone();
+  this.fallbackMaterial.depthWrite=false;
   // A complete low-detail planet is always drawable while detail streams in.
   for(const root of this.roots){
-   const mesh=new THREE.Mesh(this.geometry(root,2),this.material);
+   const mesh=new THREE.Mesh(this.geometry(root,2),this.fallbackMaterial);
+   mesh.renderOrder=-10;
    this.rootFallbacks.push(mesh);this.scene.add(mesh);
   }
   this.maxDetail=MAX_LOD;
   this.anchorAddress=null;
   this.leafCount=0;
-  this.update(new THREE.Vector3(0,0,RADIUS+1.3),true);
+  this.update(startPosition,true);
+  // The immediate terrain is present before gameplay, while distant chunks stream.
+  this.loadNear(startPosition,64);
  }
  // A stable ~32 m triangular address prevents meter-by-meter LOD reassignment.
  // All outer rings are measured radially from this chunk's center.
@@ -168,7 +173,7 @@ export class WorldTerrain {
  setRenderEnabled(enabled){
   this.renderEnabled=Boolean(enabled);
   for(const mesh of this.rootFallbacks)mesh.visible=this.renderEnabled;
-  for(const entry of this.cache.values())entry.mesh.visible=this.renderEnabled&&this.active.has(entry.key);
+  for(const entry of this.cache.values())entry.mesh.visible=this.renderEnabled&&this.requested.has(entry.key);
  }
  // A chunk address change only alters the target set; mesh work is streamed.
  update(position,force=false,maxDetail=MAX_LOD){
@@ -186,8 +191,9 @@ export class WorldTerrain {
     if(!this.cache.has(key))queue.push({key,node:n,level});
    }
    this.requested=required;
-   // Near chunks are built before distant ones.
-   queue.sort((a,b)=>b.level-a.level);
+   // Prioritize actual spatial distance, not the subdivision level.
+   const origin=position.clone().normalize();
+   queue.sort((a,b)=>a.node.center.angleTo(origin)-b.node.center.angleTo(origin));
    this.pending=queue;
    this.leafCount=required.size;
    // Keep a complete coarse globe until replacement terrain covers each root.
@@ -205,7 +211,7 @@ export class WorldTerrain {
     mesh.visible=this.renderEnabled;
    }
   }
-  // Only release a root fallback after every selected patch on that face exists.
+  // Keep a cheap, non-depth-writing backdrop for regions still streaming.
   for(let face=0;face<this.roots.length;face++){
    const prefix=String(this.roots[face].address);
    const covered=[...this.requested].filter(key=>key.startsWith(prefix+':'));
@@ -221,5 +227,20 @@ export class WorldTerrain {
    }
   }
   return this.pending.length>0;
+ }
+ // Finish the immediately surrounding render patches before exposing gameplay.
+ loadNear(position,radius){
+  const origin=position.clone().normalize();
+  const remaining=[];
+  for(const job of this.pending){
+   const distance=RADIUS*job.node.center.angleTo(origin)-job.node.reach;
+   if(distance>radius){remaining.push(job);continue;}
+   if(this.cache.has(job.key))continue;
+   const mesh=new THREE.Mesh(this.geometry(job.node,job.level),this.material);
+   mesh.visible=this.renderEnabled;
+   this.cache.set(job.key,{key:job.key,mesh});
+   this.scene.add(mesh);
+  }
+  this.pending=remaining;
  }
 }
