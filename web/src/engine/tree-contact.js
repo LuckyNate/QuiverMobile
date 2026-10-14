@@ -7,13 +7,19 @@ export class TreeContact {
  update(trees,body,dt){
   if(!body)return;
   const equippedTool=this.getTool();
-  if(equippedTool!=='axe')return;
+  if(equippedTool!=='axe'){
+   for(const t of trees)t.contactLatched=false;
+   return;
+  }
   const position=body.getPosition(),velocity=body.getLinearVelocity();
   const p=new THREE.Vector3(position.x,position.y,position.z);
   // Matches the current Box3D player capsule (1.1 m straight section, r=.35).
   const halfHeight=body.size?.halfHeight??.55,radius=body.size?.radius??.35;
   for(const t of trees){
-   if(t.state!=='standing'||!this.interaction.canContact(t.object,{equippedTool}))continue;
+   if(t.state!=='standing'||!this.interaction.canContact(t.object,{equippedTool})){
+    t.contactLatched=false;
+    continue;
+   }
    t.bumpCooldown=Math.max(0,t.bumpCooldown-dt);
    const up=t.at.clone().normalize(),relative=p.clone().sub(t.at);
    const elevation=relative.dot(up);
@@ -41,7 +47,13 @@ export class TreeContact {
    test('trunk',0,4,y=>.31-(.07*y/4));
    // ConeGeometry(1.35,4.5): base=1.0, tip=5.5.
    test('foliage',1,5.5,y=>1.35*(5.5-y)/4.5);
-   if(!hitPart||!t.object.acceptsContact(hitPart,{equippedTool})||t.bumpCooldown>0||body.knockback?.remaining>0)continue;
+   if(!hitPart){
+    // A fresh bump requires leaving this tree first; otherwise overlapping
+    // foliage retriggers a new knockback and makes steering feel disabled.
+    t.contactLatched=false;
+    continue;
+   }
+   if(t.contactLatched||!t.object.acceptsContact(hitPart,{equippedTool})||t.bumpCooldown>0||body.knockback?.remaining>0)continue;
    const normal=distance>.0001?lateral.divideScalar(distance):new THREE.Vector3(velocity.x,velocity.y,velocity.z)
     .addScaledVector(up,-(velocity.x*up.x+velocity.y*up.y+velocity.z*up.z)).negate().normalize();
    if(normal.lengthSq()<.0001)continue;
@@ -52,6 +64,7 @@ export class TreeContact {
    body.knockback={x:normal.x*kick,y:normal.y*kick,z:normal.z*kick,remaining:.18};
    body.setAwake(true);
    t.bumpCooldown=.25;
+   t.contactLatched=true;
    this.onContact?.(t,hitPart);
    this.onHit(t,hitPart);
   }
