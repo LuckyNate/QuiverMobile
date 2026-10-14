@@ -57,6 +57,7 @@ jobs:
           set -euo pipefail
           mkdir -p web/public/models/debug
           cp assets/models/debug/player_capsule.glb web/public/models/debug/player_capsule.glb
+          cp assets/models/debug/quiver_block_avatar.glb web/public/models/debug/quiver_block_avatar.glb
           cd web
           npm install --no-audit --no-fund
           npm run build
