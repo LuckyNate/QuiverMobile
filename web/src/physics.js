@@ -214,46 +214,59 @@ export class PhysicsWorld {
   return object;
  }
  movePlayer(body,direction,speed,up,dt=1/60) {
-  const velocity=body.getLinearVelocity();
-  const knock=body.knockback;
-  // A brief contact step adds to steering instead of replacing player input.
+  const velocity=body.getLinearVelocity(),knock=body.knockback;
   if(knock){
    knock.remaining=Math.max(0,knock.remaining-dt);
    if(knock.remaining===0)body.knockback=null;
   }
   const p=body.getPosition();
-  // Follow the deterministic ground elevation ahead of the player.
-  // Ground normal is calculated from the local terrain-height gradient.
-  const tangent={x:direction.x-up.x*(direction.x*up.x+direction.y*up.y+direction.z*up.z),
-   y:direction.y-up.y*(direction.x*up.x+direction.y*up.y+direction.z*up.z),
-   z:direction.z-up.z*(direction.x*up.x+direction.y*up.y+direction.z*up.z)};
+  const dot=direction.x*up.x+direction.y*up.y+direction.z*up.z;
+  const tangent={x:direction.x-up.x*dot,y:direction.y-up.y*dot,z:direction.z-up.z*dot};
   const magnitude=Math.hypot(tangent.x,tangent.y,tangent.z);
   const radial=velocity.x*up.x+velocity.y*up.y+velocity.z*up.z;
+  const kick=body.knockback?body.knockback.remaining/.18:0;
   if(magnitude<.001){
-   const kick=body.knockback?body.knockback.remaining/.18:0;
    body.setLinearVelocity({x:up.x*radial+(knock?.x||0)*kick,
-    y:up.y*radial+(knock?.y||0)*kick,z:up.z*radial+(knock?.z||0)*kick});return;
+    y:up.y*radial+(knock?.y||0)*kick,z:up.z*radial+(knock?.z||0)*kick});
+   return;
   }
   const dir={x:tangent.x/magnitude,y:tangent.y/magnitude,z:tangent.z/magnitude};
-  const step=.5;
-  const forward={x:p.x+dir.x*step,y:p.y+dir.y*step,z:p.z+dir.z*step};
-  const backward={x:p.x-dir.x*step,y:p.y-dir.y*step,z:p.z-dir.z*step};
   const groundAt=q=>{
    const length=Math.hypot(q.x,q.y,q.z);
    const n={x:q.x/length,y:q.y/length,z:q.z/length};
    return body.solidity.height?body.solidity.height.radius(n,body.solidity.radius):body.solidity.radius;
   };
-  const slope=(groundAt(forward)-groundAt(backward))/(step*2);
-  const currentGround=groundAt(p),foot=Math.hypot(p.x,p.y,p.z)-(body.size.halfHeight+body.size.radius);
-  const grounded=foot-currentGround<.4;
-  const maxSlope=1; // 45 degrees; steeper terrain is non-walkable.
-  const uphill=grounded&&slope>0&&slope<=maxSlope?slope*speed*magnitude:0;
-  const horizontal=grounded&&slope>maxSlope?0:speed*magnitude;
-  const kick=body.knockback?body.knockback.remaining/.18:0;
+  const currentGround=groundAt(p);
+  const foot=Math.hypot(p.x,p.y,p.z)-(body.size.halfHeight+body.size.radius);
+  const grounded=foot-currentGround<.4&&foot-currentGround>-.3;
+  // Sixteen one-meter samples in a tangent-plane ring, recomputed each frame.
+  // The ring spans every walking direction, not just forward.
+  const ref=Math.abs(up.z)<.9?{x:0,y:0,z:1}:{x:0,y:1,z:0};
+  const cross=(a,b)=>({x:a.y*b.z-a.z*b.y,y:a.z*b.x-a.x*b.z,z:a.x*b.y-a.y*b.x});
+  const axisA=cross(up,ref),al=Math.hypot(axisA.x,axisA.y,axisA.z);
+  const east={x:axisA.x/al,y:axisA.y/al,z:axisA.z/al},north=cross(up,east);
+  const heights=new Array(16);
+  for(let i=0;i<16;i++){
+   const angle=i*Math.PI/8,c=Math.cos(angle),s=Math.sin(angle);
+   heights[i]=groundAt({x:p.x+east.x*c+north.x*s,
+    y:p.y+east.y*c+north.y*s,z:p.z+east.z*c+north.z*s});
+  }
+  const heading=(Math.atan2(dir.x*north.x+dir.y*north.y+dir.z*north.z,
+   dir.x*east.x+dir.y*east.y+dir.z*east.z)+Math.PI*2)%(Math.PI*2);
+  const index=heading*8/Math.PI,i0=Math.floor(index)%16;
+  const forwardGround=heights[i0]*(1-(index-Math.floor(index)))+
+   heights[(i0+1)%16]*(index-Math.floor(index));
+  const slope=forwardGround-currentGround;
+  const walkable=Math.abs(slope)<=1; // A one-meter step, maximum 45-degree grade.
+  const horizontal=grounded&&!walkable?0:speed*magnitude;
+  // On supported ground, track the ring's slope in either direction.
+  // An unsupported drop remains airborne under gravity, never snapped down.
+  const follow=grounded&&walkable?slope*horizontal:radial;
+  const vertical=grounded&&walkable?follow:radial;
   body.setLinearVelocity({
-   x:dir.x*horizontal+up.x*(grounded?Math.max(radial,uphill):radial)+(knock?.x||0)*kick,
-   y:dir.y*horizontal+up.y*(grounded?Math.max(radial,uphill):radial)+(knock?.y||0)*kick,
-   z:dir.z*horizontal+up.z*(grounded?Math.max(radial,uphill):radial)+(knock?.z||0)*kick
+   x:dir.x*horizontal+up.x*vertical+(knock?.x||0)*kick,
+   y:dir.y*horizontal+up.y*vertical+(knock?.y||0)*kick,
+   z:dir.z*horizontal+up.z*vertical+(knock?.z||0)*kick
   });
   body.setAwake(true);
  }
