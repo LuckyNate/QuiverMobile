@@ -64,37 +64,64 @@ export class GamePanels {
   }
   if(this.controls?.swimButtons)this.controls.swimButtons.style.bottom=(occupiedBottom+12)+'px';
  }
+ registerInventoryTab(id,label,content){
+  if(this.inventoryTabs.has(id))throw new Error('Duplicate inventory tab: '+id);
+  const button=document.createElement('button');
+  button.type='button';button.textContent=label;
+  button.style.cssText='padding:8px 14px;border:1px solid #526477;border-radius:4px;background:#1b3040;color:#e5edf5';
+  button.addEventListener('click',()=>this.selectInventoryTab(id));
+  this.inventoryTabBar.append(button);
+  this.inventoryTabContents.append(content);
+  this.inventoryTabs.set(id,{button,content});
+ }
+ selectInventoryTab(id){
+  if(!this.inventoryTabs.has(id))return;
+  for(const [key,tab] of this.inventoryTabs){
+   const active=key===id;
+   tab.content.style.display=active?'block':'none';
+   tab.button.setAttribute('aria-pressed',String(active));
+   tab.button.style.background=active?'#415738':'#1b3040';
+  }
+  this.activeInventoryTab=id;
+  this.refreshInventory();
+ }
  makeInventory(){
-  const heading=document.createElement('div');
-  heading.textContent='Equipment and resources — fixed slots';
-  heading.style.marginBottom='10px';
-  const grid=document.createElement('div');
-  grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px';
-  for(const [id,label] of [['axe','Axe'],['hammer','Hammer'],['logs','4 m Logs'],['tool-1','Empty'],['tool-2','Empty'],['resource-1','Empty'],['resource-2','Empty'],['resource-3','Empty']]){
+  this.inventoryTabs=new Map();
+  this.inventoryTabBar=document.createElement('div');
+  this.inventoryTabBar.style.cssText='display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap';
+  this.inventoryTabContents=document.createElement('div');
+  const toolsPane=document.createElement('div'),resourcesPane=document.createElement('div'),dyePane=document.createElement('div');
+  const makeGrid=()=>{
+   const grid=document.createElement('div');
+   grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px';
+   return grid;
+  };
+  const toolsGrid=makeGrid(),resourcesGrid=makeGrid();
+  for(const [id,label,tab] of [
+   ['axe','Axe','tools'],['hammer','Hammer','tools'],
+   ['tool-1','Empty','tools'],['tool-2','Empty','tools'],
+   ['logs','4 m Logs','resources'],['resource-1','Empty','resources'],
+   ['resource-2','Empty','resources'],['resource-3','Empty','resources']
+  ]){
    const isTool=id==='axe'||id==='hammer';
    const slot=document.createElement(isTool?'button':'div');
-   if(isTool){slot.type='button';slot.addEventListener('click',()=>{
-    const current=this.sharedWorld.getEquippedTool(this.playerId);
-    this.sharedWorld.setEquippedTool(this.playerId,current===id?null:id);
-    this.refreshInventory();
-   });}
+   if(isTool){
+    slot.type='button';
+    slot.addEventListener('click',()=>{
+     const current=this.sharedWorld.getEquippedTool(this.playerId);
+     this.sharedWorld.setEquippedTool(this.playerId,current===id?null:id);
+     this.refreshInventory();
+    });
+   }
    slot.style.cssText='min-height:64px;padding:8px;border:1px solid #526477;border-radius:5px;display:flex;flex-direction:column;justify-content:center;gap:4px;background:#172430';
    const name=document.createElement('strong');name.textContent=label;
    const quantity=document.createElement('span');quantity.style.fontSize='12px';
-   slot.append(name,quantity);grid.append(slot);
+   slot.append(name,quantity);
+   (tab==='tools'?toolsGrid:resourcesGrid).append(slot);
    this.slots.set(id,{slot,name,quantity,isTool});
   }
-  const tabs=document.createElement('div');
-  tabs.style.cssText='display:flex;gap:8px;margin-bottom:10px';
-  const dyePane=document.createElement('div');
-  const inventoryPane=document.createElement('div');
-  inventoryPane.append(heading,grid);
-  const resourceTab=document.createElement('button'),dyeTab=document.createElement('button');
-  for(const [button,label] of [[resourceTab,'Items'],[dyeTab,'Dyes']]){
-   button.type='button';button.textContent=label;
-   button.style.cssText='padding:8px 14px;border:1px solid #526477;border-radius:4px;background:#1b3040;color:#e5edf5';
-   tabs.append(button);
-  }
+  toolsPane.append(toolsGrid);
+  resourcesPane.append(resourcesGrid);
   const dyeGrid=document.createElement('div');
   dyeGrid.style.cssText='display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:3px;max-width:420px';
   this.dyeSwatches=[];
@@ -109,18 +136,11 @@ export class GamePanels {
   const dyeHint=document.createElement('p');
   dyeHint.textContent='Discover dye colors to unlock them permanently.';
   dyePane.append(dyeHint,dyeGrid);
-  const switchTab=showDyes=>{
-   inventoryPane.style.display=showDyes?'none':'block';
-   dyePane.style.display=showDyes?'block':'none';
-   resourceTab.setAttribute('aria-pressed',String(!showDyes));
-   dyeTab.setAttribute('aria-pressed',String(showDyes));
-   if(showDyes)this.refreshInventory();
-  };
-  resourceTab.addEventListener('click',()=>switchTab(false));
-  dyeTab.addEventListener('click',()=>switchTab(true));
-  this.bottom.content.append(tabs,inventoryPane,dyePane);
-  switchTab(false);
-  this.refreshInventory();
+  this.bottom.content.append(this.inventoryTabBar,this.inventoryTabContents);
+  this.registerInventoryTab('tools','Tools',toolsPane);
+  this.registerInventoryTab('resources','Resources',resourcesPane);
+  this.registerInventoryTab('dyes','Dyes',dyePane);
+  this.selectInventoryTab('tools');
  }
  refreshInventory(){
   const inventory=this.sharedWorld.getInventory(this.playerId);
