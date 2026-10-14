@@ -4,7 +4,7 @@ import * as THREE from 'three';
 export class PlayerControls {
  constructor(canvas){
   this.canvas=canvas;this.enabled=false;this.keys=new Set();this.pointers=new Map();
-  this.moveId=null;this.lookId=null;this.mode='one';
+  this.moveId=null;this.lookId=null;
   this.x=0;this.y=0;this.lookDX=0;this.lookDY=0;
   this.swimUp=false;this.swimDown=false;this.zoom=8;
   this.onTap=null;this.onManualMove=null;this.tapStart=new Map();
@@ -16,7 +16,8 @@ export class PlayerControls {
   canvas.addEventListener('pointerdown',e=>{
    if(!this.enabled||(e.pointerType==='mouse'&&e.button!==0))return;
    canvas.setPointerCapture(e.pointerId);
-   this.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY,originX:e.clientX,originY:e.clientY});
+   const side=e.clientX<canvas.getBoundingClientRect().left+canvas.getBoundingClientRect().width/2?'move':'look';
+   this.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY,originX:e.clientX,originY:e.clientY,side});
    this.tapStart.set(e.pointerId,{x:e.clientX,y:e.clientY,moved:false,multi:this.pointers.size>1});
    if(this.pointers.size>1)for(const tap of this.tapStart.values())tap.multi=true;
    this.assign();
@@ -28,7 +29,7 @@ export class PlayerControls {
    const tap=this.tapStart.get(e.pointerId);
    if(tap&&Math.hypot(e.clientX-tap.x,e.clientY-tap.y)>12)tap.moved=true;
    p.x=e.clientX;p.y=e.clientY;this.updateStick();
-   if(this.mode==='two'&&e.pointerId===this.moveId&&(Math.abs(this.x)+Math.abs(this.y)>.06))this.onManualMove?.();
+   if(e.pointerId===this.moveId&&(Math.abs(this.x)+Math.abs(this.y)>.06))this.onManualMove?.();
   });
   const release=e=>{
    const tap=this.tapStart.get(e.pointerId);this.tapStart.delete(e.pointerId);
@@ -64,20 +65,16 @@ export class PlayerControls {
   this.swimButtons.style.visibility=this.enabled?'visible':'hidden';
  }
  assign(){
-  const entries=[...this.pointers.entries()];
-  const oldMode=this.mode;
-  this.mode=entries.length>=2?'two':'one';
-  if(entries.length>=2){
-   entries.sort((a,b)=>a[1].x-b[1].x);
-   this.moveId=entries[0][0];this.lookId=entries[entries.length-1][0];
-  }else{this.moveId=entries[0]?.[0]??null;this.lookId=null;}
-  if(oldMode!==this.mode)for(const p of this.pointers.values()){p.originX=p.x;p.originY=p.y;}
+  // Touch role is fixed at pointer-down by screen half, independent of other fingers.
+  // Preserve each active thumb's origin when the other thumb is added or removed.
+  this.moveId=[...this.pointers].find(([,p])=>p.side==='move')?.[0]??null;
+  this.lookId=[...this.pointers].find(([,p])=>p.side==='look')?.[0]??null;
   this.lookDX=0;this.lookDY=0;this.updateStick();
  }
  updateStick(){
   const p=this.pointers.get(this.moveId);
-  this.x=this.mode==='two'&&p?THREE.MathUtils.clamp((p.x-p.originX)/90,-1,1):0;
-  this.y=this.mode==='two'&&p?THREE.MathUtils.clamp((p.originY-p.y)/90,-1,1):0;
+  this.x=p?THREE.MathUtils.clamp((p.x-p.originX)/90,-1,1):0;
+  this.y=p?THREE.MathUtils.clamp((p.originY-p.y)/90,-1,1):0;
  }
  axes(){
   if(!this.enabled)return {x:0,y:0};
