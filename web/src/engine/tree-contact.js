@@ -3,7 +3,7 @@ import * as THREE from 'three';
 // Axe-only player contacts against every current tree mesh component.
 // The existing Box3D capsule remains the moving body; terrain is untouched.
 export class TreeContact {
- constructor({getTool,onHit,interaction}){this.getTool=getTool;this.onHit=onHit;this.interaction=interaction;}
+ constructor({getTool,onHit,onContact,interaction}){this.getTool=getTool;this.onHit=onHit;this.onContact=onContact;this.interaction=interaction;}
  update(trees,body,dt){
   if(!body)return;
   const equippedTool=this.getTool();
@@ -53,6 +53,7 @@ export class TreeContact {
    body.setAwake(true);
    body.knockback={x:normal.x*kick,y:normal.y*kick,z:normal.z*kick,remaining:.22};
    t.bumpCooldown=.25;
+   this.onContact?.(t,hitPart);
    this.onHit(t,hitPart);
   }
  }
