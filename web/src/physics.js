@@ -218,10 +218,11 @@ export class PhysicsWorld {
   const knock=body.knockback;
   const p=body.getPosition();
   if(knock?.targetDistance){
+   knock.elapsed=(knock.elapsed||0)+dt;
    const dx=p.x-knock.origin.x,dy=p.y-knock.origin.y,dz=p.z-knock.origin.z;
    const traveled=Math.max(0,dx*knock.x+dy*knock.y+dz*knock.z);
    const remaining=knock.targetDistance-traveled;
-   if(remaining>0){
+   if(remaining>0&&knock.elapsed<1){
     // Velocity-controlled travel respects the existing Box3D terrain contacts.
     // Ease down over the last 20 cm so the player does not overshoot.
     const reboundSpeed=Math.min(5,Math.max(1,remaining*20));
