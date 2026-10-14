@@ -100,7 +100,7 @@ export class GamePanels {
   for(const [id,label,tab] of [
    ['axe','Axe','tools'],['hammer','Hammer','tools'],['scythe','Scythe','tools'],
    ['tool-1','Empty','tools'],['tool-2','Empty','tools'],
-   ['logs','4 m Logs','resources'],['resource-1','Empty','resources'],
+   ['logs','4 m Logs','resources'],['fibers','Fibers','resources'],['resource-1','Empty','resources'],
    ['resource-2','Empty','resources'],['resource-3','Empty','resources']
   ]){
    const isTool=id==='axe'||id==='hammer'||id==='scythe';
@@ -164,6 +164,10 @@ export class GamePanels {
     entry.quantity.textContent=active?'Equipped':'Tap to equip';
    }
    if(id==='logs')entry.quantity.textContent='Count: '+count+' | Strength: '+averageStrength.toFixed(2);
+   else if(id==='fibers'){
+    const fibers=inventory.fibers||0;
+    entry.quantity.textContent='Count: '+fibers+' | Quality: '+(fibers?(inventory.fiberQuality||0)/fibers:0).toFixed(2);
+   }
    else if(entry.isTool)continue;
    else entry.quantity.textContent='Not acquired';
   }
