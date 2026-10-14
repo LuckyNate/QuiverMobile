@@ -3,7 +3,7 @@ import * as THREE from 'three';
 // Resolves axe-authorized contacts against a Box3D-backed player body.
 // Never writes terrain geometry, player positions, or terrain collision proxies.
 export class TreeContact {
- constructor({getTool,onHit}){this.getTool=getTool;this.onHit=onHit;}
+ constructor({getTool,onHit,interaction}){this.getTool=getTool;this.onHit=onHit;this.interaction=interaction;}
  update(trees,body,dt){
   if(!body)return;
   const equippedTool=this.getTool();
@@ -11,7 +11,7 @@ export class TreeContact {
   const position=body.getPosition(),velocity=body.getLinearVelocity();
   const p=new THREE.Vector3(position.x,position.y,position.z);
   for(const t of trees){
-   if(t.state!=='standing'||!t.object.acceptsContact('trunk',{equippedTool}))continue;
+   if(t.state!=='standing'||!this.interaction.canContact(t.object,{equippedTool})||!t.object.acceptsContact('trunk',{equippedTool}))continue;
    t.bumpCooldown=Math.max(0,t.bumpCooldown-dt);
    const up=t.at.clone().normalize(),relative=p.clone().sub(t.at);
    const elevation=relative.dot(up);
