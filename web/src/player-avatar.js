@@ -1,7 +1,8 @@
 import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 
-// New placeholder player avatar, no GLB transforms or hidden offsets.
-// Body center is at the physics capsule center; feet extend down the radial up axis.
+// The physics capsule remains the authority for contact and position.
+// The procedural capsule is retained as a translucent visual shell.
 export class PlayerAvatar {
  constructor(scene,report){
   const material=new THREE.MeshStandardMaterial({
@@ -12,13 +13,35 @@ export class PlayerAvatar {
   this.root.add(body);
   scene.add(this.root);
   this.animation='Idle';
-  report('GLB player','READY','Procedural capsule (new avatar placeholder)');
+  this.mixer=null;
+  this.actions=new Map();
+  this.currentAction=null;
+  report('GLB player','LOADING','Loading block avatar');
+  new GLTFLoader().load('/models/debug/quiver_block_avatar.glb',gltf=>{
+   this.root.add(gltf.scene);
+   this.mixer=new THREE.AnimationMixer(gltf.scene);
+   for(const clip of gltf.animations){
+    this.actions.set(clip.name,this.mixer.clipAction(clip));
+   }
+   this.show(this.animation);
+   report('GLB player','READY','Block avatar loaded; capsule retained');
+  },undefined,error=>{
+   report('GLB player','FAILED',error?.message||String(error));
+  });
  }
- show(state){this.animation=state;}
- update(position,up,forward){
+ show(state){
+  this.animation=state;
+  const action=this.actions.get(state)||this.actions.get('Idle');
+  if(!action||action===this.currentAction)return;
+  if(this.currentAction)this.currentAction.fadeOut(.12);
+  action.reset().fadeIn(.12).play();
+  this.currentAction=action;
+ }
+ update(position,up,forward,dt=1/60){
   this.root.position.copy(position);
   const f=forward.clone().addScaledVector(up,-forward.dot(up)).normalize();
   const right=new THREE.Vector3().crossVectors(up,f).normalize();
   this.root.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(right,up,f));
+  if(this.mixer)this.mixer.update(dt);
  }
 }
