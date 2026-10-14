@@ -8,6 +8,7 @@ import {PhysicsWorld} from './physics.js';
 import {ResourceHandler} from './engine/resource-handler.js';
 import {SharedWorld} from './engine/shared-world.js';
 import {GamePanels} from './ui/game-panels.js';
+import {createDyePaletteTexture,MEADOWS_GREEN_DYE,dyeUV} from './engine/dye-palette.js';
 
 const app=document.getElementById('app');
 const bootstrap=document.getElementById('bootstrap');
@@ -72,6 +73,9 @@ try{
  report('WebGL2','READY');
 }catch(error){report('WebGL2','FAILED',error.message);renderer=null;}
 const scene=new THREE.Scene();
+// Shared tint lookup: dyes inventory and renderer sample the same fixed 8x8 RGB palette.
+scene.userData.dyePaletteTexture=createDyePaletteTexture();
+scene.userData.dyeUV=dyeUV;
 // Sky-blue distance fog blends the world into the matching background at 5 km.
 scene.background=new THREE.Color(0x87ceeb);
 scene.fog=new THREE.Fog(0x87ceeb,1,5000);
@@ -125,6 +129,9 @@ catch(error){report('terrain setup','FAILED',error.message);}
 const sharedWorld=new SharedWorld({ownerId:'local-owner',seed:TERRAIN_SEED});
 sharedWorld.join('local-owner',player);
 const harvesting=new ResourceHandler(scene,playerSystem,height,RADIUS,{terrain,shared:sharedWorld,playerId:'local-owner',camera});
+// Discover the Meadows dye on arrival; dye ownership is permanent and has no quantity.
+if(harvesting.zones.some(zone=>zone.biome.name==='Meadows'&&zone.contains(player.clone().normalize())))
+ sharedWorld.unlockDye('local-owner',MEADOWS_GREEN_DYE);
 const panels=new GamePanels({app,canvas,controls:playerSystem.controls,sharedWorld,playerId:'local-owner'});
 adminPanels=panels;
 startButton.addEventListener('click',()=>{
