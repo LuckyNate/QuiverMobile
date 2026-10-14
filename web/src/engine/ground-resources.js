@@ -6,6 +6,7 @@ export class GroundResources {
  constructor({root,shared,player,playerId}){
   Object.assign(this,{root,shared,player,playerId});
   this.items=new Map();
+  this.targetId=null;
   this.stickGeometry=new THREE.CylinderGeometry(.045,.065,.9,5);
   this.stickGeometry.rotateZ(Math.PI/2);
   this.stoneGeometry=new THREE.DodecahedronGeometry(.22,0);
@@ -26,10 +27,13 @@ export class GroundResources {
   this.items.set(id,{id,type,position,group,state:'standing',progress:0});
   return true;
  }
+ select(id){this.targetId=this.items.get(id)?.state==='standing'?id:null;}
+ clearSelection(){this.targetId=null;}
  isBusy(id){return this.items.get(id)?.state==='flying';}
  unload(id){
   const item=this.items.get(id);if(!item||this.isBusy(id))return;
   this.root.remove(item.group);this.items.delete(id);
+  if(this.targetId===id)this.clearSelection();
  }
  update(dt,body){
   const avatar=body?.getPosition();if(!avatar)return;
@@ -41,7 +45,8 @@ export class GroundResources {
     const delta=avatarPoint.clone().sub(item.position);
     const altitude=delta.dot(up);
     const lateral=delta.addScaledVector(up,-altitude).length();
-    if(lateral>1.05||altitude<-.6||altitude>2.3)continue;
+    if(item.id!==this.targetId||lateral>1.05||altitude<-.6||altitude>2.3)continue;
+    this.clearSelection();
     item.state='flying';item.progress=0;
     this.shared?.setEntity(item.id,{state:'collected',ownerId:this.playerId});
    }else if(item.state==='flying'){
