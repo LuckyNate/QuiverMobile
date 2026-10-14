@@ -1,12 +1,14 @@
 import * as THREE from 'three';
 import {BiomePopulation} from './engine/biome-population.js';
 import {withinSceneryRange} from './engine/scenery-visibility.js';
+import {Tree} from './engine/tree.js';
+import {ObjectRegistry} from './engine/object-registry.js';
 
 // All player/world mutations use stable IDs. Only Meadows is populated now.
 export class TreeHarvestSystem {
  constructor(scene,player,height,radius,{shared=null,playerId='local-owner',camera=null}={}){
   Object.assign(this,{scene,player,height,radius,shared,playerId,camera});
-  this.trees=[];this.wood=0;this.attackClock=0;this.logLength=4;
+  this.trees=[];this.objects=new ObjectRegistry();this.wood=0;this.attackClock=0;this.logLength=4;
   this.renderEnabled=true;
   this.root=new THREE.Group();scene.add(this.root);
   this.origin=player.position.clone().normalize();
@@ -46,7 +48,8 @@ export class TreeHarvestSystem {
   const saved=this.shared?.getEntity(id);
   const state=saved&&saved.state!=='standing'?'collected':'standing';
   tree.visible=state==='standing';
-  const entry={id,chunk,serial,tree,visual,trunk,foliage,at:position,state,hits:0,progress:0,ownerId:null,respawnTime:0,bumpCooldown:0};
+  const object=this.objects.add(new Tree({id,position:position.toArray(),state}));
+  const entry={id,object,chunk,serial,tree,visual,trunk,foliage,at:position,state,hits:0,progress:0,ownerId:null,respawnTime:0,bumpCooldown:0};
   this.trees.push(entry);
   return entry;
  }
@@ -88,10 +91,12 @@ export class TreeHarvestSystem {
  // Touching a standing trunk or branch pushes back; with the axe equipped, impact chops.
  bump(body,dt){
   if(!body)return;
+  const equippedTool=this.shared?.getEquippedTool(this.playerId)||null;
+  if(equippedTool!=='axe')return; // Trees are scenery without the axe.
   const position=body.getPosition(),velocity=body.getLinearVelocity();
   const p=new THREE.Vector3(position.x,position.y,position.z);
   for(const t of this.trees){
-   if(t.state!=='standing')continue;
+   if(t.state!=='standing'||!t.object.acceptsContact('trunk',{equippedTool}))continue;
    t.bumpCooldown=Math.max(0,t.bumpCooldown-dt);
    const up=t.at.clone().normalize(),relative=p.clone().sub(t.at);
    const elevation=relative.dot(up);
@@ -119,7 +124,7 @@ export class TreeHarvestSystem {
   }
  }
  fell(t,harvesterId){
-  t.state='falling';t.progress=0;t.ownerId=harvesterId;
+  t.state='falling';t.object.state='falling';t.progress=0;t.ownerId=harvesterId;
   this.shared?.setEntity(t.id,{state:'felled',ownerId:harvesterId,chunk:t.chunk,serial:t.serial});
  }
  update(dt,body=null){
@@ -142,7 +147,7 @@ export class TreeHarvestSystem {
     t.progress=Math.min(1,t.progress+dt/.7);
     t.foliage.material.opacity=1-t.progress;
     if(t.progress>=1){
-     t.state='flying';t.progress=0;t.foliage.visible=false;
+     t.state='flying';t.object.state='flying';t.progress=0;t.foliage.visible=false;
      t.trunk.getWorldPosition(t.flightPosition=new THREE.Vector3());
      this.scene.add(t.trunk);
      t.trunk.position.copy(t.flightPosition);
@@ -159,7 +164,7 @@ export class TreeHarvestSystem {
     t.trunk.position.addScaledVector(delta,Math.min(1,speed*dt/Math.max(.001,distance)));
     t.trunk.scale.setScalar(Math.max(.03,Math.min(1,distance/8)));
     if(distance<.5){
-     t.state='collected';this.scene.remove(t.trunk);
+     t.state='collected';t.object.state='collected';this.scene.remove(t.trunk);
      if(this.shared)this.shared.awardLog(t.ownerId,1);
      else this.wood++;
      this.shared?.setEntity(t.id,{state:'collected',chunk:t.chunk,serial:t.serial});
