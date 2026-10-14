@@ -1,4 +1,4 @@
-export const TOOL_RECIPES={axe:{sticks:1,stones:1},hammer:{sticks:2,stones:3},scythe:{sticks:2,stones:2}};
+export const TOOL_RECIPES={axe:{sticks:1,stones:1},hammer:{sticks:1,stones:1,logs:1},scythe:{sticks:3,stones:3}};
 // Host-owned save record; peers will exchange snapshots/events when networking is added.
 // Simulation and rendering remain local. No server or transport is instantiated here.
 export class SharedWorld {
