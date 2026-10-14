@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 const HOUR=3600000;
 const MAX_FUEL=720*HOUR;
-const PARTICLES=64;
+const PARTICLES=180;
 
 // Permanent twelve-log camp bonfire, with a separate, persistent real-time fuel reserve.
 export class Bonfire {
@@ -22,7 +22,7 @@ export class Bonfire {
    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),tip.sub(base).normalize());
    this.logs.add(mesh);
   }
-  const voxels=new THREE.BoxGeometry(.095,.095,.095);
+  const voxels=new THREE.BoxGeometry(.16,.16,.16);
   const colors=[0xff4c11,0xff8c1a,0xffc633,0xffed6b];
   this.fire=new THREE.InstancedMesh(voxels,new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,opacity:.93,depthWrite:false}),PARTICLES);
   this.fire.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -70,11 +70,11 @@ export class Bonfire {
   this.fire.visible=burning;
   if(burning){
    for(let i=0;i<PARTICLES;i++){
-    const phase=((time*.75+i*.61803398875)%1);
+    const phase=((time*.72+i*.61803398875)%1);
     const angle=i*2.39996323;
-    const radius=(.3+phase*.45)*Math.sqrt((i%17)/17);
-    this.dummy.position.set(Math.cos(angle)*radius,.25+phase*2.8,Math.sin(angle)*radius);
-    const size=(.65+((i*13)%11)/15)*(1-phase*.65);
+    const radius=(.55+phase*.95)*Math.sqrt((i%24)/24);
+    this.dummy.position.set(Math.cos(angle)*radius,.35+phase*4.8,Math.sin(angle)*radius);
+    const size=(1.05+((i*17)%13)/11)*(1-phase*.5);
     this.dummy.scale.setScalar(size);
     this.dummy.rotation.set(0,angle,0);
     this.dummy.updateMatrix();this.fire.setMatrixAt(i,this.dummy.matrix);
