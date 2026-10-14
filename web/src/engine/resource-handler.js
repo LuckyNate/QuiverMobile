@@ -74,8 +74,7 @@ export class ResourceHandler extends TreeHarvestSystem {
   this.objects.despawn(id);
   this.trees.splice(this.trees.indexOf(entry),1);
   this.root.remove(entry.tree);
-  entry.trunk.geometry.dispose();
-  entry.foliage.geometry.dispose();
+  this.treeVisual.release(entry.trunk,entry.foliage);
   entry.foliage.material.dispose();
  }
  update(dt,body=null){
