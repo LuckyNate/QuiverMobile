@@ -36,6 +36,10 @@ export class TallGrassField {
   texture.minFilter=THREE.LinearMipmapLinearFilter;
   this.material=new THREE.MeshStandardMaterial({map:texture,transparent:true,alphaTest:.35,
    side:THREE.DoubleSide,roughness:1,depthWrite:true});
+  // BoxGeometry groups: +X,-X,+Y,-Y,+Z,-Z.
+  // Four vertical sides use grass; horizontal caps stay transparent.
+  const blankCap=new THREE.MeshBasicMaterial({visible:false});
+  this.boxMaterials=[this.material,this.material,blankCap,blankCap,this.material,this.material];
   this.material.onBeforeCompile=shader=>{
    shader.uniforms.windTime=this.uniforms.windTime;
    shader.vertexShader=shader.vertexShader.replace('#include <common>',
@@ -52,7 +56,7 @@ export class TallGrassField {
   group.position.copy(position);
   group.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),position.clone().normalize());
   const blades=new THREE.Group();group.add(blades);
-  blades.add(new THREE.Mesh(this.spriteGeometry,this.material));
+  blades.add(new THREE.Mesh(this.spriteGeometry,this.boxMaterials));
   this.root.add(group);
   const resource=new TallGrass({id,position:position.toArray()});
   this.clumps.set(id,{id,position,group,blades,resource,state:'standing',progress:0,owner:null});
