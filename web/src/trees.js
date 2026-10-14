@@ -6,6 +6,7 @@ import {Tree} from './engine/tree.js';
 import {ObjectRegistry} from './engine/object-registry.js';
 import {TreeVisual} from './engine/tree-visual.js';
 import {TreeContact} from './engine/tree-contact.js';
+import {TreeLifecycle} from './engine/tree-lifecycle.js';
 
 // All player/world mutations use stable IDs. Only Meadows is populated now.
 export class TreeHarvestSystem {
@@ -25,6 +26,7 @@ export class TreeHarvestSystem {
   this.trunkMaterial=new THREE.MeshStandardMaterial({color:0x705038,roughness:1});
   this.leafMaterial=new THREE.MeshStandardMaterial({color:0x315934,roughness:1,transparent:true});
   this.treeVisual=new TreeVisual(this.trunkMaterial,this.leafMaterial);
+  this.lifecycle=new TreeLifecycle({scene,shared,player,onLocalLog:()=>{this.wood++;}});
   this.contact=new TreeContact({
    getTool:()=>this.shared?.getEquippedTool(this.playerId)||null,
    onHit:t=>{
@@ -124,40 +126,7 @@ export class TreeHarvestSystem {
   }
   this.attackClock=Math.max(0,this.attackClock-dt);
   this.bump(body,dt);
-  for(const t of this.trees){
-   if(t.state==='falling'){
-    t.progress=Math.min(1,t.progress+dt/1.1);
-    t.visual.rotation.z=-Math.PI*.48*THREE.MathUtils.smoothstep(t.progress,0,1);
-    if(t.progress>=1){t.state='fading';t.progress=0;}
-   }else if(t.state==='fading'){
-    t.progress=Math.min(1,t.progress+dt/.7);
-    t.foliage.material.opacity=1-t.progress;
-    if(t.progress>=1){
-     t.state='flying';t.object.state='flying';t.progress=0;t.foliage.visible=false;
-     t.trunk.getWorldPosition(t.flightPosition=new THREE.Vector3());
-     this.scene.add(t.trunk);
-     t.trunk.position.copy(t.flightPosition);
-     t.trunk.quaternion.copy(t.tree.quaternion).multiply(t.visual.quaternion);
-     t.tree.visible=false;
-    }
-   }else if(t.state==='flying'){
-    const owner=this.shared?.getPlayer(t.ownerId);
-    const destination=owner?.position||this.player.position;
-    if(!destination)continue;
-    const target=new THREE.Vector3(destination.x,destination.y,destination.z);
-    const delta=target.sub(t.trunk.position),distance=delta.length();
-    const speed=8+Math.min(35,Math.max(0,30-distance));
-    t.trunk.position.addScaledVector(delta,Math.min(1,speed*dt/Math.max(.001,distance)));
-    t.trunk.scale.setScalar(Math.max(.03,Math.min(1,distance/8)));
-    if(distance<.5){
-     t.state='collected';t.object.state='collected';this.scene.remove(t.trunk);
-     if(this.shared)this.shared.awardLog(t.ownerId,1);
-     else this.wood++;
-     this.shared?.setEntity(t.id,{state:'collected',chunk:t.chunk,serial:t.serial});
-     t.respawnTime=8;
-    }
-   }else if(t.state==='collected')t.respawnTime=Math.max(0,t.respawnTime-dt);
-  }
+  this.lifecycle.update(this.trees,dt);
   for(const chunk of this.chunks){
    const live=this.trees.filter(t=>t.chunk===chunk&&t.state!=='collected').length;
    if(live>=Math.max(0,(this.targetByChunk.get(chunk)||0)-1))continue;
