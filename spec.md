@@ -59,3 +59,17 @@ The game starts rendering and initializing behind a full-screen `QUIVER MOBILE` 
 - The built-in `Idle` and looping `Walking` clips are driven by the existing PlayerSystem animation requests and a delta-time AnimationMixer. Unsupported animation requests fall back to Idle.
 - The Quiver Mobile startup gate waits for `GLB player: READY` before offering Start Game. A load failure is reported and blocks entry rather than silently hiding it.
 - Runtime display, animation playback, and Android build remain unverified.
+
+
+## World object architecture (2026-10-13)
+- **Protected core:** `world.js` terrain geometry/LOD, `terrain-height.js`, `world-system.js` solidity, `physics.js` Box3D integration, and player capsule must not be modified by resource-system changes.
+- `engine/world-object.js` defines stable object ID, type, position, mutable state, and serializable snapshot.
+- `engine/resource.js` extends WorldObject with required tool, yield and contact-eligibility policy.
+- `engine/tree.js` extends Resource: trees accept axe contact on trunk, branches and foliage; without axe they are scenery.
+- `engine/object-registry.js` indexes live objects by stable ID. Duplicate IDs are rejected.
+- `engine/resource-density.js` defines configurable seeded densities in expected resources/km². `engine/resource-distributor.js` generates deterministic per-cell candidates without reading render triangles.
+- `engine/tree-population.js` queries read-only terrain heights for current Meadows resource candidates and handles replacements. Existing pre-seeded test quotas have been removed from active tree placement. Distribution outside the four Meadows starter cells is not yet implemented.
+- `engine/tree-visual.js` owns mesh creation; `engine/tree-contact.js` owns axe-gated contact against the already-existing Box3D player body; `engine/tree-lifecycle.js` owns falling, fading, flying, collection and save-state updates.
+- `trees.js` is the coordinating adapter between these classes and `SharedWorld`. No new terrain or physics engine is introduced.
+- Existing debug tree geometry remains the visual representation pending separately approved art/assets. Contact is currently a velocity-response adapter acting on the Box3D body, **not registered Box3D tree fixtures**; full physical tree body conversion remains open.
+- Preserve stable IDs and saved entity records while transitioning population rules. Verify Android workflow and runtime before calling the migration validated.
