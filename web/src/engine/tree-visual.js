@@ -21,7 +21,7 @@ export class TreeVisual {
     instance.foliage.geometry.dispose();
     instance.trunk.geometry=this.trunkGeometry;
     instance.foliage.geometry=this.foliageGeometry;
-    instance.trunk.position.y=2;
+    instance.trunk.position.y=0;
     instance.foliage.position.y=1;
    }
   },undefined,error=>console.error('Conifer GLB unavailable; retaining tree geometry',error));
@@ -33,7 +33,7 @@ export class TreeVisual {
   const visual=new THREE.Group();
   tree.add(visual);
   const trunk=new THREE.Mesh(this.trunkGeometry||new THREE.CylinderGeometry(.24,.31,4,8),this.trunkMaterial);
-  trunk.position.y=2;
+  trunk.position.y=this.trunkGeometry?0:2;
   const foliage=new THREE.Mesh(this.foliageGeometry||new THREE.ConeGeometry(1.35,4.5,8),this.leafMaterial.clone());
   foliage.position.y=this.foliageGeometry?1:3.25;
   visual.add(trunk,foliage);

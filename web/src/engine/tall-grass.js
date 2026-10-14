@@ -12,18 +12,6 @@ export class TallGrass extends Resource {
   this.quality=1;
  }
 }
-function grassTexture(){
- const canvas=document.createElement('canvas');canvas.width=64;canvas.height=128;
- const ctx=canvas.getContext('2d');ctx.clearRect(0,0,64,128);
- for(let blade=0;blade<12;blade++){
-  const base=4+blade*5,tip=12+blade*3+(blade%3)*6;
-  ctx.fillStyle=['#376b2b','#4c8136','#6b9a46','#8cae52'][blade%4];
-  ctx.beginPath();ctx.moveTo(base-4,128);ctx.quadraticCurveTo(base-6,70,tip,10+blade%4*20);
-  ctx.quadraticCurveTo(base+3,72,base+3,128);ctx.fill();
- }
- const t=new THREE.CanvasTexture(canvas);t.colorSpace=THREE.SRGBColorSpace;
- return t;
-}
 export class TallGrassField {
  constructor({root,shared,player,playerId,scene}){
   Object.assign(this,{root,shared,player,playerId,scene});
@@ -32,7 +20,10 @@ export class TallGrassField {
   this.spriteGeometry=new THREE.PlaneGeometry(.9,1.2,1,5);
   this.spriteGeometry.translate(0,.6,0);
   this.uniforms={windTime:{value:0}};
-  const texture=grassTexture();
+  const texture=new THREE.TextureLoader().load(import.meta.env.BASE_URL+'grass.png',undefined,undefined,error=>console.error('Grass texture unavailable',error));
+  texture.colorSpace=THREE.SRGBColorSpace;
+  texture.magFilter=THREE.LinearFilter;
+  texture.minFilter=THREE.LinearMipmapLinearFilter;
   this.material=new THREE.MeshStandardMaterial({map:texture,transparent:true,alphaTest:.35,
    side:THREE.DoubleSide,roughness:1,depthWrite:true});
   this.material.onBeforeCompile=shader=>{
