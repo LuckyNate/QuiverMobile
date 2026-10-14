@@ -259,8 +259,9 @@ function showProfile(){
 let last=performance.now(),elapsed=0,frames=0,lastTerrain=0,resizeW=0,resizeH=0;
 function frame(now){
  requestAnimationFrame(frame);
+ const perfFrameStart=performance.now();
+ perfFrames++;
  try{
- const perfFrameStart=performance.now();perfFrames++;
  const dt=Math.min(.05,(now-last)/1000);last=now;elapsed+=dt;frames++;
  const logs=sharedWorld.getPlayer('local-owner')?.logs||0;
  if(logs!==lastLogCount){panels.refreshInventory();lastLogCount=logs;}
