@@ -34,7 +34,7 @@ tipStyle.textContent='@keyframes quiverTipScroll{from{transform:translateX(100vw
 const tipTrack=document.createElement('div');
 tipTrack.style.cssText='position:absolute;bottom:0;left:0;right:0;overflow:hidden;white-space:nowrap;padding:12px 0;background:#08121bdd;border-top:1px solid #526477;text-align:left;pointer-events:none';
 const tipText=document.createElement('span');
-tipText.textContent='TIP: Burn your weak logs before gathering stronger wood! Your inventory combines all logs into one average strength.';
+tipText.textContent='TIP: Try to use up your old resources before gathering better quality.  Your resources qualities average in inventory.';
 tipText.style.cssText='display:inline-block;padding-left:0;font:13px system-ui;animation:quiverTipScroll 19s linear infinite';
 tipTrack.append(tipText);
 loading.append(tipStyle,gameTitle,loadingStatus,startButton,tipTrack);
