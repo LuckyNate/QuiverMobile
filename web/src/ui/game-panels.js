@@ -1,3 +1,4 @@
+import {DYE_COLORS} from '../engine/dye-palette.js';
 // Fixed-layout inventory and admin console overlay the full-size WebGL canvas.
 // Registered commands are explicit, never eval'd.
 export class GamePanels {
@@ -83,7 +84,42 @@ export class GamePanels {
    slot.append(name,quantity);grid.append(slot);
    this.slots.set(id,{slot,name,quantity,isTool});
   }
-  this.bottom.content.append(heading,grid);
+  const tabs=document.createElement('div');
+  tabs.style.cssText='display:flex;gap:8px;margin-bottom:10px';
+  const dyePane=document.createElement('div');
+  const inventoryPane=document.createElement('div');
+  inventoryPane.append(heading,grid);
+  const resourceTab=document.createElement('button'),dyeTab=document.createElement('button');
+  for(const [button,label] of [[resourceTab,'Items'],[dyeTab,'Dyes']]){
+   button.type='button';button.textContent=label;
+   button.style.cssText='padding:8px 14px;border:1px solid #526477;border-radius:4px;background:#1b3040;color:#e5edf5';
+   tabs.append(button);
+  }
+  const dyeGrid=document.createElement('div');
+  dyeGrid.style.cssText='display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:3px;max-width:420px';
+  this.dyeSwatches=[];
+  for(let i=0;i<DYE_COLORS.length;i++){
+   const swatch=document.createElement('div');
+   swatch.style.cssText='aspect-ratio:1;min-width:0;border:1px solid #7777;border-radius:3px;display:grid;place-items:center;box-sizing:border-box;background:'+DYE_COLORS[i];
+   const lock=document.createElement('span');
+   lock.textContent='🔒';lock.style.cssText='font-size:clamp(10px,3vw,16px);text-shadow:0 1px 3px #000';
+   swatch.append(lock);dyeGrid.append(swatch);
+   this.dyeSwatches.push({swatch,lock,color:DYE_COLORS[i]});
+  }
+  const dyeHint=document.createElement('p');
+  dyeHint.textContent='Discover dye colors to unlock them permanently.';
+  dyePane.append(dyeHint,dyeGrid);
+  const switchTab=showDyes=>{
+   inventoryPane.style.display=showDyes?'none':'block';
+   dyePane.style.display=showDyes?'block':'none';
+   resourceTab.setAttribute('aria-pressed',String(!showDyes));
+   dyeTab.setAttribute('aria-pressed',String(showDyes));
+   if(showDyes)this.refreshInventory();
+  };
+  resourceTab.addEventListener('click',()=>switchTab(false));
+  dyeTab.addEventListener('click',()=>switchTab(true));
+  this.bottom.content.append(tabs,inventoryPane,dyePane);
+  switchTab(false);
   this.refreshInventory();
  }
  refreshInventory(){
@@ -91,6 +127,13 @@ export class GamePanels {
   const count=inventory.logs||0;
   const totalStrength=Number.isFinite(inventory.logStrength)?inventory.logStrength:count;
   const averageStrength=count>0?totalStrength/count:0;
+  const unlocked=new Set(this.sharedWorld.getUnlockedDyes(this.playerId));
+  for(let i=0;i<this.dyeSwatches.length;i++){
+   const {swatch,lock,color}=this.dyeSwatches[i],available=unlocked.has(i);
+   lock.style.display=available?'none':'block';
+   swatch.style.filter=available?'none':'grayscale(1) brightness(.40)';
+   swatch.title=available?color:'Undiscovered dye';
+  }
   const equipped=this.sharedWorld.getEquippedTool(this.playerId);
   for(const [id,entry] of this.slots){
    if(entry.isTool){
