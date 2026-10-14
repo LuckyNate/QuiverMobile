@@ -70,7 +70,7 @@ export class TreeVisual {
  }
  attach(entry){
   entry.renderInstances=[];
-  for(const kind of ['trunk','foliage',...(this.foliageGeometry?['cap']:[])]){
+  for(const kind of ['trunk','foliage','cap']){
    const batch=this.batch(kind);
    const record={tree:entry.tree,kind,batch,index:batch.entries.length,visible:true};
    batch.entries.push(record);batch.mesh.count=batch.entries.length;
