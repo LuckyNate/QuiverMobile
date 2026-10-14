@@ -12,13 +12,23 @@ export class TallGrass extends Resource {
   this.quality=1;
  }
 }
+// Normalize GLB and fallback coordinates so the attachment point is precisely
+// the center of the grass footprint at its lowest vertex (local Y = 0).
+function anchorGrassGeometry(source){
+ const geometry=source.clone();
+ geometry.computeBoundingBox();
+ const {min,max}=geometry.boundingBox;
+ geometry.translate(-(min.x+max.x)/2,-min.y,-(min.z+max.z)/2);
+ geometry.computeBoundingBox();
+ geometry.computeBoundingSphere();
+ return geometry;
+}
 export class TallGrassField {
  constructor({root,shared,player,playerId,scene}){
   Object.assign(this,{root,shared,player,playerId,scene});
   this.clumps=new Map();this.time=0;this.ready=true;
   // Visible fallback while the GLB loads, and if an embedded WebView cannot load it.
-  this.spriteGeometry=new THREE.PlaneGeometry(.9,1.2,1,5);
-  this.spriteGeometry.translate(0,.6,0);
+  this.spriteGeometry=anchorGrassGeometry(new THREE.PlaneGeometry(.9,1.2,1,5));
   this.uniforms={windTime:{value:0}};
   const texture=new THREE.TextureLoader().load(import.meta.env.BASE_URL+'grass.png',undefined,undefined,error=>console.error('Grass texture unavailable',error));
   texture.colorSpace=THREE.SRGBColorSpace;
@@ -38,7 +48,7 @@ export class TallGrassField {
    const sprite=gltf.scene.getObjectByName('GrassSprite')||gltf.scene.getObjectByProperty('isMesh',true);
    if(!sprite?.geometry){console.error('Grass GLB has no sprite mesh');return;}
    const old=this.spriteGeometry;
-   this.spriteGeometry=sprite.geometry;
+   this.spriteGeometry=anchorGrassGeometry(sprite.geometry);
    for(const clump of this.clumps.values())clump.blades.children[0].geometry=this.spriteGeometry;
    old.dispose();
   },undefined,error=>console.error('Unable to load grass GLB',error));
