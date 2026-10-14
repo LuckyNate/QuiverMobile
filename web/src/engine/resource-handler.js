@@ -6,6 +6,7 @@ import {ResourceDensity} from './resource-density.js';
 import {ResourceDistributor} from './resource-distributor.js';
 import {ResourceTypeRegistry} from './resource-type-registry.js';
 import {TallGrassField} from './tall-grass.js';
+import {GroundResources} from './ground-resources.js';
 
 // Biomes request resources near the avatar. This owns the live resource bridge;
 // TreeHarvestSystem keeps its existing visuals, contact, collection and Box3D adapter.
@@ -19,6 +20,7 @@ export class ResourceHandler extends TreeHarvestSystem {
   this.resourceTypes=new ResourceTypeRegistry();
   this.grass=new TallGrassField({root:this.root,shared,player,playerId});
   this.grass.onDiscovery=()=>this.onDyeDiscovery?.();
+  this.ground=new GroundResources({root:this.root,shared,player,playerId});
   this.resourceTypes.register('tree',{
    spawn:(id,position,cell)=>this.spawnTree(id,position,cell),
    unload:id=>this.unloadTree(id),
@@ -29,9 +31,14 @@ export class ResourceHandler extends TreeHarvestSystem {
    unload:id=>this.grass.unload(id),
    busy:id=>['falling','flying'].includes(this.grass.clumps.get(id)?.state)
   });
+  for(const type of ['stick','stone'])this.resourceTypes.register(type,{
+   spawn:(id,position)=>this.ground.spawn(type,id,position),
+   unload:id=>this.ground.unload(id),
+   busy:id=>this.ground.isBusy(id)
+  });
   this.zones=terrain.roots.map(root=>{
    const id=Number(root.address.slice(1,3));
-   const biome=new Biome({id,name:'Biome '+id,resourceDensity:{tree:4500,grass:18000,...(biomeProfiles[id]||{})}});
+   const biome=new Biome({id,name:'Biome '+id,resourceDensity:{tree:4500,grass:36000,stick:12000,stone:8000,...(biomeProfiles[id]||{})}});
    return new BiomeResourceZone({biome,root,radius,height,host:this,
     distributor:new ResourceDistributor(new ResourceDensity({
      seed:shared?.seed||'QuiverGL',
@@ -78,5 +85,6 @@ export class ResourceHandler extends TreeHarvestSystem {
   for(const zone of this.zones)zone.update(this.player.position,streamRadius);
   super.update(dt,body);
   this.grass.update(dt,body,this.shared?.getEquippedTool(this.playerId));
+  this.ground.update(dt,body);
  }
 }

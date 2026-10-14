@@ -1,3 +1,4 @@
+export const TOOL_RECIPES={axe:{sticks:1,stones:1},hammer:{sticks:2,stones:3},scythe:{sticks:2,stones:2}};
 // Host-owned save record; peers will exchange snapshots/events when networking is added.
 // Simulation and rendering remain local. No server or transport is instantiated here.
 export class SharedWorld {
@@ -29,13 +30,38 @@ export class SharedWorld {
   if(this.events.length>256)this.events.shift();
   this.save();return true;
  }
- getEquippedTool(id){return this.getInventory(id).equippedTool||null;}
+ getEquippedTool(id){const tool=this.getInventory(id).equippedTool||null;return tool&&this.hasTool(id,tool)?tool:null;}
  setEquippedTool(id,tool){
-  if(!this.players.has(id)||!(tool===null||tool==='axe'||tool==='hammer'||tool==='scythe'))return false;
+  if(!this.players.has(id)||!(tool===null||Object.hasOwn(TOOL_RECIPES,tool)))return false;
+  if(tool&&!this.hasTool(id,tool))return false;
   const previous=this.getInventory(id);
   if((previous.equippedTool||null)===tool)return true;
   this.inventories.set(id,{...previous,equippedTool:tool});
   this.events.push({version:++this.version,type:'equipment',playerId:id,tool});
+  if(this.events.length>256)this.events.shift();
+  this.save();return true;
+ }
+ hasTool(id,tool){return (this.getInventory(id).craftedTools||[]).includes(tool);}
+ canCraftTool(id,tool){
+  const recipe=TOOL_RECIPES[tool];if(!recipe||this.hasTool(id,tool))return false;
+  const inv=this.getInventory(id);
+  return Object.entries(recipe).every(([resource,amount])=>(inv[resource]||0)>=amount);
+ }
+ craftTool(id,tool){
+  if(!this.players.has(id)||!this.canCraftTool(id,tool))return false;
+  const previous=this.getInventory(id),next={...previous};
+  for(const [resource,amount] of Object.entries(TOOL_RECIPES[tool]))next[resource]-=amount;
+  next.craftedTools=[...(previous.craftedTools||[]),tool];
+  this.inventories.set(id,next);
+  this.events.push({version:++this.version,type:'tool-crafted',playerId:id,tool});
+  if(this.events.length>256)this.events.shift();
+  this.save();return true;
+ }
+ awardResource(id,type,count=1){
+  if(!this.players.has(id)||!['sticks','stones'].includes(type)||!Number.isSafeInteger(count)||count<1)return false;
+  const previous=this.getInventory(id);
+  this.inventories.set(id,{...previous,[type]:(previous[type]||0)+count});
+  this.events.push({version:++this.version,type:'resource',playerId:id,resource:type,count});
   if(this.events.length>256)this.events.shift();
   this.save();return true;
  }

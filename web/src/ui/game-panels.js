@@ -1,4 +1,5 @@
 import {DYE_COLORS} from '../engine/dye-palette.js';
+import {TOOL_RECIPES} from '../engine/shared-world.js';
 // Fixed-layout inventory and admin console overlay the full-size WebGL canvas.
 // Registered commands are explicit, never eval'd.
 export class GamePanels {
@@ -100,7 +101,7 @@ export class GamePanels {
   for(const [id,label,tab] of [
    ['axe','Axe','tools'],['hammer','Hammer','tools'],['scythe','Scythe','tools'],
    ['tool-1','Empty','tools'],['tool-2','Empty','tools'],
-   ['logs','4 m Logs','resources'],['fibers','Fibers','resources'],['resource-1','Empty','resources'],
+   ['logs','4 m Logs','resources'],['fibers','Fibers','resources'],['sticks','Sticks','resources'],['stones','Stones','resources'],
    ['resource-2','Empty','resources'],['resource-3','Empty','resources']
   ]){
    const isTool=id==='axe'||id==='hammer'||id==='scythe';
@@ -109,7 +110,8 @@ export class GamePanels {
     slot.type='button';
     slot.addEventListener('click',()=>{
      const current=this.sharedWorld.getEquippedTool(this.playerId);
-     this.sharedWorld.setEquippedTool(this.playerId,current===id?null:id);
+     if(this.sharedWorld.hasTool(this.playerId,id))this.sharedWorld.setEquippedTool(this.playerId,current===id?null:id);
+     else this.sharedWorld.craftTool(this.playerId,id);
      this.refreshInventory();
     });
    }
@@ -157,17 +159,19 @@ export class GamePanels {
   const equipped=this.sharedWorld.getEquippedTool(this.playerId);
   for(const [id,entry] of this.slots){
    if(entry.isTool){
-    const active=id===equipped;
-    entry.slot.style.borderColor=active?'#ffe090':'#526477';
-    entry.slot.style.background=active?'#415738':'#172430';
+    const active=id===equipped,crafted=this.sharedWorld.hasTool(this.playerId,id),ready=this.sharedWorld.canCraftTool(this.playerId,id);
+    entry.slot.style.borderColor=active?'#4899e8':crafted?'#4eac69':ready?'#d6b243':'#667078';
+    entry.slot.style.background=active?'#20558b':crafted?'#225937':ready?'#796420':'#34383c';
+    entry.slot.style.color=active?'#e3f2ff':crafted?'#d6ffe0':ready?'#fff0b3':'#b2b5b7';
     entry.slot.setAttribute('aria-pressed',String(active));
-    entry.quantity.textContent=active?'Equipped':'Tap to equip';
+    entry.quantity.textContent=active?'Equipped':crafted?'Tap to equip':ready?'Tap to craft':Object.entries(TOOL_RECIPES[id]).map(([item,n])=>item+' '+(inventory[item]||0)+'/'+n).join(' · ');
    }
    if(id==='logs')entry.quantity.textContent='Count: '+count+' | Strength: '+averageStrength.toFixed(2);
    else if(id==='fibers'){
     const fibers=inventory.fibers||0;
     entry.quantity.textContent='Count: '+fibers+' | Quality: '+(fibers?(inventory.fiberQuality||0)/fibers:0).toFixed(2);
    }
+   else if(id==='sticks'||id==='stones')entry.quantity.textContent='Count: '+(inventory[id]||0);
    else if(entry.isTool)continue;
    else entry.quantity.textContent='Not acquired';
   }

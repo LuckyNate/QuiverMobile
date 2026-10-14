@@ -16,7 +16,10 @@ export class PlayerSystem {
   this.cameraLookCooldown=0;this.isMoving=false;
   this.viewZoom=8;this.cameraPosition=null;this.lastTurn=0;
   this.cameraCollision=null;
+  this.walkDestination=null;
  }
+ setDestination(position){this.walkDestination=position.clone();}
+ cancelDestination(){this.walkDestination=null;}
  setCameraCollision(height,radius){this.cameraCollision=new CameraCollision(height,radius);}
  basis(){
   const up=this.position.clone().normalize();
@@ -34,12 +37,22 @@ export class PlayerSystem {
  // character turns smoothly into travel direction instead of tank steering.
  movement(dt){
   const {north,east}=this.basis(),{x,y}=this.controls.axes();
+  // Automatic walking feeds the same physics and avatar animation as manual movement.
+  let auto=null;
+  if(this.walkDestination){
+   const up=this.position.clone().normalize();
+   const delta=this.walkDestination.clone().sub(this.position);
+   delta.addScaledVector(up,-delta.dot(up));
+   const distance=delta.length();
+   if(distance<.65)this.walkDestination=null;
+   else auto=delta.multiplyScalar(Math.min(1,distance/2)/distance);
+  }
   // Movement uses the two-handed camera-relative stick (or keyboard).
   const cameraForward=north.clone().multiplyScalar(Math.cos(this.cameraHeading))
    .addScaledVector(east,Math.sin(this.cameraHeading));
   const cameraRight=east.clone().multiplyScalar(Math.cos(this.cameraHeading))
    .addScaledVector(north,-Math.sin(this.cameraHeading));
-  const move=cameraForward.multiplyScalar(y).addScaledVector(cameraRight,x).clampLength(0,1);
+  const move=auto||cameraForward.multiplyScalar(y).addScaledVector(cameraRight,x).clampLength(0,1);
   this.isMoving=move.lengthSq()>.01;
   if(this.isMoving){
    const target=Math.atan2(move.dot(east),move.dot(north));

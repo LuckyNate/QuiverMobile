@@ -130,6 +130,47 @@ const sharedWorld=new SharedWorld({ownerId:'local-owner',seed:TERRAIN_SEED});
 sharedWorld.join('local-owner',player);
 const harvesting=new ResourceHandler(scene,playerSystem,height,RADIUS,{terrain,shared:sharedWorld,playerId:'local-owner',camera});
 const panels=new GamePanels({app,canvas,controls:playerSystem.controls,sharedWorld,playerId:'local-owner'});
+// Tap resources or terrain to walk using the normal player physics path.
+const tapRaycaster=new THREE.Raycaster();
+const tapNdc=new THREE.Vector2();
+playerSystem.controls.onManualMove=()=>playerSystem.cancelDestination();
+playerSystem.controls.onTap=(screenX,screenY)=>{
+ if(!started||!simulationReady)return;
+ const bounds=canvas.getBoundingClientRect();
+ tapNdc.set((screenX-bounds.left)/bounds.width*2-1,1-(screenY-bounds.top)/bounds.height*2);
+ tapRaycaster.setFromCamera(tapNdc,camera);
+ let destination=null,best=Infinity;
+ for(const item of harvesting.ground.items.values()){
+  if(item.state!=='standing'||!item.group.visible)continue;
+  const projected=item.position.clone().project(camera);
+  if(projected.z<0||projected.z>1)continue;
+  const sx=(projected.x+1)*bounds.width*.5+bounds.left;
+  const sy=(1-projected.y)*bounds.height*.5+bounds.top;
+  const pixels=Math.hypot(screenX-sx,screenY-sy);
+  if(pixels<Math.max(18,48/item.position.distanceTo(camera.position)*8)&&pixels<best){best=pixels;destination=item.position;}
+ }
+ if(!destination){
+  // Intersect a conservative shell, then iteratively refine to true terrain height.
+  const ray=tapRaycaster.ray;
+  const sphere=new THREE.Sphere(new THREE.Vector3(),RADIUS+60);
+  const hit=ray.intersectSphere(sphere,new THREE.Vector3());
+  if(!hit)return;
+  let travel=hit.distanceTo(ray.origin);
+  for(let i=0;i<7;i++){
+   const point=ray.at(travel,new THREE.Vector3());
+   const up=point.clone().normalize(),surfaceRadius=height.radius(up,RADIUS);
+   const error=point.length()-surfaceRadius;
+   const slope=ray.direction.dot(up);
+   if(Math.abs(slope)<.08)break;
+   travel-=error/slope;
+   if(travel<0)return;
+  }
+  const point=ray.at(travel,new THREE.Vector3());
+  if(Math.abs(point.length()-height.radius(point.clone().normalize(),RADIUS))>3)return;
+  destination=point;
+ }
+ playerSystem.setDestination(destination);
+};
 adminPanels=panels;
 setInterval(()=>{if(panels.openPanel==='inventory')panels.refreshInventory();},500);
 startButton.addEventListener('click',()=>{
