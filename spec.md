@@ -83,3 +83,12 @@ The game starts rendering and initializing behind a full-screen `QUIVER MOBILE` 
 - `engine/tool-registry.js` and `engine/interaction-system.js`: central tool/resource permission checks; currently wired to live tree contact.
 - All new class definitions have one-class-per-commit histories. Wiring commits are separate and limited to direct consumers.
 - Remaining work: streamed resource cells outside the Meadows starter neighborhood; migrate rocks/structures into live rendering/interaction; replace manual tree velocity response with integrated Box3D resource fixtures if desired. Current commits have not been verified by an on-device interaction test.
+
+### Biome-owned resource streaming (2026-10-13)
+- `engine/resource-handler.js` extends the existing tree gameplay adapter into the live world resource entry point; `main.js` starts one handler with read-only D20 roots from `WorldTerrain`.
+- `engine/biome-resource-zone.js` owns a fixed 32 m tangent-plane cell grid for each of the 20 D20 faces. Resources are requested in a bounded 5×5 cell neighborhood near the avatar and unloaded behind the player; at most one new cell is populated per biome per frame. It samples terrain elevation without modifying terrain meshes, seed, or LOD.
+- Each biome owns a configurable resource-density profile. The current default is provisionally 4,500 trees/km² for each face; this is a tuning placeholder, not a permanent biome-specific biome taxonomy. The player's actual starting face is labeled Meadows. Other profiles can be supplied through the resource handler constructor.
+- `engine/resource-type-registry.js` maps resource types to explicit spawn/unload adapters. Trees are registered. Rocks and mineral deposits have object contracts but no live rendering or harvesting adapters, so zones skip those types until installed.
+- Resource instance IDs include D20 face, resource type, cell coordinate and candidate ordinal, stable across LOD and reload. `SharedWorld` harvest records are respected; harvested resources are not recreated when a cell reloads.
+- The legacy Meadows-only four-cell population loop is disabled in the active `ResourceHandler`; its tree contact and collection logic are retained.
+- Resource loading/unloading is independent of terrain, Box3D, and camera range. Android build and on-device interaction testing remain separate verification gates.
