@@ -4,7 +4,7 @@
 Node 22+, Vite, Three.js/WebGL2, box3d-wasm, Gradle, Android Kotlin WebView. Desktop: `cd web && npm install && npm run dev`. CI runs the Vite build, copies `web/dist` into Android app assets, signs a release APK and publishes updates. WebViewAssetLoader hosts bundled assets under `https://appassets.androidplatform.net/assets/web/`, not `file://`.
 
 ## Implementation map
-- `web/src/world.js` — D20 root size/radius, terrain LOD selection, independent leaf mesh generation, current edge skirts, streamed mesh cache, palette; planned neighbor-aware fine-edge conformance.
+- `web/src/world.js` — D20 root size/radius, terrain LOD selection, independent leaf mesh generation, neighbor-aware conforming coarse edges, streamed mesh cache, palette.
 - `web/src/engine/terrain-height.js` — seeded, unit-sphere layered radial elevation authority.
 - `web/src/world-system.js` and `engine/world-octree.js` — spatial extent, actor indexing.
 - `engine/implicit-sphere.js` and `engine/sphere-surface.js` — sparse static occupancy and outward 1 m collision hulls.
@@ -26,7 +26,7 @@ Node 22+, Vite, Three.js/WebGL2, box3d-wasm, Gradle, Android Kotlin WebView. Des
 
 ## Known limitations
 - Visual mesh sampling and Box3D contact surface remain separate; render-only edge conformance must not modify physics.
-- Current mixed-LOD seams are hidden with 12 m skirts, not actually stitched. The approved next step is to conform coarse shared edges to the finest touching node, using identical normalized midpoint positions and sampled heights.
+- Mixed-LOD coarse edges now conform to fine neighbors using identical normalized-midpoint positions and sampled heights; old 12 m skirts were removed. Device validation remains pending.
 - Neighbor-dependent geometry needs a suitable cache key or targeted invalidation; preserve one-mesh-per-frame streaming and the observed high frame rate.
 - Transparent water and replacement terrain must respect depth; no old/new terrain ghost fade exists in current `world.js`.
 - No native VR backend, production coordinate rebasing, horizon-based frustum culling, or robust planet-size automated benchmark is claimed.
@@ -35,5 +35,5 @@ Node 22+, Vite, Three.js/WebGL2, box3d-wasm, Gradle, Android Kotlin WebView. Des
 ## Repository workflow
 Follow `reporules.md`: negotiate scope, minimize touched files, obtain approval for code or documentation writes, and distinguish build verification from real device behavior.
 
-## Pending renderer change: boundary ownership
-The finer adjacent render node is authoritative for every shared edge. Its recursively normalized midpoint subdivision and `TerrainHeight`-sampled vertex positions must be mirrored on the coarse side. Refine and triangulate only the impacted coarse border, not the coarse interior or whole planet. Identify mixed-LOD neighboring nodes (including across D20 root faces), encode the edge configuration in cached geometry or invalidate affected entries on neighbor changes, and avoid T junctions and visible cracks. The present 12 m skirts are temporary gap-concealment. This section specifies the approved future implementation; it is not yet in the renderer. Do not alter world selection, player-relative updates, Box3D, or water as part of boundary conformance.
+## Renderer boundary ownership (implemented in source; unverified on device)
+The finer adjacent render node is authoritative for every shared edge. Its recursively normalized midpoint subdivision and `TerrainHeight`-sampled vertex positions must be mirrored on the coarse side. Refine and triangulate only the impacted coarse border, not the coarse interior or whole planet. Identify mixed-LOD neighboring nodes (including across D20 root faces), encode the edge configuration in cached geometry or invalidate affected entries on neighbor changes, and avoid T junctions and visible cracks. The old 12 m skirts were removed. This is implemented in `world.js`, but runtime and performance verification remain outstanding. World selection, player-relative updates, Box3D, and water were not changed by this renderer edit.
