@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {Resource} from './resource.js';
 import {withinSceneryRange} from './scenery-visibility.js';
 import {MEADOWS_GREEN_DYE} from './dye-palette.js';
@@ -27,8 +26,9 @@ export class TallGrassField {
  constructor({root,shared,player,playerId,scene}){
   Object.assign(this,{root,shared,player,playerId,scene});
   this.clumps=new Map();this.time=0;this.ready=true;
-  // Visible fallback while the GLB loads, and if an embedded WebView cannot load it.
-  this.spriteGeometry=anchorGrassGeometry(new THREE.PlaneGeometry(.9,1.2,1,5));
+  // A nearly flat solid box: all six faces have UVs for the grass PNG.
+  // Bottom center stays at the terrain attachment point.
+  this.spriteGeometry=anchorGrassGeometry(new THREE.BoxGeometry(.9,1.2,.02,1,5,1));
   this.uniforms={windTime:{value:0}};
   const texture=new THREE.TextureLoader().load(import.meta.env.BASE_URL+'grass.png',undefined,undefined,error=>console.error('Grass texture unavailable',error));
   texture.colorSpace=THREE.SRGBColorSpace;
@@ -43,15 +43,6 @@ export class TallGrassField {
    shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>',
     '#include <begin_vertex>\ntransformed.x += pow(max(position.y,0.0),1.6)*0.12*sin(windTime*1.6+position.x*2.0+position.z*1.3);');
   };
-  // The GLB contains the crossed sprite planes; one shared GPU material animates all instances.
-  new GLTFLoader().load(import.meta.env.BASE_URL+'grass.glb',gltf=>{
-   const sprite=gltf.scene.getObjectByName('GrassSprite')||gltf.scene.getObjectByProperty('isMesh',true);
-   if(!sprite?.geometry){console.error('Grass GLB has no sprite mesh');return;}
-   const old=this.spriteGeometry;
-   this.spriteGeometry=anchorGrassGeometry(sprite.geometry);
-   for(const clump of this.clumps.values())clump.blades.children[0].geometry=this.spriteGeometry;
-   old.dispose();
-  },undefined,error=>console.error('Unable to load grass GLB',error));
  }
  spawn(id,position){
   if(!this.ready||this.clumps.has(id))return false;
