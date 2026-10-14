@@ -85,24 +85,23 @@ function boundarySeams(selected){
  for(const entry of selected){
   const edges=edgesByNode.get(entry.node),result=[],signature=[];
   for(const {edge,key} of edges){
-   const points=[],owners=[];
+   const points=[];
    for(const other of groups.get(key)){
     if(other===edge||other.side===edge.side||other.detail<=edge.detail)continue;
     // Avoid subdividing a nonoverlapping collinear edge.
     if(!onArc(other.a,edge.a,edge.b)&&!onArc(other.b,edge.a,edge.b)&&
        !onArc(edge.a,other.a,other.b)&&!onArc(edge.b,other.a,other.b))continue;
     if(!other.points)other.points=edgeSamples(other.a,other.b,other.detail-other.node.level);
-    let contributed=false;
     for(const p of other.points){
      if(p.distanceTo(edge.a)<1e-9||p.distanceTo(edge.b)<1e-9)continue;
-     if(onArc(p,edge.a,edge.b)){points.push(p);contributed=true;}
+     if(onArc(p,edge.a,edge.b))points.push(p);
     }
-    if(contributed)owners.push(String(other.node.address)+':'+other.detail);
    }
    points.sort((a,b)=>edge.a.angleTo(a)-edge.a.angleTo(b));
    const unique=points.filter((p,i)=>!i||p.distanceTo(points[i-1])>1e-9);
    result.push(unique);
-   signature.push(owners.sort().join(','));
+   // The mesh variant depends on actual boundary vertices, not neighbor IDs.
+   signature.push(unique.map(p=>[p.x,p.y,p.z].map(v=>v.toPrecision(14)).join(',')).join(';'));
   }
   seams.set(entry.node,{edges:result,signature:signature.join('|')});
  }
@@ -120,7 +119,7 @@ function contains(n,p){
  return true;
 }
 // Render chunks ARE the persistent D20 hierarchy nodes. Geometry is cached
-// per node/detail pair; Box3D and the world-space collision cache are separate.
+// per node/detail/edge variant; Box3D and collision caches are separate.
 export class WorldTerrain {
  constructor(scene,height=new TerrainHeight(),startPosition=new THREE.Vector3(0,0,RADIUS+1.3),zFar=5000){
   this.height=height;
@@ -129,6 +128,8 @@ export class WorldTerrain {
   this.scene=scene;
   this.cache=new Map();
   this.active=new Set();
+  this.displayed=new Set();
+  this.staging=false;
   this.pending=[];
   this.requested=new Set();
   this.renderEnabled=true;
@@ -136,6 +137,16 @@ export class WorldTerrain {
   this.zFar=zFar;
   this.anchorAddress=null;
   this.leafCount=0;
+  // A guaranteed complete low-detail planet remains visible while new
+  // generations of render geometry are prepared offscreen.
+  for(const n of this.roots){
+   const key=String(n.address)+':0:fallback';
+   const mesh=new THREE.Mesh(this.geometry(n,0),this.material);
+   mesh.frustumCulled=true;
+   this.scene.add(mesh);
+   this.cache.set(key,{key,mesh,fallback:true});
+   this.displayed.add(key);
+  }
   this.update(startPosition,true);
   // Ensure the player and immediate neighborhood have real node meshes before play.
   this.loadNear(startPosition,64);
@@ -230,7 +241,7 @@ export class WorldTerrain {
  }
  setRenderEnabled(enabled){
   this.renderEnabled=Boolean(enabled);
-  for(const entry of this.cache.values())entry.mesh.visible=this.renderEnabled&&this.requested.has(entry.key);
+  for(const entry of this.cache.values())entry.mesh.visible=this.renderEnabled&&this.displayed.has(entry.key);
  }
  // A chunk address change only alters the target set; mesh work is streamed.
  update(position,force=false,maxDetail=MAX_LOD,zFar=this.zFar){
@@ -252,13 +263,14 @@ export class WorldTerrain {
     if(!this.cache.has(key))queue.push({key,node:n,level,seams:seam.edges});
    }
    this.requested=required;
+   this.staging=true;
    // Prioritize actual spatial distance, not the subdivision level.
    const origin=position.clone().normalize();
    queue.sort((a,b)=>a.node.center.angleTo(origin)-b.node.center.angleTo(origin));
    this.pending=queue;
    this.leafCount=required.size;
-   // Keep a complete coarse globe until replacement terrain covers each root.
-   for(const [key,entry] of this.cache)entry.mesh.visible=this.renderEnabled&&required.has(key);
+   // Do not expose partial new coverage. The previous complete generation
+   // stays visible until every requested mesh has finished building.
   }
   // At most one new mesh per frame. No traversal/rebuild on ordinary movement.
   if(this.pending.length){
@@ -269,14 +281,22 @@ export class WorldTerrain {
     mesh.frustumCulled=true;
     this.scene.add(mesh);
     this.cache.set(job.key,{key:job.key,mesh});
-    mesh.visible=this.renderEnabled;
+    mesh.visible=false;
    }
+  }
+  // One atomic visibility swap after the entire requested generation exists.
+  // In-flight changes replace the staging target but never punch holes in it.
+  if(this.staging&&[...this.requested].every(key=>this.cache.has(key))){
+   for(const key of this.displayed){const old=this.cache.get(key);if(old)old.mesh.visible=false;}
+   for(const key of this.requested){this.cache.get(key).mesh.visible=this.renderEnabled;}
+   this.displayed=new Set(this.requested);
+   this.staging=false;
   }
   // Evict inactive geometry, never evict chunks required by the current view.
   if(this.cache.size>2200){
    for(const [key,entry] of this.cache){
     if(this.cache.size<=1800)break;
-    if(this.requested.has(key))continue;
+    if(this.requested.has(key)||this.displayed.has(key)||entry.fallback)continue;
     this.scene.remove(entry.mesh);entry.mesh.geometry.dispose();
     this.cache.delete(key);
    }
@@ -291,11 +311,17 @@ export class WorldTerrain {
    const distance=RADIUS*job.node.center.angleTo(origin)-job.node.reach;
    if(distance>radius){remaining.push(job);continue;}
    if(this.cache.has(job.key))continue;
-   const mesh=new THREE.Mesh(this.geometry(job.node,job.level),this.material);
-   mesh.visible=this.renderEnabled;
+   const mesh=new THREE.Mesh(this.geometry(job.node,job.level,job.seams),this.material);
+   mesh.visible=false;
    this.cache.set(job.key,{key:job.key,mesh});
    this.scene.add(mesh);
   }
   this.pending=remaining;
+  if(this.staging&&[...this.requested].every(key=>this.cache.has(key))){
+   for(const key of this.displayed){const old=this.cache.get(key);if(old)old.mesh.visible=false;}
+   for(const key of this.requested)this.cache.get(key).mesh.visible=this.renderEnabled;
+   this.displayed=new Set(this.requested);
+   this.staging=false;
+  }
  }
 }
