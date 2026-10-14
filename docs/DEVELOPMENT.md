@@ -37,3 +37,9 @@ Follow `reporules.md`: negotiate scope, minimize touched files, obtain approval 
 
 ## Renderer boundary ownership (implemented in source; unverified on device)
 The finer adjacent render node is authoritative for every shared edge. Its recursively normalized midpoint subdivision and `TerrainHeight`-sampled vertex positions must be mirrored on the coarse side. Refine and triangulate only the impacted coarse border, not the coarse interior or whole planet. Identify mixed-LOD neighboring nodes (including across D20 root faces), encode the edge configuration in cached geometry or invalidate affected entries on neighbor changes, and avoid T junctions and visible cracks. The old 12 m skirts were removed. This is implemented in `world.js`, but runtime and performance verification remain outstanding. World selection, player-relative updates, Box3D, and water were not changed by this renderer edit.
+
+## 2026-10-13 terrain coverage repair
+- Diagnosed immediate hiding of old required meshes while replacements were constructed at one mesh per frame; this created transient holes regardless of correct seam geometry.
+- Added full 20-face low-detail fallback coverage and staged generation swaps. The previous complete set stays displayed while requested meshes build invisibly; visibility changes only once all new target meshes exist.
+- Displayed meshes are not evicted, and `loadNear()` uses the precomputed seam variants. Cache signatures now use actual boundary positions, not neighbor IDs.
+- The previous high frame rate is an observed baseline, **not** a verified result of this edit. Atomic full-set swaps may delay new-detail exposure when many meshes are queued. Verify Android startup, movement, convergence, memory, seams, and terrain coverage before treating the fix as complete.
