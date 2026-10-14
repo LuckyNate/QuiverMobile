@@ -125,6 +125,22 @@ export class WorldTerrain {
   this.height=height;
   this.roots=roots.map(([a,b,c],face)=>node(a,b,c,0,null,rootAddress(face)));
   this.material=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:1,side:THREE.DoubleSide,flatShading:true});
+  // The collision hull's exact top faces own the near-ground pixels.
+  // Keep D20 for far LOD only; never draw a second surface under the player.
+  this.collisionGroundCenter={value:startPosition.clone()};
+  this.collisionGroundRadius={value:7};
+  this.material.onBeforeCompile=shader=>{
+   shader.uniforms.collisionGroundCenter=this.collisionGroundCenter;
+   shader.uniforms.collisionGroundRadius=this.collisionGroundRadius;
+   shader.vertexShader=shader.vertexShader.replace('#include <common>',
+    '#include <common>\nvarying vec3 vGroundWorldPosition;');
+   shader.vertexShader=shader.vertexShader.replace('#include <worldpos_vertex>',
+    '#include <worldpos_vertex>\nvGroundWorldPosition=(modelMatrix*vec4(transformed,1.0)).xyz;');
+   shader.fragmentShader=shader.fragmentShader.replace('#include <common>',
+    '#include <common>\nvarying vec3 vGroundWorldPosition;\nuniform vec3 collisionGroundCenter;\nuniform float collisionGroundRadius;');
+   shader.fragmentShader=shader.fragmentShader.replace('#include <clipping_planes_fragment>',
+    '#include <clipping_planes_fragment>\nif(distance(vGroundWorldPosition,collisionGroundCenter)<collisionGroundRadius)discard;');
+  };
   this.scene=scene;
   this.cache=new Map();
   this.active=new Set();
@@ -252,6 +268,7 @@ export class WorldTerrain {
  }
  // A chunk address change only alters the target set; mesh work is streamed.
  update(position,force=false,maxDetail=MAX_LOD,zFar=this.zFar){
+  this.collisionGroundCenter.value.copy(position);
   const detailCap=Math.max(2,Math.min(MAX_LOD,Math.floor(maxDetail)));
   const anchor=this.anchor(position);
   const address=String(anchor.address);
