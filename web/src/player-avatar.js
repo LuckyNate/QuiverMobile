@@ -17,7 +17,9 @@ export class PlayerAvatar {
   this.actions=new Map();
   this.currentAction=null;
   report('GLB player','LOADING','Loading block avatar');
-  new GLTFLoader().load('/models/debug/quiver_block_avatar.glb',gltf=>{
+  // Resolve beside the current web entry point on desktop and Android WebView.
+  const avatarUrl=new URL('models/debug/quiver_block_avatar.glb',document.baseURI).href;
+  new GLTFLoader().load(avatarUrl,gltf=>{
    this.root.add(gltf.scene);
    this.mixer=new THREE.AnimationMixer(gltf.scene);
    for(const clip of gltf.animations){
