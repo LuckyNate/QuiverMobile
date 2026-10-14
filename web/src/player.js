@@ -38,10 +38,11 @@ export class PlayerSystem {
    // 180-degree reverse facing is allowed to alter the driving direction.
    if(this.lastControlMode!=='one')this.driveHeading=this.heading;
    this.lastControlMode='one';
-   const turn=x*2.8*dt;
+   const reversing=y<-.01;
+   // Screen-space steering: reverse the yaw when traveling toward the camera.
+   const turn=x*(reversing?-1:1)*2.8*dt;
    this.driveHeading+=turn;
    this.lastTurn=turn/Math.max(dt,.001);
-   const reversing=y<-.01;
    const travelHeading=this.driveHeading+(reversing?Math.PI:0);
    if(Math.abs(y)>.01)this.heading=travelHeading;
    else if(Math.abs(x)>.01)this.heading+=turn;
