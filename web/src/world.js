@@ -142,6 +142,15 @@ export class WorldTerrain {
     '#include <clipping_planes_fragment>\nif(distance(vGroundWorldPosition,collisionGroundCenter)<collisionGroundRadius)discard;');
   };
   this.scene=scene;
+  // Nearby visible geometry comes directly from the same surface patches as
+  // the Box3D hulls. Both near and distant representations are owned here.
+  this.collisionSurface=null;
+  this.nearSurfaceSignature='';
+  this.nearSurfaceMesh=new THREE.Mesh(new THREE.BufferGeometry(),
+   new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,side:THREE.DoubleSide,roughness:1,
+    polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1}));
+  this.nearSurfaceMesh.frustumCulled=false;
+  this.scene.add(this.nearSurfaceMesh);
   this.cache=new Map();
   this.active=new Set();
   this.displayed=new Set();
@@ -262,13 +271,46 @@ export class WorldTerrain {
   for(const root of this.roots)visit(root);
   return selected;
  }
+ setCollisionSurface(surface){
+  this.collisionSurface=surface;
+  this.nearSurfaceSignature='';
+ }
+ updateCollisionSurface(position){
+  if(!this.collisionSurface)return;
+  const bounds={min:[position.x-10,position.y-10,position.z-10],
+   max:[position.x+10,position.y+10,position.z+10]};
+  const patches=this.collisionSurface.query(bounds);
+  const signature=patches.map(p=>p.id).join('|');
+  if(signature===this.nearSurfaceSignature)return;
+  this.nearSurfaceSignature=signature;
+  const positions=[],colors=[];
+  for(const patch of patches){
+   const corners=patch.corners;
+   for(const i of [0,1,2,0,2,3]){
+    const point=corners[i];
+    positions.push(...point);
+    const length=Math.hypot(...point);
+    const color=terrainColor(length-(RADIUS-1));
+    colors.push(color.r,color.g,color.b);
+   }
+  }
+  const geometry=new THREE.BufferGeometry();
+  geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+  geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
+  geometry.computeVertexNormals();
+  const previous=this.nearSurfaceMesh.geometry;
+  this.nearSurfaceMesh.geometry=geometry;
+  previous.dispose();
+ }
  setRenderEnabled(enabled){
   this.renderEnabled=Boolean(enabled);
+  this.nearSurfaceMesh.visible=this.renderEnabled;
   for(const entry of this.cache.values())entry.mesh.visible=this.renderEnabled&&this.displayed.has(entry.key);
  }
  // A chunk address change only alters the target set; mesh work is streamed.
  update(position,force=false,maxDetail=MAX_LOD,zFar=this.zFar){
   this.collisionGroundCenter.value.copy(position);
+  this.updateCollisionSurface(position);
   const detailCap=Math.max(2,Math.min(MAX_LOD,Math.floor(maxDetail)));
   const anchor=this.anchor(position);
   const address=String(anchor.address);

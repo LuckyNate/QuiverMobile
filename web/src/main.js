@@ -151,7 +151,6 @@ function applyRenderLayers(){
  harvesting.root.visible=renderLayers.trees;
  playerSystem.visual.root.visible=renderLayers.player;
  aabbDisplay.visible=renderLayers.objects&&debugAabbRequested;
- greenSurface.visible=renderLayers.terrain;
  for(const item of fallingCubes)item.mesh.visible=renderLayers.objects;
 }
 function setRenderLayer(enabled,args){
@@ -171,7 +170,7 @@ report('biome resources','READY','Player-centered seeded resource zones (20 D20 
 let physics=null,fallingCubes=[],playerCollider=null;
 let physicsLoading=false,simulationReady=false;
 const cyan=new THREE.LineBasicMaterial({color:0x00ffff,depthTest:true,depthWrite:false});
-let debugAabbRequested=false,debugSurfaceRequested=false;
+let debugAabbRequested=false;
 const aabbDisplay=new THREE.Group();scene.add(aabbDisplay);
 aabbDisplay.visible=false;
 function boundsAt(p,half){return {min:[p.x-half,p.y-half,p.z-half],max:[p.x+half,p.y+half,p.z+half]};}
@@ -186,6 +185,8 @@ function activeCollisionAreas(){
 if(!terrain)throw new Error('Terrain geometry unavailable');
 const worldSystem=new WorldSystem(RADIUS,player,height);
 const {octree,solidity,surface}=worldSystem;
+terrain.setCollisionSurface(surface);
+terrain.updateCollisionSurface(player);
 report('terrain geometry','READY',terrain.leafCount+' fixed faces');
 report('octree solidity','READY','Implicit 1 m spherical octree');
 // One reusable line buffer: write current nearby AABB edges every frame.
@@ -219,34 +220,6 @@ function drawNearbyStatic(queryBox){
 }
 
 
-// Near-ground rendering uses the exact top vertices of Box3D's collision
-// hulls. No radial inflation, corner expansion, or independent height sampling.
-const groundMaterial=new THREE.MeshStandardMaterial({
- color:0x71934b,side:THREE.DoubleSide,roughness:1,
- polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1
-});
-const greenSurface=new THREE.Mesh(new THREE.BufferGeometry(),groundMaterial);
-greenSurface.frustumCulled=false;
-greenSurface.visible=true;
-scene.add(greenSurface);
-let surfaceSignature='';
-function drawSurface(bounds){
- const patches=surface.query(bounds);
- const signature=patches.map(p=>p.id).join('|');
- if(signature===surfaceSignature)return;
- surfaceSignature=signature;
- const positions=[];
- for(const patch of patches){
-  const v=patch.corners;
-  // These are precisely the vertices used for the upper face of the collision hull.
-  for(const i of [0,1,2,0,2,3])positions.push(...v[i]);
- }
- const geometry=new THREE.BufferGeometry();
- geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
- geometry.computeVertexNormals();
- greenSurface.geometry.dispose();
- greenSurface.geometry=geometry;
-}
 
 async function initializePhysics(){
  try{
@@ -385,7 +358,6 @@ function frame(now){
    const terrainStart=performance.now();
    terrain.update(player,false,undefined,camera.far);
    profile('lod',terrainStart);
-   if(greenSurface.visible)drawSurface(boundsAt(player,10));
   }catch(error){report('Box3D','FAILED',error.message);physics=null;}
  }
  if(renderer){
