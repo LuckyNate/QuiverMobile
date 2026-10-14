@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {refineAvatarShape} from './engine/avatar-shape.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 
 // The physics capsule remains the authority for contact and position.
@@ -23,6 +24,7 @@ export class PlayerAvatar {
   // Resolve beside the current web entry point on desktop and Android WebView.
   const avatarUrl=new URL('models/debug/quiver_block_avatar.glb',document.baseURI).href;
   new GLTFLoader().load(avatarUrl,gltf=>{
+   refineAvatarShape(gltf.scene);
    this.root.add(gltf.scene);
    this.mixer=new THREE.AnimationMixer(gltf.scene);
    for(const clip of gltf.animations){
