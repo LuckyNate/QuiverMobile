@@ -3,7 +3,8 @@ import {ResourceDensity} from './engine/resource-density.js';
 import {ResourceDistributor} from './engine/resource-distributor.js';
 import {withinSceneryRange} from './engine/scenery-visibility.js';
 import {Tree} from './engine/tree.js';
-import {ObjectRegistry} from './engine/object-registry.js';
+import {WorldObjectManager} from './engine/world-object-manager.js';
+import {InteractionSystem} from './engine/interaction-system.js';
 import {TreeVisual} from './engine/tree-visual.js';
 import {TreeContact} from './engine/tree-contact.js';
 import {TreeLifecycle} from './engine/tree-lifecycle.js';
@@ -13,7 +14,7 @@ import {TreePopulation} from './engine/tree-population.js';
 export class TreeHarvestSystem {
  constructor(scene,player,height,radius,{shared=null,playerId='local-owner',camera=null}={}){
   Object.assign(this,{scene,player,height,radius,shared,playerId,camera});
-  this.trees=[];this.objects=new ObjectRegistry();this.wood=0;this.attackClock=0;this.logLength=4;
+  this.trees=[];this.objects=new WorldObjectManager();this.wood=0;this.attackClock=0;this.logLength=4;
   this.renderEnabled=true;
   this.root=new THREE.Group();scene.add(this.root);
   this.origin=player.position.clone().normalize();
@@ -29,6 +30,7 @@ export class TreeHarvestSystem {
   this.leafMaterial=new THREE.MeshStandardMaterial({color:0x315934,roughness:1,transparent:true});
   this.treeVisual=new TreeVisual(this.trunkMaterial,this.leafMaterial);
   this.lifecycle=new TreeLifecycle({scene,shared,player,onLocalLog:()=>{this.wood++;}});
+  this.interactions=new InteractionSystem();
   this.contact=new TreeContact({
    getTool:()=>this.shared?.getEquippedTool(this.playerId)||null,
    onHit:t=>{
@@ -59,7 +61,7 @@ export class TreeHarvestSystem {
   const saved=this.shared?.getEntity(id);
   const state=saved&&saved.state!=='standing'?'collected':'standing';
   tree.visible=state==='standing';
-  const object=this.objects.add(new Tree({id,position:position.toArray(),state}));
+  const object=this.objects.spawn(new Tree({id,position:position.toArray(),state}));
   const entry={id,object,chunk,serial,tree,visual,trunk,foliage,at:position,state,hits:0,progress:0,ownerId:null,respawnTime:0,bumpCooldown:0};
   this.trees.push(entry);
   return entry;
