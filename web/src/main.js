@@ -152,7 +152,7 @@ playerSystem.controls.onTap=(screenX,screenY)=>{
  if(!destination){
   // Intersect a conservative shell, then iteratively refine to true terrain height.
   const ray=tapRaycaster.ray;
-  const sphere=new THREE.Sphere(new THREE.Vector3(),RADIUS+60);
+  const sphere=new THREE.Sphere(new THREE.Vector3(),RADIUS);
   const hit=ray.intersectSphere(sphere,new THREE.Vector3());
   if(!hit)return;
   let travel=hit.distanceTo(ray.origin);
