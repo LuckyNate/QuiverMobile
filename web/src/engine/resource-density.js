@@ -1,7 +1,7 @@
 // Read-only resource density policy; never alters terrain or its LOD.
 // Density is an expected count per square kilometer, not a per-chunk quota.
 export class ResourceDensity {
- constructor({profiles={meadows:{tree:18,rock:5}},seed='QuiverGL'}={}){
+ constructor({profiles={meadows:{tree:4500,rock:500}},seed='QuiverGL'}={}){
   this.profiles=profiles;
   this.seed=String(seed);
  }
