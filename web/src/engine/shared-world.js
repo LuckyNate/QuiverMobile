@@ -65,6 +65,16 @@ export class SharedWorld {
   if(this.events.length>256)this.events.shift();
   this.save();return true;
  }
+ awardFibers(id,count=5,quality=1){
+  if(!this.players.has(id)||!Number.isSafeInteger(count)||count<1||!Number.isFinite(quality)||quality<=0)return false;
+  const previous=this.getInventory(id);
+  const fibers=(previous.fibers||0)+count;
+  const fiberQuality=(previous.fiberQuality||0)+count*quality;
+  this.inventories.set(id,{...previous,fibers,fiberQuality});
+  this.events.push({version:++this.version,type:'fibers',playerId:id,count,quality});
+  if(this.events.length>256)this.events.shift();
+  this.save();return true;
+ }
  save(){
   try{this.storage?.setItem(this.saveKey,JSON.stringify(this.snapshot()));}
   catch{} // Storage may be unavailable; network layer must surface persistence failure.
