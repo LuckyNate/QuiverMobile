@@ -180,6 +180,7 @@ export class GamePanels {
   const makeSlot=(id,label,x,y,width=86)=>{
    const slot=document.createElement('button');
    slot.type='button';slot.textContent=label;slot.disabled=true;
+   slot.addEventListener('click',()=>{if(this.sharedWorld.craftAndEquipGear(this.playerId,id))this.refreshInventory();});
    slot.style.cssText=`position:absolute;left:${x}px;top:${y}px;width:${width}px;height:34px;padding:2px;font:600 12px system-ui;border:1px solid #d45c5c;border-radius:4px;background:#522429;color:#ffe0e0;box-sizing:border-box;touch-action:manipulation`;
    slot.title='Empty — no equipment available yet';
    view.append(slot);this.gearSlots.set(id,slot);
@@ -189,6 +190,7 @@ export class GamePanels {
   const left=document.createElement('button'),right=document.createElement('button');
   for(const [button,label] of [[left,'Left Hand'],[right,'Right Hand']]){
    button.type='button';button.textContent=label;button.disabled=true;
+   button.addEventListener('click',()=>{const id=button===left?'left-hand':'right-hand';if(this.sharedWorld.craftAndEquipGear(this.playerId,id))this.refreshInventory();});
    button.style.cssText='flex:1;min-width:0;height:36px;border:1px solid #d45c5c;background:#522429;color:#ffe0e0;font:600 12px system-ui';
    button.title='Empty — weapons not yet defined';
   }
@@ -242,7 +244,7 @@ export class GamePanels {
    const item=gear[id]||null;
    // No recipes or items are invented here; later gear registry will supply them.
    const equipped=Boolean(item?.equipped);
-   const craftable=Boolean(item?.craftable&&!equipped);
+   const craftable=this.sharedWorld.canCraftGear(this.playerId,id);
    button.style.background=craftable?'#796420':equipped?'#225937':'#522429';
    button.style.borderColor=craftable?'#d6b243':equipped?'#4eac69':'#d45c5c';
    button.textContent=item?.name||({'left-hand':'Left Hand','right-hand':'Right Hand'}[id]||id[0].toUpperCase()+id.slice(1));
