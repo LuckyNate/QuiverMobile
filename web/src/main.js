@@ -13,11 +13,24 @@ const app=document.getElementById('app');
 const bootstrap=document.getElementById('bootstrap');
 if(bootstrap)bootstrap.remove();
 const ui=document.createElement('div');
+// The simulation renders behind the title screen. Readiness, not a timer,
+// determines when the player may enter the already running world.
 const loading=document.createElement('div');
-loading.style.cssText='position:fixed;inset:0;z-index:10;background:#080e18e8;color:#e8f5ff;display:flex;align-items:center;justify-content:center;font:16px monospace;text-align:center;padding:24px;pointer-events:auto';
-loading.textContent='Preparing planet...';
+loading.style.cssText='position:fixed;inset:0;z-index:20;background:#080e18ee;color:#e8f5ff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;text-align:center;padding:24px;box-sizing:border-box;font:15px system-ui';
+const gameTitle=document.createElement('h1');
+gameTitle.textContent='QUIVER MOBILE';
+gameTitle.style.cssText='margin:0;font:700 clamp(30px,8vw,62px) system-ui;letter-spacing:.13em';
+const loadingStatus=document.createElement('div');
+loadingStatus.setAttribute('role','status');
+loadingStatus.setAttribute('aria-live','polite');
+loadingStatus.style.cssText='font:14px monospace;white-space:pre-line;max-width:90vw';
+const startButton=document.createElement('button');
+startButton.textContent='START GAME';startButton.type='button';
+startButton.style.cssText='display:none;padding:14px 36px;border:1px solid #8cb7cf;border-radius:5px;background:#254762;color:white;font:700 18px system-ui;touch-action:manipulation';
+loading.append(gameTitle,loadingStatus,startButton);
 app.append(loading);
-function loadStatus(message){loading.textContent=message;}
+let started=false;
+function loadStatus(message){loadingStatus.textContent=message;}
 const stages=new Map();
 const reportedErrors=new Map();
 let adminPanels=null;
@@ -105,6 +118,16 @@ sharedWorld.join('local-owner',player);
 const harvesting=new TreeHarvestSystem(scene,playerSystem,height,RADIUS,{shared:sharedWorld,playerId:'local-owner',camera});
 const panels=new GamePanels({app,canvas,controls:playerSystem.controls,sharedWorld,playerId:'local-owner'});
 adminPanels=panels;
+startButton.addEventListener('click',()=>{
+ if(started||startButton.disabled)return;
+ started=true;
+ loading.remove();
+ panels.top.panel.style.visibility='visible';
+ panels.bottom.panel.style.visibility='visible';
+ playerSystem.controls.setEnabled(true);
+});
+panels.top.panel.style.visibility='hidden';
+panels.bottom.panel.style.visibility='hidden';
 // Visual-only owner commands. Physics and game simulation remain active.
 const renderLayers={terrain:true,water:true,trees:true,player:true,objects:true};
 function applyRenderLayers(){
@@ -231,7 +254,6 @@ async function initializePhysics(){
   const cubes=[];
   world.syncStatic(surface,activeCollisionAreas(),solidity);
   physics=world;fallingCubes=cubes;simulationReady=true;
-  loading.remove();
   report('Box3D','READY','Meadows starter; player and terrain contacts');
  }catch(error){loadStatus('Physics initialization failed: '+error.message);report('Box3D','FAILED',error.stack||error.message);}
 }
@@ -255,6 +277,31 @@ function showProfile(){
   +' frame '+(perfTotals.frame/divisor).toFixed(1)+' ms';
  for(const name in perfTotals)perfTotals[name]=0;
  perfFrames=0;perfLast=now;
+}
+// Readiness is evaluated in the running frame loop after world updates.
+function updateTitleReadiness(){
+ if(started)return;
+ const failed=[...stages].filter(([,value])=>value.state==='FAILED');
+ const terrainReady=Boolean(terrain&&terrain.requested.size&&terrain.pending.length===0&&!terrain.staging&&
+  [...terrain.requested].every(key=>terrain.cache.has(key)));
+ const ready=Boolean(renderer&&simulationReady&&physics&&playerCollider&&terrainReady&&frames>0&&!failed.length);
+ const lines=[
+  'Renderer: '+(renderer?'ready':'waiting'),
+  'World and water: '+(terrain?'ready':'waiting'),
+  'Terrain LOD: '+(terrainReady?'ready':terrain?'building '+terrain.pending.length+' meshes':'waiting'),
+  'Player and physics: '+(simulationReady&&physics&&playerCollider?'ready':'initializing'),
+  'Scenery: '+(harvesting?'ready':'waiting'),
+  'First rendered frame: '+(frames>0?'ready':'waiting')
+ ];
+ if(failed.length){
+  lines.push('Initialization failed: '+failed.map(([name,value])=>name+': '+value.detail).join('; '));
+  startButton.style.display='none';
+ }else if(ready){
+  lines.push('Ready to play');
+  startButton.style.display='block';
+  startButton.disabled=false;
+ }else{startButton.style.display='none';}
+ loadStatus(lines.join('\\n'));
 }
 let last=performance.now(),elapsed=0,frames=0,lastTerrain=0,resizeW=0,resizeH=0;
 function frame(now){
@@ -335,6 +382,7 @@ function frame(now){
  }catch(error){report('frame logic','FAILED',error.message);}
  profile('frame',perfFrameStart);
  showProfile();
+ updateTitleReadiness();
 
 }
 report('frame loop','RUNNING');
