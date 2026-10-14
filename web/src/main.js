@@ -284,14 +284,14 @@ function updateTitleReadiness(){
  const failed=[...stages].filter(([,value])=>value.state==='FAILED');
  const terrainReady=Boolean(terrain&&terrain.requested.size&&terrain.pending.length===0&&!terrain.staging&&
   [...terrain.requested].every(key=>terrain.cache.has(key)));
- const ready=Boolean(renderer&&simulationReady&&physics&&playerCollider&&terrainReady&&frames>0&&!failed.length);
+ const ready=Boolean(renderer&&simulationReady&&physics&&playerCollider&&terrainReady&&stages.get('first frame')?.state==='READY'&&!failed.length);
  const lines=[
   'Renderer: '+(renderer?'ready':'waiting'),
   'World and water: '+(terrain?'ready':'waiting'),
   'Terrain LOD: '+(terrainReady?'ready':terrain?'building '+terrain.pending.length+' meshes':'waiting'),
   'Player and physics: '+(simulationReady&&physics&&playerCollider?'ready':'initializing'),
   'Scenery: '+(harvesting?'ready':'waiting'),
-  'First rendered frame: '+(frames>0?'ready':'waiting')
+  'First rendered frame: '+(stages.get('first frame')?.state==='READY'?'ready':'waiting')
  ];
  if(failed.length){
   lines.push('Initialization failed: '+failed.map(([name,value])=>name+': '+value.detail).join('; '));
@@ -301,7 +301,7 @@ function updateTitleReadiness(){
   startButton.style.display='block';
   startButton.disabled=false;
  }else{startButton.style.display='none';}
- loadStatus(lines.join('\\n'));
+ loadStatus(lines.join('\n'));
 }
 let last=performance.now(),elapsed=0,frames=0,lastTerrain=0,resizeW=0,resizeH=0;
 function frame(now){
