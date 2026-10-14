@@ -31,19 +31,13 @@ export class ResourceHandler extends TreeHarvestSystem {
   });
   this.zones=terrain.roots.map(root=>{
    const id=Number(root.address.slice(1,3));
-   const biome=new Biome({id,name:'Biome '+id,resourceDensity:biomeProfiles[id]||{tree:4500}});
+   const biome=new Biome({id,name:'Biome '+id,resourceDensity:{tree:4500,grass:18000,...(biomeProfiles[id]||{})}});
    return new BiomeResourceZone({biome,root,radius,height,host:this,
     distributor:new ResourceDistributor(new ResourceDensity({
      seed:shared?.seed||'QuiverGL',
      profiles:{['F'+String(id).padStart(2,'0')]:biome.resourceDensity}
     }))});
   });
-  const starter=this.zones.find(zone=>zone.contains(player.position.clone().normalize()));
-  if(starter){
-   starter.biome=new Biome({id:starter.biome.id,name:'Meadows',
-    resourceDensity:{...starter.biome.resourceDensity,grass:18000}});
-   starter.distributor.density.profiles['F'+String(starter.biome.id).padStart(2,'0')]=starter.biome.resourceDensity;
-  }
   this.terrain=terrain;
  }
  canSpawnResource(type){return this.resourceTypes.canSpawn(type);}
