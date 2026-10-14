@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import {BiomePopulation} from './engine/biome-population.js';
+import {ResourceDensity} from './engine/resource-density.js';
+import {ResourceDistributor} from './engine/resource-distributor.js';
 import {withinSceneryRange} from './engine/scenery-visibility.js';
 import {Tree} from './engine/tree.js';
 import {ObjectRegistry} from './engine/object-registry.js';
@@ -16,7 +17,9 @@ export class TreeHarvestSystem {
   this.east=new THREE.Vector3().crossVectors(this.origin,reference).normalize();
   this.north=new THREE.Vector3().crossVectors(this.east,this.origin).normalize();
   this.chunks=[0,1,2,3];this.nextSerial=new Map(this.chunks.map(chunk=>[chunk,256]));
-  this.population=new BiomePopulation({biomeId:0,childCount:4,targets:{trees:18},tolerances:{trees:2}});
+  this.density=new ResourceDensity({seed:shared?.seed||'QuiverGL'});
+  this.distributor=new ResourceDistributor(this.density);
+  this.targetByChunk=new Map();
   this.trunkMaterial=new THREE.MeshStandardMaterial({color:0x705038,roughness:1});
   this.leafMaterial=new THREE.MeshStandardMaterial({color:0x315934,roughness:1,transparent:true});
   this.populate();
@@ -54,15 +57,27 @@ export class TreeHarvestSystem {
   return entry;
  }
  populate(){
+  // 32 m seeded resource cells replace the fixed starter test-tree quotas.
+  // Surface height is sampled read-only, independent of terrain mesh LOD.
   for(const chunk of this.chunks){
-   let created=0,serial=0;
-   while(created<this.population.quota('trees',chunk)&&serial<256){
-    const at=this.location(chunk,serial);
-    if(at&&at.distanceTo(this.player.position)>6){
-     this.makeTree(chunk,serial,at);created++;
+   const cellX=chunk%2===0?-1:0,cellY=chunk<2?-1:0;
+   const candidates=this.distributor.candidates({
+    biome:'meadows',type:'tree',cellX,cellY,cellSize:32,
+    origin:this.origin,axisX:this.east,axisY:this.north,
+    sampleSurface:(origin,east,north,x,y)=>{
+     const direction=origin.clone().addScaledVector(east,x/this.radius)
+      .addScaledVector(north,y/this.radius).normalize();
+     const elevation=this.height.height(direction);
+     return elevation<3?null:direction.multiplyScalar(this.radius+elevation).toArray();
     }
-    serial++;
+   });
+   let created=0;
+   for(const candidate of candidates){
+    const at=new THREE.Vector3(...candidate.position);
+    if(at.distanceTo(this.player.position)<=6)continue;
+    this.makeTree(chunk,created++,at);
    }
+   this.targetByChunk.set(chunk,created);
   }
   // Restore previously respawned instances from the world owner's save.
   for(const [id,saved] of this.shared?.entities||[]){
@@ -174,7 +189,7 @@ export class TreeHarvestSystem {
   }
   for(const chunk of this.chunks){
    const live=this.trees.filter(t=>t.chunk===chunk&&t.state!=='collected').length;
-   if(!this.population.needsRespawn('trees',chunk,live))continue;
+   if(live>=Math.max(0,(this.targetByChunk.get(chunk)||0)-1))continue;
    const retired=this.trees.find(t=>t.chunk===chunk&&t.state==='collected'&&t.respawnTime===0);
    if(!retired)continue;
    for(let trial=0;trial<32;trial++){
