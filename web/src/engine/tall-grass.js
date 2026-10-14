@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {Resource} from './resource.js';
+import {GrassVisual} from './grass-visual.js';
 import {withinSceneryRange} from './scenery-visibility.js';
 import {MEADOWS_GREEN_DYE} from './dye-palette.js';
 
@@ -11,64 +12,30 @@ export class TallGrass extends Resource {
   this.quality=1;
  }
 }
-// Normalize GLB and fallback coordinates so the attachment point is precisely
-// the center of the grass footprint at its lowest vertex (local Y = 0).
-function anchorGrassGeometry(source){
- const geometry=source.clone();
- geometry.computeBoundingBox();
- const {min,max}=geometry.boundingBox;
- geometry.translate(-(min.x+max.x)/2,-min.y,-(min.z+max.z)/2);
- geometry.computeBoundingBox();
- geometry.computeBoundingSphere();
- return geometry;
-}
 export class TallGrassField {
  constructor({root,shared,player,playerId,scene}){
   Object.assign(this,{root,shared,player,playerId,scene});
-  this.clumps=new Map();this.time=0;this.ready=true;
-  // A nearly flat solid box: all six faces have UVs for the grass PNG.
-  // Bottom center stays at the terrain attachment point.
-  this.spriteGeometry=anchorGrassGeometry(new THREE.BoxGeometry(.9,1.2,.02,1,5,1));
-  this.uniforms={windTime:{value:0}};
-  const texture=new THREE.TextureLoader().load(import.meta.env.BASE_URL+'grass.png',undefined,undefined,error=>console.error('Grass texture unavailable',error));
-  texture.colorSpace=THREE.SRGBColorSpace;
-  texture.magFilter=THREE.LinearFilter;
-  texture.minFilter=THREE.LinearMipmapLinearFilter;
-  this.material=new THREE.MeshStandardMaterial({map:texture,transparent:true,alphaTest:.35,
-   side:THREE.DoubleSide,roughness:1,depthWrite:true});
-  // BoxGeometry groups: +X,-X,+Y,-Y,+Z,-Z.
-  // Four vertical sides use grass; horizontal caps stay transparent.
-  const blankCap=new THREE.MeshBasicMaterial({visible:false});
-  this.boxMaterials=[this.material,this.material,blankCap,blankCap,this.material,this.material];
-  this.material.onBeforeCompile=shader=>{
-   shader.uniforms.windTime=this.uniforms.windTime;
-   shader.vertexShader=shader.vertexShader.replace('#include <common>',
-    '#include <common>\nuniform float windTime;');
-   shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>',
-    '#include <begin_vertex>\ntransformed.x += pow(max(position.y,0.0),1.6)*0.12*sin(windTime*1.6+position.x*2.0+position.z*1.3);');
-  };
+  this.clumps=new Map();
+  this.visual=new GrassVisual();
+  this.ready=true;
  }
  spawn(id,position){
   if(!this.ready||this.clumps.has(id))return false;
   const saved=this.shared?.getEntity(id);
   if(saved&&saved.state!=='standing')return false;
-  const group=new THREE.Group();
-  group.position.copy(position);
-  group.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),position.clone().normalize());
-  const blades=new THREE.Group();group.add(blades);
-  blades.add(new THREE.Mesh(this.spriteGeometry,this.boxMaterials));
+  const {group,blades,mesh}=this.visual.create(position);
   this.root.add(group);
   const resource=new TallGrass({id,position:position.toArray()});
-  this.clumps.set(id,{id,position,group,blades,resource,state:'standing',progress:0,owner:null});
+  this.clumps.set(id,{id,position,group,blades,mesh,resource,state:'standing',progress:0,owner:null});
   return true;
  }
  unload(id){
   const c=this.clumps.get(id);if(!c)return;
   if(c.state==='falling'||c.state==='flying')return;
-  this.root.remove(c.group);this.clumps.delete(id);
+  this.root.remove(c.group);this.visual.release(c.mesh);this.clumps.delete(id);
  }
  update(dt,body,tool){
-  this.uniforms.windTime.value+=dt;
+  this.visual.update(dt);
   const playerPosition=this.player.position;
   const avatar=body?.getPosition();
   for(const c of this.clumps.values()){
