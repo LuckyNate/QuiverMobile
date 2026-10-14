@@ -11,4 +11,5 @@ export class ResourceTypeRegistry {
  canSpawn(type){return this.types.has(type);}
  spawn(type,id,position,cell){return this.types.get(type)?.spawn(id,position,cell)??false;}
  unload(type,id){return this.types.get(type)?.unload(id)??false;}
+ isBusy(type,id){return Boolean(this.types.get(type)?.busy?.(id));}
 }

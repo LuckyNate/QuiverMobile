@@ -131,17 +131,6 @@ sharedWorld.join('local-owner',player);
 const harvesting=new ResourceHandler(scene,playerSystem,height,RADIUS,{terrain,shared:sharedWorld,playerId:'local-owner',camera});
 const panels=new GamePanels({app,canvas,controls:playerSystem.controls,sharedWorld,playerId:'local-owner'});
 adminPanels=panels;
-// First successful grass collection reveals the green dye with a short hint.
-let dyeHintTimer=null;
-harvesting.onDyeDiscovery=()=>{
- panels.refreshInventory();
- let hint=document.getElementById('dye-discovery-hint');
- if(!hint){hint=document.createElement('div');hint.id='dye-discovery-hint';app.append(hint);}
- hint.textContent='DISCOVERY: Meadows Green dye unlocked! See Inventory → Dyes.';
- hint.style.cssText='position:fixed;left:12px;right:12px;top:60px;z-index:12;background:#193b27ed;color:#ebffeb;padding:12px;border:1px solid #82b67e;border-radius:6px;text-align:center;font:600 14px system-ui;pointer-events:none';
- clearTimeout(dyeHintTimer);
- dyeHintTimer=setTimeout(()=>hint.remove(),4200);
-};
 setInterval(()=>{if(panels.openPanel==='inventory')panels.refreshInventory();},500);
 startButton.addEventListener('click',()=>{
  if(started||startButton.disabled)return;

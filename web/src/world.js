@@ -218,6 +218,12 @@ export class WorldTerrain {
  // One D20 hierarchy: a parent is rendered instead of its descendants.
  // Each node's detail follows player-centered radial distance, not camera position.
  // At zFar and beyond only the coarsest applicable ancestor is retained.
+ // Resources occupy the nearest four terrain detail bands (highest LOD through
+ // highest LOD-3), using the same doubled distance curve as terrain selection.
+ resourceStreamRadius(){
+  const range=Math.log2(1+Math.max(1,this.zFar)/16);
+  return 32*(Math.pow(2,range*4/MAX_LOD)-1);
+ }
  select(anchor,position){
   const selected=[];
   const origin=position.clone().normalize();
