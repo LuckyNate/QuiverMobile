@@ -7,6 +7,7 @@ import {ObjectRegistry} from './engine/object-registry.js';
 import {TreeVisual} from './engine/tree-visual.js';
 import {TreeContact} from './engine/tree-contact.js';
 import {TreeLifecycle} from './engine/tree-lifecycle.js';
+import {TreePopulation} from './engine/tree-population.js';
 
 // All player/world mutations use stable IDs. Only Meadows is populated now.
 export class TreeHarvestSystem {
@@ -23,6 +24,7 @@ export class TreeHarvestSystem {
   this.density=new ResourceDensity({seed:shared?.seed||'QuiverGL'});
   this.distributor=new ResourceDistributor(this.density);
   this.targetByChunk=new Map();
+  this.treePopulation=new TreePopulation(this);
   this.trunkMaterial=new THREE.MeshStandardMaterial({color:0x705038,roughness:1});
   this.leafMaterial=new THREE.MeshStandardMaterial({color:0x315934,roughness:1,transparent:true});
   this.treeVisual=new TreeVisual(this.trunkMaterial,this.leafMaterial);
@@ -62,38 +64,8 @@ export class TreeHarvestSystem {
   this.trees.push(entry);
   return entry;
  }
- populate(){
-  // 32 m seeded resource cells replace the fixed starter test-tree quotas.
-  // Surface height is sampled read-only, independent of terrain mesh LOD.
-  for(const chunk of this.chunks){
-   const cellX=chunk%2===0?-1:0,cellY=chunk<2?-1:0;
-   const candidates=this.distributor.candidates({
-    biome:'meadows',type:'tree',cellX,cellY,cellSize:32,
-    origin:this.origin,axisX:this.east,axisY:this.north,
-    sampleSurface:(origin,east,north,x,y)=>{
-     const direction=origin.clone().addScaledVector(east,x/this.radius)
-      .addScaledVector(north,y/this.radius).normalize();
-     const elevation=this.height.height(direction);
-     return elevation<3?null:direction.multiplyScalar(this.radius+elevation).toArray();
-    }
-   });
-   let created=0;
-   for(const candidate of candidates){
-    const at=new THREE.Vector3(...candidate.position);
-    if(at.distanceTo(this.player.position)<=6)continue;
-    this.makeTree(chunk,created++,at);
-   }
-   this.targetByChunk.set(chunk,created);
-  }
-  // Restore previously respawned instances from the world owner's save.
-  for(const [id,saved] of this.shared?.entities||[]){
-   if(!id.startsWith('meadows:tree:')||saved.state!=='standing'||saved.serial<256||!saved.position)continue;
-   if(this.trees.some(t=>t.id===id))continue;
-   this.makeTree(saved.chunk,saved.serial,new THREE.Vector3(...saved.position));
-   this.nextSerial.set(saved.chunk,Math.max(this.nextSerial.get(saved.chunk)||256,saved.serial+1));
-  }
- }
- hiddenFromPlayers(at){
+ populate(){this.treePopulation.populate();}
+  hiddenFromPlayers(at){
   const players=this.shared?.players?.values()||[{position:this.player.position}];
   for(const player of players){
    const p=player.position;
@@ -127,22 +99,6 @@ export class TreeHarvestSystem {
   this.attackClock=Math.max(0,this.attackClock-dt);
   this.bump(body,dt);
   this.lifecycle.update(this.trees,dt);
-  for(const chunk of this.chunks){
-   const live=this.trees.filter(t=>t.chunk===chunk&&t.state!=='collected').length;
-   if(live>=Math.max(0,(this.targetByChunk.get(chunk)||0)-1))continue;
-   const retired=this.trees.find(t=>t.chunk===chunk&&t.state==='collected'&&t.respawnTime===0);
-   if(!retired)continue;
-   for(let trial=0;trial<32;trial++){
-    const serial=(this.nextSerial.get(chunk)||256)+trial;
-    const at=this.location(chunk,serial);
-    if(!at||!this.hiddenFromPlayers(at))continue;
-    if(this.trees.some(t=>t.state!=='collected'&&t.at.distanceTo(at)<3))continue;
-    // A harvested tree is never regenerated at its old location.
-    this.makeTree(chunk,serial,at);
-    this.nextSerial.set(chunk,serial+1);
-    this.shared?.setEntity('meadows:tree:'+chunk+':'+serial,{state:'standing',chunk,serial,position:at.toArray()});
-    break;
-   }
-  }
+  this.treePopulation.respawn();
  }
 }
