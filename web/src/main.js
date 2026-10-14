@@ -27,7 +27,16 @@ loadingStatus.style.cssText='font:14px monospace;white-space:pre-line;max-width:
 const startButton=document.createElement('button');
 startButton.textContent='START GAME';startButton.type='button';
 startButton.style.cssText='display:none;padding:14px 36px;border:1px solid #8cb7cf;border-radius:5px;background:#254762;color:white;font:700 18px system-ui;touch-action:manipulation';
-loading.append(gameTitle,loadingStatus,startButton);
+// Startup tips scroll along the bottom while world initialization continues.
+const tipStyle=document.createElement('style');
+tipStyle.textContent='@keyframes quiverTipScroll{from{transform:translateX(100vw)}to{transform:translateX(-100%)}}';
+const tipTrack=document.createElement('div');
+tipTrack.style.cssText='position:absolute;bottom:0;left:0;right:0;overflow:hidden;white-space:nowrap;padding:12px 0;background:#08121bdd;border-top:1px solid #526477;text-align:left;pointer-events:none';
+const tipText=document.createElement('span');
+tipText.textContent='TIP: Burn your weak logs before gathering stronger wood! Your inventory combines all logs into one average strength.';
+tipText.style.cssText='display:inline-block;padding-left:0;font:13px system-ui;animation:quiverTipScroll 19s linear infinite';
+tipTrack.append(tipText);
+loading.append(tipStyle,gameTitle,loadingStatus,startButton,tipTrack);
 app.append(loading);
 let started=false;
 function loadStatus(message){loadingStatus.textContent=message;}
