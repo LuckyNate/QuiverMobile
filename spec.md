@@ -11,7 +11,7 @@ A continuous spherical outdoor world engine. Three.js/WebGL2 and Box3D WebAssemb
 - Derived spherical base radius: `rootEdge * sqrt(10 + 2*sqrt(5)) / 4`.
 - Finest subdivision level derives from `round(log2(rootEdge))`: currently **13** to target nominal 1 m edges. Both planet size and subdivision count are adjustable; they are not architectural constants.
 - Current 20 m LOD bands are a tuning choice, not a universal rule. Near-player detail is selected by player-centered distance and stable chunk-address updates; the camera far range influences distant detail. The current `world.js` does not implement the older documented split hysteresis or zoom-specific detail caps.
-- **Current renderer (2026-10-13):** leaf geometry conforms coarse boundaries to the highest-detail touching render neighbor. Legacy 12 m skirts were removed. No shader height morph or dither/ghost fade is active.
+- **Current renderer (2026-10-13):** leaf geometry attempts to conform coarse boundaries to the highest-detail touching render neighbor, with mixed-LOD seams still requiring device verification. Legacy 12 m skirts were removed. No shader height morph or dither/ghost fade is active.
 
 ## Geology, sea and solid ground
 - One deterministic seeded radial `TerrainHeight` drives visible terrain, implicit solids, and local collision hulls. Current seed: `QuiverGL`.
@@ -43,3 +43,9 @@ A continuous spherical outdoor world engine. Three.js/WebGL2 and Box3D WebAssemb
 - Neighbor-aware edge configuration must be part of the geometry-cache identity or trigger targeted invalidation/rebuild when adjacent detail changes; cached seams must not become stale.
 - Preserve player-centered LOD selection, incremental mesh creation, bounded cache/eviction, coarsest distant geometry outside `zFar`, and the currently high frame rate. The old 12 m skirts have been removed.
 - The code has been changed, but cross-face/multi-level seams and performance have not yet been validated on device.
+
+## LOD render coverage update (2026-10-13)
+- `WorldTerrain` now begins with a complete 20-face coarse globe and retains the last fully available render generation while the next requested LOD set streams into the mesh cache.
+- Staged meshes remain hidden until every target mesh is built; then visibility switches in one frame. Replaced targets never hide previously displayed coverage early. Both new and old meshes are protected from eviction while needed; the fallback globe is retained.
+- `loadNear` now supplies the same seam configuration as ordinary streaming. Boundary cache signatures encode actual inserted vertex positions instead of neighboring node IDs.
+- This specifically addresses transient **missing coverage** during one-mesh-per-frame replacement; it is separate from the still-unverified geometric crack stitching. The all-ready staging policy can delay presentation of new LOD detail for large target sets; Android frame rate, memory usage, and seam continuity need observation.
