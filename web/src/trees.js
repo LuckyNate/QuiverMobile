@@ -32,6 +32,7 @@ export class TreeHarvestSystem {
   this.lifecycle=new TreeLifecycle({scene,shared,player,onLocalLog:()=>{this.wood++;}});
   this.interactions=new InteractionSystem();
   this.contact=new TreeContact({interaction:this.interactions,
+   onContact:()=>this.player.visual.flashResourceContact(),
    getTool:()=>this.shared?.getEquippedTool(this.playerId)||null,
    onHit:t=>{
     if(this.attackClock>0)return;
