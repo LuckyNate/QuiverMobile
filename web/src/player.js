@@ -12,7 +12,7 @@ export class PlayerSystem {
   this.controls=new PlayerControls(canvas);
   this.visual=new PlayerAvatar(scene,report);
   this.frameUp=null;this.forward=null;
-  this.heading=0;this.cameraHeading=0;this.cameraPitch=.22;
+  this.heading=0;this.driveHeading=0;this.lastControlMode='one';this.cameraHeading=0;this.cameraPitch=.22;
   this.viewZoom=8;this.cameraPosition=null;this.lastTurn=0;
   this.cameraCollision=null;
  }
@@ -34,24 +34,32 @@ export class PlayerSystem {
  movement(dt){
   const {north,east}=this.basis(),{x,y}=this.controls.axes();
   if(this.controls.mode==='one'){
-   // One-handed driving: vertical input moves along the character's heading,
-   // horizontal input steers. Camera rotation never feeds into locomotion.
+   // Steering has its own heading. Neither camera-follow nor the avatar's
+   // 180-degree reverse facing is allowed to alter the driving direction.
+   if(this.lastControlMode!=='one')this.driveHeading=this.heading;
+   this.lastControlMode='one';
    const turn=x*2.8*dt;
-   this.heading+=turn;
+   this.driveHeading+=turn;
    this.lastTurn=turn/Math.max(dt,.001);
-   const facing=north.clone().multiplyScalar(Math.cos(this.heading))
-    .addScaledVector(east,Math.sin(this.heading));
-   const move=facing.multiplyScalar(y);
+   const reversing=y<-.01;
+   const travelHeading=this.driveHeading+(reversing?Math.PI:0);
+   if(Math.abs(y)>.01)this.heading=travelHeading;
+   else if(Math.abs(x)>.01)this.heading+=turn;
+   const travel=north.clone().multiplyScalar(Math.cos(travelHeading))
+    .addScaledVector(east,Math.sin(travelHeading));
+   const move=travel.multiplyScalar(Math.abs(y));
    if(Math.abs(y)>.01)this.showAnimation('Walking');
    else if(Math.abs(x)>.01)this.showAnimation('Turning');
    else this.showAnimation('Idle');
-   // Follow heading smoothly without affecting the movement vector.
+   // Follow the driving axis, including reverse turns: behind when moving
+   // forward, ahead of the player when reversing. Never steer from camera.
    if(Math.abs(x)>.01||Math.abs(y)>.01){
-    const offset=THREE.MathUtils.euclideanModulo(this.heading-this.cameraHeading+Math.PI,Math.PI*2)-Math.PI;
+    const offset=THREE.MathUtils.euclideanModulo(this.driveHeading-this.cameraHeading+Math.PI,Math.PI*2)-Math.PI;
     this.cameraHeading+=offset*(1-Math.exp(-2.5*dt));
    }
    return move;
   }
+  this.lastControlMode='two';
   // Two-handed movement remains camera-relative with independent look input.
   const cameraForward=north.clone().multiplyScalar(Math.cos(this.cameraHeading))
    .addScaledVector(east,Math.sin(this.cameraHeading));
