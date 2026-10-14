@@ -82,7 +82,7 @@ export class BiomeResourceZone {
    for(const candidate of candidates){
     const at=new THREE.Vector3(...candidate.position);
     // Seeded candidates must not be discarded just because the player is nearby.
-    if(this.host.spawnResource(type,candidate.id,at,cellX+':'+cellY))ids.push(candidate.id);
+    if(this.host.spawnResource(type,candidate.id,at,{cell:cellX+':'+cellY,biome:this.biome}))ids.push(candidate.id);
    }
   }
   this.loaded.set(next,ids);
