@@ -151,7 +151,7 @@ function applyRenderLayers(){
  harvesting.root.visible=renderLayers.trees;
  playerSystem.visual.root.visible=renderLayers.player;
  aabbDisplay.visible=renderLayers.objects&&debugAabbRequested;
- greenSurface.visible=renderLayers.objects&&debugSurfaceRequested;
+ greenSurface.visible=renderLayers.terrain;
  for(const item of fallingCubes)item.mesh.visible=renderLayers.objects;
 }
 function setRenderLayer(enabled,args){
@@ -219,13 +219,16 @@ function drawNearbyStatic(queryBox){
 }
 
 
-// Dark-green surface patches are the same outward faces used by Box3D.
-// Rebuild only when the local set of exposed patches changes.
-const greenSurface=new THREE.Mesh(new THREE.BufferGeometry(),
- new THREE.MeshBasicMaterial({color:0x145c2b,side:THREE.DoubleSide,depthWrite:true,transparent:false,opacity:1}));
+// Near-ground rendering uses the exact top vertices of Box3D's collision
+// hulls. No radial inflation, corner expansion, or independent height sampling.
+const groundMaterial=new THREE.MeshStandardMaterial({
+ color:0x71934b,side:THREE.DoubleSide,roughness:1,
+ polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1
+});
+const greenSurface=new THREE.Mesh(new THREE.BufferGeometry(),groundMaterial);
 greenSurface.frustumCulled=false;
+greenSurface.visible=true;
 scene.add(greenSurface);
-greenSurface.visible=false;
 let surfaceSignature='';
 function drawSurface(bounds){
  const patches=surface.query(bounds);
@@ -233,15 +236,10 @@ function drawSurface(bounds){
  if(signature===surfaceSignature)return;
  surfaceSignature=signature;
  const positions=[];
- for(const p of patches){
-  // Visual-only 2 cm edge overlap; collision hulls remain unchanged.
-  const v=p.corners,center=[0,1,2].map(axis=>v.reduce((sum,corner)=>sum+corner[axis],0)/4);
-  const corners=v.map(corner=>{
-   const expanded=corner.map((value,axis)=>center[axis]+(value-center[axis])*1.04);
-   const length=Math.hypot(...expanded);
-   return expanded.map(value=>value*surface.radius*1.00025/length);
-  });
-  for(const i of [0,1,2,0,2,3])positions.push(...corners[i]);
+ for(const patch of patches){
+  const v=patch.corners;
+  // These are precisely the vertices used for the upper face of the collision hull.
+  for(const i of [0,1,2,0,2,3])positions.push(...v[i]);
  }
  const geometry=new THREE.BufferGeometry();
  geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
@@ -387,7 +385,7 @@ function frame(now){
    const terrainStart=performance.now();
    terrain.update(player,false,undefined,camera.far);
    profile('lod',terrainStart);
-   if(greenSurface.visible)drawSurface(boundsAt(player,3));
+   if(greenSurface.visible)drawSurface(boundsAt(player,10));
   }catch(error){report('Box3D','FAILED',error.message);physics=null;}
  }
  if(renderer){
