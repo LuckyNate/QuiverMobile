@@ -228,7 +228,8 @@ export class WorldTerrain {
    const arc=RADIUS*Math.acos(THREE.MathUtils.clamp(origin.dot(n.center),-1,1));
    // Distance to the node footprint, not its distant center.
    const distance=Math.max(0,arc-n.reach);
-   const fraction=Math.min(1,Math.log2(1+distance/16)/range);
+   // Double every distance-based LOD band without changing mesh detail levels.
+   const fraction=Math.min(1,Math.log2(1+(distance/2)/16)/range);
    const target=Math.max(0,Math.floor(MAX_LOD*(1-fraction)));
    if(n.level<Math.min(chunkLevel,target)){
     for(const child of children(n))visit(child);
