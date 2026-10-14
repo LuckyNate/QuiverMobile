@@ -27,7 +27,10 @@ function grassTexture(){
 export class TallGrassField {
  constructor({root,shared,player,playerId,scene}){
   Object.assign(this,{root,shared,player,playerId,scene});
-  this.clumps=new Map();this.time=0;this.ready=false;this.spriteGeometry=null;
+  this.clumps=new Map();this.time=0;this.ready=true;
+  // Visible fallback while the GLB loads, and if an embedded WebView cannot load it.
+  this.spriteGeometry=new THREE.PlaneGeometry(.9,1.2,1,5);
+  this.spriteGeometry.translate(0,.6,0);
   this.uniforms={windTime:{value:0}};
   const texture=grassTexture();
   this.material=new THREE.MeshStandardMaterial({map:texture,transparent:true,alphaTest:.35,
@@ -40,11 +43,13 @@ export class TallGrassField {
     '#include <begin_vertex>\ntransformed.x += pow(max(position.y,0.0),1.6)*0.12*sin(windTime*1.6+position.x*2.0+position.z*1.3);');
   };
   // The GLB contains the crossed sprite planes; one shared GPU material animates all instances.
-  new GLTFLoader().load('/grass.glb',gltf=>{
+  new GLTFLoader().load(import.meta.env.BASE_URL+'grass.glb',gltf=>{
    const sprite=gltf.scene.getObjectByName('GrassSprite')||gltf.scene.getObjectByProperty('isMesh',true);
    if(!sprite?.geometry){console.error('Grass GLB has no sprite mesh');return;}
+   const old=this.spriteGeometry;
    this.spriteGeometry=sprite.geometry;
-   this.ready=true;
+   for(const clump of this.clumps.values())clump.blades.children[0].geometry=this.spriteGeometry;
+   old.dispose();
   },undefined,error=>console.error('Unable to load grass GLB',error));
  }
  spawn(id,position){
