@@ -41,17 +41,18 @@ export class TreeContact {
    test('trunk',0,4,y=>.31-(.07*y/4));
    // ConeGeometry(1.35,4.5): base=1.0, tip=5.5.
    test('foliage',1,5.5,y=>1.35*(5.5-y)/4.5);
-   if(!hitPart||!t.object.acceptsContact(hitPart,{equippedTool})||t.bumpCooldown>0)continue;
+   if(!hitPart||!t.object.acceptsContact(hitPart,{equippedTool})||t.bumpCooldown>0||body.knockback?.targetDistance)continue;
    const normal=distance>.0001?lateral.divideScalar(distance):new THREE.Vector3(velocity.x,velocity.y,velocity.z)
     .addScaledVector(up,-(velocity.x*up.x+velocity.y*up.y+velocity.z*up.z)).negate().normalize();
    if(normal.lengthSq()<.0001)continue;
    const toward=velocity.x*normal.x+velocity.y*normal.y+velocity.z*normal.z;
    if(toward>=0)continue;
-   const kick=Math.min(2,Math.max(.4,-toward*.35));
-   body.setLinearVelocity({x:velocity.x+normal.x*(-toward+kick),
-    y:velocity.y+normal.y*(-toward+kick),z:velocity.z+normal.z*(-toward+kick)});
+   // Travel one meter along the terrain tangent using the existing Box3D body.
+   // PhysicsWorld.movePlayer owns the per-frame rebound velocity and stops
+   // it after the measured distance, rather than teleporting the player.
+   body.knockback={x:normal.x,y:normal.y,z:normal.z,
+    origin:{x:position.x,y:position.y,z:position.z},targetDistance:1};
    body.setAwake(true);
-   body.knockback={x:normal.x*kick,y:normal.y*kick,z:normal.z*kick,remaining:.22};
    t.bumpCooldown=.25;
    this.onContact?.(t,hitPart);
    this.onHit(t,hitPart);
