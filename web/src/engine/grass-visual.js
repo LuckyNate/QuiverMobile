@@ -23,7 +23,10 @@ export class GrassVisual {
    const mesh=gltf.scene.getObjectByName('GrassClump')||gltf.scene.getObjectByProperty('isMesh',true);
    if(!mesh?.geometry)return;
    this.geometry=mesh.geometry;
-   for(const instance of this.instances)instance.geometry=this.geometry;
+   for(const instance of this.instances){
+    instance.geometry=this.geometry;
+    instance.scale.y=6/1.25;
+   }
   },undefined,error=>console.warn('Grass GLB unavailable; retaining fallback',error));
  }
  create(position){
@@ -31,6 +34,7 @@ export class GrassVisual {
   group.position.copy(position);
   group.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),position.clone().normalize());
   const blades=new THREE.Group(),mesh=new THREE.Mesh(this.geometry||this.fallback,this.material);
+  mesh.scale.y=6/(this.geometry?1.25:1.15);
   blades.add(mesh);group.add(blades);this.instances.add(mesh);
   return {group,blades,mesh};
  }
