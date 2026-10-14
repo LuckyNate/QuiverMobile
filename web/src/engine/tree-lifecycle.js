@@ -33,7 +33,7 @@ export class TreeLifecycle {
     t.trunk.scale.setScalar(Math.max(.03,Math.min(1,distance/8)));
     if(distance<.5){
      t.state='collected';t.object.state='collected';this.scene.remove(t.trunk);
-     if(this.shared)this.shared.awardLog(t.ownerId,1);
+     if(this.shared)this.shared.awardLog(t.ownerId,t.object.yieldCount,t.object.logStrength??1);
      else this.onLocalLog();
      this.shared?.setEntity(t.id,{state:'collected',chunk:t.chunk,serial:t.serial});
      t.respawnTime=8;
