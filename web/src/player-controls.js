@@ -65,8 +65,8 @@ export class PlayerControls {
  }
  updateStick(){
   const p=this.pointers.get(this.moveId);
-  this.x=p?THREE.MathUtils.clamp((p.x-p.originX)/90,-1,1):0;
-  this.y=p?THREE.MathUtils.clamp((p.originY-p.y)/90,-1,1):0;
+  this.x=this.mode==='two'&&p?THREE.MathUtils.clamp((p.x-p.originX)/90,-1,1):0;
+  this.y=this.mode==='two'&&p?THREE.MathUtils.clamp((p.originY-p.y)/90,-1,1):0;
  }
  axes(){
   if(!this.enabled)return {x:0,y:0};

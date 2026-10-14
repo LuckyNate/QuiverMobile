@@ -12,7 +12,8 @@ export class PlayerSystem {
   this.controls=new PlayerControls(canvas);
   this.visual=new PlayerAvatar(scene,report);
   this.frameUp=null;this.forward=null;
-  this.heading=0;this.driveHeading=0;this.lastControlMode='one';this.cameraHeading=0;this.cameraPitch=.22;
+  this.heading=0;this.cameraHeading=0;this.cameraPitch=.22;
+  this.cameraLookCooldown=0;this.isMoving=false;
   this.viewZoom=8;this.cameraPosition=null;this.lastTurn=0;
   this.cameraCollision=null;
  }
@@ -33,41 +34,14 @@ export class PlayerSystem {
  // character turns smoothly into travel direction instead of tank steering.
  movement(dt){
   const {north,east}=this.basis(),{x,y}=this.controls.axes();
-  if(this.controls.mode==='one'){
-   // Steering has its own heading. Neither camera-follow nor the avatar's
-   // 180-degree reverse facing is allowed to alter the driving direction.
-   if(this.lastControlMode!=='one')this.driveHeading=this.heading;
-   this.lastControlMode='one';
-   const reversing=y<-.01;
-   // Screen-space steering: reverse the yaw when traveling toward the camera.
-   const turn=x*(reversing?-1:1)*2.8*dt;
-   this.driveHeading+=turn;
-   this.lastTurn=turn/Math.max(dt,.001);
-   const travelHeading=this.driveHeading+(reversing?Math.PI:0);
-   if(Math.abs(y)>.01)this.heading=travelHeading;
-   else if(Math.abs(x)>.01)this.heading+=turn;
-   const travel=north.clone().multiplyScalar(Math.cos(travelHeading))
-    .addScaledVector(east,Math.sin(travelHeading));
-   const move=travel.multiplyScalar(Math.abs(y));
-   if(Math.abs(y)>.01)this.showAnimation('Walking');
-   else if(Math.abs(x)>.01)this.showAnimation('Turning');
-   else this.showAnimation('Idle');
-   // Follow the driving axis, including reverse turns: behind when moving
-   // forward, ahead of the player when reversing. Never steer from camera.
-   if(Math.abs(x)>.01||Math.abs(y)>.01){
-    const offset=THREE.MathUtils.euclideanModulo(this.driveHeading-this.cameraHeading+Math.PI,Math.PI*2)-Math.PI;
-    this.cameraHeading+=offset*(1-Math.exp(-2.5*dt));
-   }
-   return move;
-  }
-  this.lastControlMode='two';
-  // Two-handed movement remains camera-relative with independent look input.
+  // Movement uses the two-handed camera-relative stick (or keyboard).
   const cameraForward=north.clone().multiplyScalar(Math.cos(this.cameraHeading))
    .addScaledVector(east,Math.sin(this.cameraHeading));
   const cameraRight=east.clone().multiplyScalar(Math.cos(this.cameraHeading))
    .addScaledVector(north,-Math.sin(this.cameraHeading));
   const move=cameraForward.multiplyScalar(y).addScaledVector(cameraRight,x).clampLength(0,1);
-  if(move.lengthSq()>.01){
+  this.isMoving=move.lengthSq()>.01;
+  if(this.isMoving){
    const target=Math.atan2(move.dot(east),move.dot(north));
    const diff=THREE.MathUtils.euclideanModulo(target-this.heading+Math.PI,Math.PI*2)-Math.PI;
    const step=THREE.MathUtils.clamp(diff,-9*dt,9*dt);
@@ -80,6 +54,13 @@ export class PlayerSystem {
   const {up,north,east}=this.basis();
   const look=this.controls.consumeLook();
   this.cameraHeading+=look.x*.006;
+  if(Math.abs(look.x)+Math.abs(look.y)>.01)this.cameraLookCooldown=1.25;
+  else this.cameraLookCooldown=Math.max(0,this.cameraLookCooldown-dt);
+  // Recenter only while moving and after the right thumb releases camera control.
+  if(this.isMoving&&this.cameraLookCooldown===0){
+   const delta=THREE.MathUtils.euclideanModulo(this.heading-this.cameraHeading+Math.PI,Math.PI*2)-Math.PI;
+   this.cameraHeading+=delta*(1-Math.exp(-1.4*dt));
+  }
   this.cameraPitch=THREE.MathUtils.clamp(this.cameraPitch+look.y*.004,-.35,1.15);
   const facing=north.clone().multiplyScalar(Math.cos(this.heading)).addScaledVector(east,Math.sin(this.heading));
   const cameraForward=north.clone().multiplyScalar(Math.cos(this.cameraHeading))
