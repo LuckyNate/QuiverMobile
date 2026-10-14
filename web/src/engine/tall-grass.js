@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {Resource} from './resource.js';
 import {withinSceneryRange} from './scenery-visibility.js';
 import {MEADOWS_GREEN_DYE} from './dye-palette.js';
@@ -26,7 +27,7 @@ function grassTexture(){
 export class TallGrassField {
  constructor({root,shared,player,playerId,scene}){
   Object.assign(this,{root,shared,player,playerId,scene});
-  this.clumps=new Map();this.time=0;
+  this.clumps=new Map();this.time=0;this.ready=false;this.spriteGeometry=null;
   this.uniforms={windTime:{value:0}};
   const texture=grassTexture();
   this.material=new THREE.MeshStandardMaterial({map:texture,transparent:true,alphaTest:.35,
@@ -38,21 +39,23 @@ export class TallGrassField {
    shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>',
     '#include <begin_vertex>\ntransformed.x += pow(max(position.y,0.0),1.6)*0.12*sin(windTime*1.6+position.x*2.0+position.z*1.3);');
   };
-  // A few crossed two-sided planes in one clump; wind follows local vertical height.
-  this.geometry=new THREE.PlaneGeometry(.9,1.2,1,5);
-  this.geometry.translate(0,.6,0);
+  // The GLB contains the crossed sprite planes; one shared GPU material animates all instances.
+  new GLTFLoader().load('/grass.glb',gltf=>{
+   const sprite=gltf.scene.getObjectByName('GrassSprite')||gltf.scene.getObjectByProperty('isMesh',true);
+   if(!sprite?.geometry){console.error('Grass GLB has no sprite mesh');return;}
+   this.spriteGeometry=sprite.geometry;
+   this.ready=true;
+  },undefined,error=>console.error('Unable to load grass GLB',error));
  }
  spawn(id,position){
-  if(this.clumps.has(id)||this.shared?.getEntity(id))return false;
+  if(!this.ready||this.clumps.has(id))return false;
+  const saved=this.shared?.getEntity(id);
+  if(saved&&saved.state!=='standing')return false;
   const group=new THREE.Group();
   group.position.copy(position);
   group.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),position.clone().normalize());
   const blades=new THREE.Group();group.add(blades);
-  for(let i=0;i<3;i++){
-   const blade=new THREE.Mesh(this.geometry,this.material);
-   blade.rotation.y=i*Math.PI/3;
-   blades.add(blade);
-  }
+  blades.add(new THREE.Mesh(this.spriteGeometry,this.material));
   this.root.add(group);
   const resource=new TallGrass({id,position:position.toArray()});
   this.clumps.set(id,{id,position,group,blades,resource,state:'standing',progress:0,owner:null});

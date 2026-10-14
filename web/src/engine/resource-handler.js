@@ -79,8 +79,9 @@ export class ResourceHandler extends TreeHarvestSystem {
   entry.foliage.material.dispose();
  }
  update(dt,body=null){
+  // Do not mark resource cells loaded until the sprite GLB can populate them.
   // Each biome schedules its own nearby cells, regardless of render LOD.
-  for(const zone of this.zones)zone.update(this.player.position);
+  if(this.grass.ready)for(const zone of this.zones)zone.update(this.player.position);
   super.update(dt,body);
   this.grass.update(dt,body,this.shared?.getEquippedTool(this.playerId));
  }
