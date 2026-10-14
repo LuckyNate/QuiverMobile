@@ -46,3 +46,10 @@ The finer adjacent render node is authoritative for every shared edge. Its recur
 
 ## Quiver Mobile title-screen startup (2026-10-13)
 The game starts rendering and initializing behind a full-screen `QUIVER MOBILE` title. The title displays live readiness for WebGL, world/water, the full initial requested LOD generation, scenery, player/Box3D, and a successfully rendered frame. `START GAME` appears only when those requirements are ready and no reported initialization failures remain. The title is not automatically dismissed; starting removes the overlay and unlocks player input and the Admin/Inventory panels. Until then, movement, look, zoom, and swim input are disabled while the simulation and geometry streaming continue. Errors remain visible on the title screen and block Start. This is a readiness gate, not an artificial timer, and it does not change terrain selection, collision or rendering algorithms. Android startup behavior remains to be validated.
+
+## Animated block avatar integration (2026-10-13)
+- The standalone `assets/models/debug/quiver_block_avatar.glb` is now copied to the Vite public models directory in the Android build and loaded by `web/src/player-avatar.js` using Three.js GLTFLoader.
+- The existing translucent procedural capsule remains in the avatar scene graph, and the separate Box3D player capsule retains all collision, movement, and contact authority. The new model is a visual child, not a replacement collider.
+- The built-in `Idle` and looping `Walking` clips are driven by the existing PlayerSystem animation requests and a delta-time AnimationMixer. Unsupported animation requests fall back to Idle.
+- The Quiver Mobile startup gate waits for `GLB player: READY` before offering Start Game. A load failure is reported and blocks entry rather than silently hiding it.
+- Runtime display, animation playback, and Android build remain unverified.
