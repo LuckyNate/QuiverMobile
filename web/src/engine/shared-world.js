@@ -31,7 +31,7 @@ export class SharedWorld {
  }
  getEquippedTool(id){return this.getInventory(id).equippedTool||null;}
  setEquippedTool(id,tool){
-  if(!this.players.has(id)||!(tool===null||tool==='axe'||tool==='hammer'))return false;
+  if(!this.players.has(id)||!(tool===null||tool==='axe'||tool==='hammer'||tool==='scythe'))return false;
   const previous=this.getInventory(id);
   if((previous.equippedTool||null)===tool)return true;
   this.inventories.set(id,{...previous,equippedTool:tool});
