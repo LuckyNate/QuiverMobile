@@ -35,7 +35,7 @@ export class TallGrassField {
    shader.vertexShader=shader.vertexShader.replace('#include <common>',
     '#include <common>\nuniform float windTime;');
    shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>',
-    '#include <begin_vertex>\ntransformed.x += pow(max(position.y,0.0),1.6)*0.12*sin(windTime*1.6+instanceMatrix[3].x*.15+instanceMatrix[3].z*.13);');
+    '#include <begin_vertex>\ntransformed.x += pow(max(position.y,0.0),1.6)*0.12*sin(windTime*1.6+position.x*2.0+position.z*1.3);');
   };
   // A few crossed two-sided planes in one clump; wind follows local vertical height.
   this.geometry=new THREE.PlaneGeometry(.9,1.2,1,5);
