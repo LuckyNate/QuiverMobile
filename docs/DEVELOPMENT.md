@@ -53,3 +53,6 @@ The game starts rendering and initializing behind a full-screen `QUIVER MOBILE` 
 - The built-in `Idle` and looping `Walking` clips are driven by the existing PlayerSystem animation requests and a delta-time AnimationMixer. Unsupported animation requests fall back to Idle.
 - The Quiver Mobile startup gate waits for `GLB player: READY` before offering Start Game. A load failure is reported and blocks entry rather than silently hiding it.
 - Runtime display, animation playback, and Android build remain unverified.
+
+## Android GLB path correction (2026-10-13)
+The animated block avatar is packaged by the existing Android workflow at `web/dist/models/debug/quiver_block_avatar.glb`, becoming `/assets/web/models/debug/quiver_block_avatar.glb` in the WebViewAssetLoader origin. `PlayerAvatar` now resolves `models/debug/quiver_block_avatar.glb` against `document.baseURI`, rather than requesting `/models/debug/...` from the domain root. This also works from the desktop Vite root. The translucent capsule visual and Box3D capsule remain alongside the GLB; the title screen continues requiring successful avatar loading. Device verification is pending.
