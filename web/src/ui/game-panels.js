@@ -63,8 +63,9 @@ export class GamePanels {
   const occupiedTop=this.openPanel==='admin'?window.innerHeight*.5:44;
   const occupiedBottom=this.openPanel==='inventory'?window.innerHeight*.5:44;
   if(this.controls?.slider){
-   this.controls.slider.style.top=(occupiedTop+12)+'px';
-   this.controls.slider.style.height=Math.max(40,window.innerHeight-occupiedTop-occupiedBottom-24)+'px';
+   // Keep zoom on the upper half of the right edge, independent of inventory height.
+   this.controls.slider.style.top='56px';
+   this.controls.slider.style.height=Math.max(0,window.innerHeight*.5-68)+'px';
   }
   if(this.controls?.swimButtons)this.controls.swimButtons.style.bottom=(occupiedBottom+12)+'px';
  }
