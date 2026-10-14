@@ -94,6 +94,18 @@ export class SharedWorld {
   if(this.events.length>256)this.events.shift();
   this.save();
  }
+ spendLogs(id,count){
+  if(!this.players.has(id)||!Number.isSafeInteger(count)||count<1)return false;
+  const previous=this.getInventory(id),oldCount=previous.logs||0;
+  if(oldCount<count)return false;
+  const average=(Number.isFinite(previous.logStrength)?previous.logStrength:oldCount)/oldCount;
+  const remaining=oldCount-count;
+  this.inventories.set(id,{...previous,logs:remaining,logStrength:Math.max(0,(Number.isFinite(previous.logStrength)?previous.logStrength:oldCount)-average*count)});
+  this.players.get(id).logs=remaining;
+  this.events.push({version:++this.version,type:'logs-spent',playerId:id,count});
+  if(this.events.length>256)this.events.shift();
+  this.save();return true;
+ }
  awardLog(id,count=1,strength=1){
   const p=this.players.get(id);
   if(!p||!Number.isSafeInteger(count)||count<1||!Number.isFinite(strength)||strength<=0)return false;
