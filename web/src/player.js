@@ -83,7 +83,7 @@ export class PlayerSystem {
   this.camera.position.copy(this.cameraPosition);
   this.camera.up.copy(up);
   this.camera.lookAt(focus);
-  this.visual.update(this.position,up,facing);
+  this.visual.update(this.position,up,facing,dt);
  }
  showAnimation(name){this.visual.show(name);}
  playIdle(){this.showAnimation('Idle');}
