@@ -4,6 +4,7 @@ import {ResourceDistributor} from './engine/resource-distributor.js';
 import {withinSceneryRange} from './engine/scenery-visibility.js';
 import {Tree} from './engine/tree.js';
 import {ObjectRegistry} from './engine/object-registry.js';
+import {TreeVisual} from './engine/tree-visual.js';
 
 // All player/world mutations use stable IDs. Only Meadows is populated now.
 export class TreeHarvestSystem {
@@ -22,6 +23,7 @@ export class TreeHarvestSystem {
   this.targetByChunk=new Map();
   this.trunkMaterial=new THREE.MeshStandardMaterial({color:0x705038,roughness:1});
   this.leafMaterial=new THREE.MeshStandardMaterial({color:0x315934,roughness:1,transparent:true});
+  this.treeVisual=new TreeVisual(this.trunkMaterial,this.leafMaterial);
   this.populate();
  }
  hash(n){let x=(n+0x9e3779b9)|0;x=Math.imul(x^(x>>>16),0x21f0aaad);x=Math.imul(x^(x>>>15),0x735a2d97);return ((x^(x>>>15))>>>0)/4294967296;}
@@ -39,15 +41,8 @@ export class TreeHarvestSystem {
  }
  makeTree(chunk,serial,position){
   const id='meadows:tree:'+chunk+':'+serial;
-  const tree=new THREE.Group();tree.position.copy(position);
-  const up=position.clone().normalize();
-  tree.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),up);
-  const visual=new THREE.Group();tree.add(visual);
-  const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.24,.31,4,8),this.trunkMaterial);
-  trunk.position.y=2;
-  const foliage=new THREE.Mesh(new THREE.ConeGeometry(1.35,4.5,8),this.leafMaterial.clone());
-  foliage.position.y=3.25;
-  visual.add(trunk,foliage);this.root.add(tree);
+  const {tree,visual,trunk,foliage}=this.treeVisual.create(position);
+  this.root.add(tree);
   const saved=this.shared?.getEntity(id);
   const state=saved&&saved.state!=='standing'?'collected':'standing';
   tree.visible=state==='standing';
