@@ -216,30 +216,12 @@ export class PhysicsWorld {
  movePlayer(body,direction,speed,up,dt=1/60) {
   const velocity=body.getLinearVelocity();
   const knock=body.knockback;
-  const p=body.getPosition();
-  if(knock?.targetDistance){
-   knock.elapsed=(knock.elapsed||0)+dt;
-   const dx=p.x-knock.origin.x,dy=p.y-knock.origin.y,dz=p.z-knock.origin.z;
-   const traveled=Math.max(0,dx*knock.x+dy*knock.y+dz*knock.z);
-   const remaining=knock.targetDistance-traveled;
-   if(remaining>0&&knock.elapsed<1){
-    // Velocity-controlled travel respects the existing Box3D terrain contacts.
-    // Ease down over the last 20 cm so the player does not overshoot.
-    const reboundSpeed=Math.min(5,Math.max(1,remaining*20));
-    const radial=velocity.x*up.x+velocity.y*up.y+velocity.z*up.z;
-    body.setLinearVelocity({
-     x:knock.x*reboundSpeed+up.x*radial,
-     y:knock.y*reboundSpeed+up.y*radial,
-     z:knock.z*reboundSpeed+up.z*radial
-    });
-    body.setAwake(true);
-    return;
-   }
-   body.knockback=null;
-  }else if(knock){
+  // A brief contact step adds to steering instead of replacing player input.
+  if(knock){
    knock.remaining=Math.max(0,knock.remaining-dt);
    if(knock.remaining===0)body.knockback=null;
   }
+  const p=body.getPosition();
   // Follow the deterministic ground elevation ahead of the player.
   // Ground normal is calculated from the local terrain-height gradient.
   const tangent={x:direction.x-up.x*(direction.x*up.x+direction.y*up.y+direction.z*up.z),
@@ -248,7 +230,9 @@ export class PhysicsWorld {
   const magnitude=Math.hypot(tangent.x,tangent.y,tangent.z);
   const radial=velocity.x*up.x+velocity.y*up.y+velocity.z*up.z;
   if(magnitude<.001){
-   body.setLinearVelocity({x:up.x*radial,y:up.y*radial,z:up.z*radial});return;
+   const kick=body.knockback?body.knockback.remaining/.18:0;
+   body.setLinearVelocity({x:up.x*radial+(knock?.x||0)*kick,
+    y:up.y*radial+(knock?.y||0)*kick,z:up.z*radial+(knock?.z||0)*kick});return;
   }
   const dir={x:tangent.x/magnitude,y:tangent.y/magnitude,z:tangent.z/magnitude};
   const step=.5;
@@ -265,7 +249,7 @@ export class PhysicsWorld {
   const maxSlope=1; // 45 degrees; steeper terrain is non-walkable.
   const uphill=grounded&&slope>0&&slope<=maxSlope?slope*speed*magnitude:0;
   const horizontal=grounded&&slope>maxSlope?0:speed*magnitude;
-  const kick=knock?knock.remaining/.22:0;
+  const kick=body.knockback?body.knockback.remaining/.18:0;
   body.setLinearVelocity({
    x:dir.x*horizontal+up.x*(grounded?Math.max(radial,uphill):radial)+(knock?.x||0)*kick,
    y:dir.y*horizontal+up.y*(grounded?Math.max(radial,uphill):radial)+(knock?.y||0)*kick,
