@@ -17,6 +17,18 @@ export class SharedWorld {
  }
  join(id,position){this.players.set(id,{id,position,logs:this.inventories.get(id)?.logs||0});}
  getInventory(id){return this.inventories.get(id)||{logs:0,equippedTool:null};}
+ getUnlockedDyes(id){return this.getInventory(id).unlockedDyes||[];}
+ unlockDye(id,colorId){
+  if(!this.players.has(id)||!Number.isInteger(colorId)||colorId<0||colorId>=64)return false;
+  const previous=this.getInventory(id);
+  const unlocked=new Set(previous.unlockedDyes||[]);
+  if(unlocked.has(colorId))return true;
+  unlocked.add(colorId);
+  this.inventories.set(id,{...previous,unlockedDyes:[...unlocked].sort((a,b)=>a-b)});
+  this.events.push({version:++this.version,type:'dye-unlocked',playerId:id,colorId});
+  if(this.events.length>256)this.events.shift();
+  this.save();return true;
+ }
  getEquippedTool(id){return this.getInventory(id).equippedTool||null;}
  setEquippedTool(id,tool){
   if(!this.players.has(id)||!(tool===null||tool==='axe'||tool==='hammer'))return false;
