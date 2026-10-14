@@ -7,6 +7,7 @@ import {WorldWater} from './water.js';
 import {PhysicsWorld} from './physics.js';
 import {ResourceHandler} from './engine/resource-handler.js';
 import {SharedWorld} from './engine/shared-world.js';
+import {Bonfire} from './engine/bonfire.js';
 import {GamePanels} from './ui/game-panels.js';
 import {createDyePaletteTexture,dyeUV} from './engine/dye-palette.js';
 
@@ -130,10 +131,13 @@ const sharedWorld=new SharedWorld({ownerId:'local-owner',seed:TERRAIN_SEED});
 sharedWorld.join('local-owner',player);
 const harvesting=new ResourceHandler(scene,playerSystem,height,RADIUS,{terrain,shared:sharedWorld,playerId:'local-owner',camera});
 const panels=new GamePanels({app,canvas,controls:playerSystem.controls,sharedWorld,playerId:'local-owner'});
+const bonfire=new Bonfire({scene,shared:sharedWorld,player:playerSystem,playerId:'local-owner',camera,app});
+let pendingBonfire=null;
 // Tap resources or terrain to walk using the normal player physics path.
 const tapRaycaster=new THREE.Raycaster();
 const tapNdc=new THREE.Vector2();
 playerSystem.controls.onManualMove=()=>{
+ pendingBonfire=null;
  playerSystem.cancelDestination();
  harvesting.ground.clearSelection();
 };
@@ -173,6 +177,10 @@ playerSystem.controls.onTap=(screenX,screenY)=>{
   if(Math.abs(point.length()-height.radius(point.clone().normalize(),RADIUS))>3)return;
   destination=point;
  }
+ if(!targetId&&sharedWorld.getEquippedTool('local-owner')==='hammer'&&!bonfire.exists&&
+    (sharedWorld.getInventory('local-owner').logs||0)>=12){
+  pendingBonfire=destination.clone();
+ }else pendingBonfire=null;
  playerSystem.setDestination(destination);
 };
 adminPanels=panels;
@@ -352,6 +360,12 @@ function frame(now){
  }
  playerSystem.updateView(dt);
  harvesting.update(dt,playerCollider);
+ if(pendingBonfire&&player.distanceTo(pendingBonfire)<2.4){
+  bonfire.build(pendingBonfire);
+  pendingBonfire=null;
+  playerSystem.cancelDestination();
+ }
+ bonfire.update(elapsed);
  // Fixed clipping range: 1 m near, 5,000 m far.
  water.update(scene,camera,renderer,elapsed);
  // The immutable planet is queryable immediately. Player motion never rebuilds it.
