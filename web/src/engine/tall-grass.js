@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {Resource} from './resource.js';
 import {withinSceneryRange} from './scenery-visibility.js';
+import {MEADOWS_GREEN_DYE} from './dye-palette.js';
 
 // Meadows grass: one scythe touch yields five pooled quality-1 fibers.
 // A shared material uses a GPU vertex sway, avoiding per-blade CPU animation.
@@ -42,7 +43,7 @@ export class TallGrassField {
   this.geometry.translate(0,.6,0);
  }
  spawn(id,position){
-  if(this.clumps.has(id)||this.shared?.getEntity(id)?.state==='collected')return false;
+  if(this.clumps.has(id)||this.shared?.getEntity(id))return false;
   const group=new THREE.Group();
   group.position.copy(position);
   group.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),position.clone().normalize());
@@ -59,7 +60,7 @@ export class TallGrassField {
  }
  unload(id){
   const c=this.clumps.get(id);if(!c)return;
-  if(c.state!=='standing')return;
+  if(c.state==='falling'||c.state==='flying')return;
   this.root.remove(c.group);this.clumps.delete(id);
  }
  update(dt,body,tool){
@@ -92,8 +93,8 @@ export class TallGrassField {
     if(distance<.6){
      c.state='collected';c.resource.state='collected';this.root.remove(c.group);
      this.shared?.awardFibers(c.owner,5,1);
-     const discovered=!(this.shared?.getUnlockedDyes(c.owner)||[]).includes(34);
-     this.shared?.unlockDye(c.owner,34);
+     const discovered=!(this.shared?.getUnlockedDyes(c.owner)||[]).includes(MEADOWS_GREEN_DYE);
+     this.shared?.unlockDye(c.owner,MEADOWS_GREEN_DYE);
      this.shared?.setEntity(c.id,{state:'collected',ownerId:c.owner});
      if(discovered)this.onDiscovery?.();
     }
