@@ -38,12 +38,18 @@ export class SharedWorld {
   if(this.events.length>256)this.events.shift();
   this.save();
  }
- awardLog(id,count=1){
+ awardLog(id,count=1,strength=1){
   const p=this.players.get(id);
-  if(!p)return false;
-  p.logs=(p.logs||0)+count;
-  this.inventories.set(id,{...this.getInventory(id),logs:p.logs});
-  this.events.push({version:++this.version,type:'log',playerId:id,count});
+  if(!p||!Number.isSafeInteger(count)||count<1||!Number.isFinite(strength)||strength<=0)return false;
+  const previous=this.getInventory(id);
+  const oldCount=previous.logs||0;
+  // Legacy inventory logs were Conifer-strength before strength was tracked.
+  const oldStrength=Number.isFinite(previous.logStrength)?previous.logStrength:oldCount;
+  const logs=oldCount+count;
+  const logStrength=oldStrength+count*strength;
+  p.logs=logs;
+  this.inventories.set(id,{...previous,logs,logStrength});
+  this.events.push({version:++this.version,type:'log',playerId:id,count,strength});
   if(this.events.length>256)this.events.shift();
   this.save();return true;
  }
