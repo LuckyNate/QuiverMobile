@@ -73,3 +73,13 @@ The game starts rendering and initializing behind a full-screen `QUIVER MOBILE` 
 - `trees.js` is the coordinating adapter between these classes and `SharedWorld`. No new terrain or physics engine is introduced.
 - Existing debug tree geometry remains the visual representation pending separately approved art/assets. Contact is currently a velocity-response adapter acting on the Box3D body, **not registered Box3D tree fixtures**; full physical tree body conversion remains open.
 - Preserve stable IDs and saved entity records while transitioning population rules. Verify Android workflow and runtime before calling the migration validated.
+
+### Additional OOP contracts
+- `engine/biome.js`: classifies one of the existing 20 D20 biome IDs by name/density parameters; does not alter terrain classification.
+- `engine/rock.js`, `engine/mineral-deposit.js`: tool-gated pick resources, defined but not yet spawned.
+- `engine/structure.js`: player-owned persistent built object contract; no construction runtime connected yet.
+- `engine/environmental-object.js`: noninteractive visual world object.
+- `engine/world-object-manager.js`: wraps the registry with spawn, lookup, state mutation and despawn.
+- `engine/tool-registry.js` and `engine/interaction-system.js`: central tool/resource permission checks; currently wired to live tree contact.
+- All new class definitions have one-class-per-commit histories. Wiring commits are separate and limited to direct consumers.
+- Remaining work: streamed resource cells outside the Meadows starter neighborhood; migrate rocks/structures into live rendering/interaction; replace manual tree velocity response with integrated Box3D resource fixtures if desired. Current commits have not been verified by an on-device interaction test.
