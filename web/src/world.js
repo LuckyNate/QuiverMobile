@@ -48,6 +48,66 @@ function children(n){
  }
  return n.children;
 }
+// Canonical great-circle key for finding edges shared across D20 faces and LODs.
+function edgePlane(a,b){
+ const normal=new THREE.Vector3().crossVectors(a,b).normalize();
+ if(normal.x< -1e-10||(Math.abs(normal.x)<=1e-10&&(normal.y< -1e-10||(Math.abs(normal.y)<=1e-10&&normal.z<0))))normal.negate();
+ return {normal,key:[normal.x,normal.y,normal.z].map(x=>Math.round(x*1e8)).join(',')};
+}
+function onArc(p,a,b){
+ const span=a.angleTo(b),u=a.angleTo(p),v=p.angleTo(b);
+ return u<=span+1e-8&&v<=span+1e-8&&Math.abs(u+v-span)<1e-8;
+}
+function edgeSamples(a,b,levels){
+ let points=[a,b];
+ for(let level=0;level<levels;level++){
+  const split=[points[0]];
+  for(let i=1;i<points.length;i++)split.push(mid(points[i-1],points[i]),points[i]);
+  points=split;
+ }
+ return points;
+}
+// Selected leaf boundaries are grouped by great circle. Only the coarser
+// side receives the intermediate vertices of touching finer leaf edges.
+function boundarySeams(selected){
+ const groups=new Map(),edgesByNode=new Map();
+ for(const entry of selected){
+  const n=entry.node,vs=[n.a,n.b,n.c],edges=[];
+  for(let i=0;i<3;i++){
+   const a=vs[i],b=vs[(i+1)%3],opposite=vs[(i+2)%3],plane=edgePlane(a,b);
+   const edge={a,b,detail:entry.level,node:n,side:Math.sign(plane.normal.dot(opposite)),points:null};
+   if(!groups.has(plane.key))groups.set(plane.key,[]);
+   groups.get(plane.key).push(edge);edges.push({edge,key:plane.key});
+  }
+  edgesByNode.set(n,edges);
+ }
+ const seams=new Map();
+ for(const entry of selected){
+  const edges=edgesByNode.get(entry.node),result=[],signature=[];
+  for(const {edge,key} of edges){
+   const points=[],owners=[];
+   for(const other of groups.get(key)){
+    if(other===edge||other.side===edge.side||other.detail<=edge.detail)continue;
+    // Avoid subdividing a nonoverlapping collinear edge.
+    if(!onArc(other.a,edge.a,edge.b)&&!onArc(other.b,edge.a,edge.b)&&
+       !onArc(edge.a,other.a,other.b)&&!onArc(edge.b,other.a,other.b))continue;
+    if(!other.points)other.points=edgeSamples(other.a,other.b,other.detail-other.node.level);
+    let contributed=false;
+    for(const p of other.points){
+     if(p.distanceTo(edge.a)<1e-9||p.distanceTo(edge.b)<1e-9)continue;
+     if(onArc(p,edge.a,edge.b)){points.push(p);contributed=true;}
+    }
+    if(contributed)owners.push(String(other.node.address)+':'+other.detail);
+   }
+   points.sort((a,b)=>edge.a.angleTo(a)-edge.a.angleTo(b));
+   const unique=points.filter((p,i)=>!i||p.distanceTo(points[i-1])>1e-9);
+   result.push(unique);
+   signature.push(owners.sort().join(','));
+  }
+  seams.set(entry.node,{edges:result,signature:signature.join('|')});
+ }
+ return seams;
+}
 function contains(n,p){
  const vs=[n.a,n.b,n.c];
  let sign=0;
@@ -96,7 +156,7 @@ export class WorldTerrain {
  }
  // Render a chunk at a chosen discrete detail. Sampling uses the same seeded
  // height provider as the physical terrain, without GPU morphs or fade ghosts.
- geometry(n,detail){
+ geometry(n,detail,seams=[[],[],[]]){
   const positions=[],colors=[];
   const sample=v=>{
    const r=this.height.radius(v,RADIUS),p=v.clone().multiplyScalar(r);
@@ -109,8 +169,28 @@ export class WorldTerrain {
    const verts=outward?[A,B,C]:[A,C,B];
    for(const v of verts){positions.push(v.p.x,v.p.y,v.p.z);colors.push(v.color.r,v.color.g,v.color.b);}
   };
+  // Subdivide only the border triangles that touch fine-owned edges.
+  // Perimeter fan triangulation preserves the existing coarse interior.
+  const addConformingTriangle=(a,b,c)=>{
+   const corners=[a,b,c],perimeter=[];
+   for(let i=0;i<3;i++){
+    const from=corners[i],to=corners[(i+1)%3];
+    perimeter.push(from);
+    for(let side=0;side<3;side++){
+     const ends=[n.a,n.b,n.c],u=ends[side],v=ends[(side+1)%3];
+     if(!onArc(from,u,v)||!onArc(to,u,v))continue;
+     const extras=seams[side].filter(p=>p.distanceTo(from)>1e-9&&p.distanceTo(to)>1e-9&&onArc(p,from,to));
+     extras.sort((p,q)=>from.angleTo(p)-from.angleTo(q));
+     perimeter.push(...extras);
+     break;
+    }
+   }
+   if(perimeter.length===3){addTriangle(a,b,c);return;}
+   const center=a.clone().add(b).add(c).normalize();
+   for(let i=0;i<perimeter.length;i++)addTriangle(perimeter[i],perimeter[(i+1)%perimeter.length],center);
+  };
   const subdivide=(a,b,c,level)=>{
-   if(level>=detail){addTriangle(a,b,c);return;}
+   if(level>=detail){addConformingTriangle(a,b,c);return;}
    const ab=mid(a,b),bc=mid(b,c),ca=mid(c,a);
    subdivide(a,ab,ca,level+1);
    subdivide(ab,b,bc,level+1);
@@ -118,27 +198,6 @@ export class WorldTerrain {
    subdivide(ab,bc,ca,level+1);
   };
   subdivide(n.a,n.b,n.c,n.level);
-  // Render-only skirts conceal T junctions across unequal-detail chunk edges.
-  // No skirt contributes to collision or modifies sampled surface heights.
-  const edge=(a,b)=>{
-   const segments=1<<Math.max(0,detail-n.level),depth=12;
-   let prev=a;
-   for(let i=1;i<=segments;i++){
-    const t=i/segments;
-    const v=i===segments?b:a.clone().lerp(b,t).normalize();
-    const A=sample(prev),B=sample(v);
-    const aLow=A.p.clone().addScaledVector(prev,-depth);
-    const bLow=B.p.clone().addScaledVector(v,-depth);
-    const strip=[[A.p,B.p,aLow],[B.p,bLow,aLow]];
-    for(const triple of strip)for(let j=0;j<3;j++){
-     const point=triple[j],color=j===0?A.color:B.color;
-     positions.push(point.x,point.y,point.z);
-     colors.push(color.r,color.g,color.b);
-    }
-    prev=v;
-   }
-  };
-  edge(n.a,n.b);edge(n.b,n.c);edge(n.c,n.a);
   const g=new THREE.BufferGeometry();
   g.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
   g.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
@@ -183,12 +242,14 @@ export class WorldTerrain {
   if(force||address!==this.anchorAddress||detailCap!==this.maxDetail||farChanged){
    this.anchorAddress=address;this.maxDetail=detailCap;
    const selected=this.select(anchor,position),required=new Set();
+   const resolved=selected.map(({node,detail})=>({node,level:Math.max(node.level,Math.min(detail,detailCap))}));
+   const seams=boundarySeams(resolved);
    const queue=[];
-   for(const {node:n,detail} of selected){
-    const level=Math.max(n.level,Math.min(detail,detailCap));
-    const key=String(n.address)+':'+level;
+   for(const {node:n,level} of resolved){
+    const seam=seams.get(n);
+    const key=String(n.address)+':'+level+':'+seam.signature;
     required.add(key);
-    if(!this.cache.has(key))queue.push({key,node:n,level});
+    if(!this.cache.has(key))queue.push({key,node:n,level,seams:seam.edges});
    }
    this.requested=required;
    // Prioritize actual spatial distance, not the subdivision level.
@@ -203,7 +264,7 @@ export class WorldTerrain {
   if(this.pending.length){
    const job=this.pending.shift();
    if(this.requested.has(job.key)&&!this.cache.has(job.key)){
-    const geometry=this.geometry(job.node,job.level);
+    const geometry=this.geometry(job.node,job.level,job.seams);
     const mesh=new THREE.Mesh(geometry,this.material);
     mesh.frustumCulled=true;
     this.scene.add(mesh);
