@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {refineAvatarShape} from '../engine/avatar-shape.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {DYE_COLORS} from '../engine/dye-palette.js';
 import {TOOL_RECIPES} from '../engine/shared-world.js';
@@ -216,6 +217,7 @@ export class GamePanels {
    camera.position.set(3,2.25,6);
    p.renderer=renderer;p.scene=scene;p.camera=camera;
    new GLTFLoader().load(new URL('models/debug/quiver_block_avatar.glb',document.baseURI).href,gltf=>{
+    refineAvatarShape(gltf.scene);
     p.model=gltf.scene;scene.add(gltf.scene);
     const bounds=new THREE.Box3().setFromObject(gltf.scene);
     const center=bounds.getCenter(new THREE.Vector3());
