@@ -37,12 +37,12 @@ export class GrassVisual {
  }
  geometry(offset,tile){
   // Nine shared UV variants preserve texture variation without a draw call per clump.
-  const key=offset+':'+tile;
+  const key=offset.toFixed(4)+':'+tile.toFixed(4);
   if(!this.geometries.has(key)){
    const base=new THREE.PlaneGeometry(1,1,1,5);
    base.translate(0,.5,0);
    const uv=base.getAttribute('uv');
-   const shift=offset*.06,scale=.9+tile*.1;
+   const shift=offset,scale=tile;
    for(let i=0;i<uv.count;i++)uv.setX(i,shift+uv.getX(i)*scale);
    const cross=base.clone();cross.rotateY(Math.PI/2);
    const merged=mergeGeometries([base,cross],false);
@@ -71,8 +71,10 @@ export class GrassVisual {
   const height=settings.height*vary(settings.heightRange,seeded(id,'height'));
   const offset=Math.min(2,Math.floor(seeded(id,'offset')*3));
   const tile=Math.min(2,Math.floor(seeded(id,'tile')*3));
-  const geometry=this.geometry(offset,tile),material=this.material(settings.texture);
-  const key=settings.texture+':'+offset+':'+tile;
+  const uvOffset=vary(settings.uvOffsetRange,offset/2);
+  const uvTile=vary(settings.uvTileRange,tile/2);
+  const geometry=this.geometry(uvOffset,uvTile),material=this.material(settings.texture);
+  const key=settings.texture+':'+uvOffset.toFixed(4)+':'+uvTile.toFixed(4);
   const batch=this.batch(key,geometry,material);
   const entry={
    id,position:position.clone(),up:new THREE.Quaternion().setFromUnitVectors(this.yAxis,position.clone().normalize()),
