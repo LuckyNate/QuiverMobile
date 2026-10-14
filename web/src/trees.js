@@ -12,7 +12,7 @@ import {TreePopulation} from './engine/tree-population.js';
 
 // All player/world mutations use stable IDs. Only Meadows is populated now.
 export class TreeHarvestSystem {
- constructor(scene,player,height,radius,{shared=null,playerId='local-owner',camera=null}={}){
+ constructor(scene,player,height,radius,{shared=null,playerId='local-owner',camera=null,autoPopulate=true}={}){
   Object.assign(this,{scene,player,height,radius,shared,playerId,camera});
   this.trees=[];this.objects=new WorldObjectManager();this.wood=0;this.attackClock=0;this.logLength=4;
   this.renderEnabled=true;
@@ -39,7 +39,7 @@ export class TreeHarvestSystem {
     if(++t.hits>=2)this.fell(t,this.playerId);
    }
   });
-  this.populate();
+  if(autoPopulate)this.populate();
  }
  hash(n){let x=(n+0x9e3779b9)|0;x=Math.imul(x^(x>>>16),0x21f0aaad);x=Math.imul(x^(x>>>15),0x735a2d97);return ((x^(x>>>15))>>>0)/4294967296;}
  // Four 32m child areas surrounding the Meadows landing site.
@@ -54,8 +54,7 @@ export class TreeHarvestSystem {
   if(elevation<3)return null;
   return direction.multiplyScalar(this.radius+elevation);
  }
- makeTree(chunk,serial,position){
-  const id='meadows:tree:'+chunk+':'+serial;
+ makeTree(chunk,serial,position,id='meadows:tree:'+chunk+':'+serial){
   const {tree,visual,trunk,foliage}=this.treeVisual.create(position);
   this.root.add(tree);
   const saved=this.shared?.getEntity(id);
