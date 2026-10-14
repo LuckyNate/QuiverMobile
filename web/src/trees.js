@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {ResourceDensity} from './engine/resource-density.js';
 import {ResourceDistributor} from './engine/resource-distributor.js';
 import {withinSceneryRange} from './engine/scenery-visibility.js';
-import {Tree} from './engine/tree.js';
+import {Conifer} from './engine/conifer.js';
 import {WorldObjectManager} from './engine/world-object-manager.js';
 import {InteractionSystem} from './engine/interaction-system.js';
 import {TreeVisual} from './engine/tree-visual.js';
@@ -60,7 +60,7 @@ export class TreeHarvestSystem {
   const saved=this.shared?.getEntity(id);
   const state=saved&&saved.state!=='standing'?'collected':'standing';
   tree.visible=state==='standing';
-  const object=this.objects.spawn(new Tree({id,position:position.toArray(),state}));
+  const object=this.objects.spawn(new Conifer({id,position:position.toArray(),state}));
   const entry={id,object,chunk,serial,tree,visual,trunk,foliage,at:position,state,hits:0,progress:0,ownerId:null,respawnTime:0,bumpCooldown:0};
   this.trees.push(entry);
   return entry;
