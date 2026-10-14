@@ -11,6 +11,9 @@ export class PlayerAvatar {
   this.root=new THREE.Group();
   const body=new THREE.Mesh(new THREE.CapsuleGeometry(.35,1.1,6,10),material);
   this.root.add(body);
+  this.capsuleMaterial=material;
+  this.capsuleBaseColor=material.color.clone();
+  this.contactFlash=0;
   scene.add(this.root);
   this.animation='Idle';
   this.mixer=null;
@@ -31,6 +34,7 @@ export class PlayerAvatar {
    report('GLB player','FAILED',error?.message||String(error));
   });
  }
+ flashResourceContact(){this.contactFlash=.22;this.capsuleMaterial.color.setHex(0x22ff55);}
  show(state){
   this.animation=state;
   const action=this.actions.get(state)||this.actions.get('Idle');
@@ -45,5 +49,9 @@ export class PlayerAvatar {
   const right=new THREE.Vector3().crossVectors(up,f).normalize();
   this.root.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(right,up,f));
   if(this.mixer)this.mixer.update(dt);
+  if(this.contactFlash>0){
+   this.contactFlash=Math.max(0,this.contactFlash-dt);
+   if(this.contactFlash===0)this.capsuleMaterial.color.copy(this.capsuleBaseColor);
+  }
  }
 }
