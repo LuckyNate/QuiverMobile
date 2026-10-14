@@ -66,6 +66,23 @@ Cabin building is a lightweight, hands-on part of survival and settlement life. 
 - **Functional interiors:** Players can place furnishings, storage, crafting equipment, and other usable objects inside their cabins.
 - **Design priority:** Construction is forgiving and physical enough to be satisfying. Avoid manual notch-cutting, individual log trimming, excessive menus, and complex construction requirements.
 
+
+### Camp footprint, comfort, and placement
+
+- **First structure:** The bonfire establishes the camp and gives **1 comfort**. Advanced building is available within the bonfire's influence footprint, not everywhere in the world.
+- **Placement:** Select a construction piece (wall, floor, roof, etc.) and place it in the world. Pieces snap to logs and align at 90-degree increments.
+- **Basic shelter comfort:** One completed **4×4 m hut** contributes **1 additional comfort**, bringing the starter camp with its bonfire to **2 comfort**.
+- **Unique camp features:** Each unique completed part or feature of a camp can contribute to its comfort. Repeating the same feature does not repeatedly award comfort. Additional feature values remain to be defined.
+- **Expansion:** Increasing the camp's comfort increases its bonfire influence area, allowing more construction.
+- **Always persistent:** Construction, unbuilding, inventories and changes to comfort or camp extent are automatically persistent. There is no manual save mechanic.
+
+### Unbuilding and crafting salvage
+
+- **Player removal:** Players cannot damage or destroy structures through attacks. Structures are deliberately **unbuilt** when upgrading or moving.
+- **No common-material refunds:** Unbuilding consumes/discards ordinary, readily gathered building resources; logs, sticks, stones and similar base materials are not recovered.
+- **Crafting salvage:** Salvage is for crafting, where rare or unique items and components may be recoverable. Do not treat ordinary construction dismantling as a materials-recycling system. The exact salvage recipes and eligibility remain undecided.
+
+
 ## Peer-simulated multiplayer foundation
 
 The player creating a world **owns the save and must remain connected for the session to exist**. Each joining device simulates its own experience. The owner stores the authoritative persistent changes, while peers exchange shared world events; simultaneous harvest claims must resolve once through the owner's event log. Ownership is distinct from processing workload. The current local `SharedWorld` event/snapshot model and stable entity IDs are preparation for this architecture, **not an implemented networking transport**.
@@ -88,10 +105,10 @@ The game uses **independent players and emergent cooperation**, not a formal par
 **Bonfires are the foundation of camp maintenance and protection.** The world is hostile: enemies are widespread, genuinely safe spaces are scarce, and roaming NPC enemies attack unprotected structures on sight.
 
 - **Universal fueling:** **Any player may add fuel to any fire**, including another player's or an enemy's fire. Fueling does not require ownership, invitation, or alliance. Gathering and delivering fuel costs resources and effort.
-- **Attackable fuel:** Attacking a bonfire **destroys its stored fuel** rather than merely making it burn faster. When fuel runs out, its camp loses bonfire protection.
+- **Player attacks:** Players cannot attack or destroy camp structures, including the bonfire itself. They can attack **only the bonfire's stored fuel**, destroying that supply instead of accelerating its burn. When fuel runs out, the camp loses bonfire protection; its structures remain standing.
 - **Owner's map marker:** A burning bonfire anchors the camp to **its owner's own map**. If the fire goes out through neglect, that camp's marker disappears from the owner's map. This is a loss of navigation, not an instantaneous deletion of the building.
 - **Finding a lost camp:** The original structures remain in the physical world if they have survived. To recover a neglected camp, its owner must physically find it again and relight the fire; the map does not simply guide them back to it.
-- **Environmental consequences:** Unprotected buildings are attacked on sight by roaming NPC enemies and may be destroyed. Given the world's widespread hostility, a neglected camp is unlikely to remain intact indefinitely.
+- **NPC destruction and raiding:** When protection is lost, roaming NPC enemies may attack and destroy unprotected structures. An attacking player cannot directly destroy or loot the camp: even after extinguishing its bonfire, the attacker must wait for NPC enemies to destroy the structures before anything can become available to claim or loot. Fuel depletion alone transfers nothing.
 - **No arbitrary abandonment deletion:** Camps are reclaimed by danger and loss of maintenance, **not** by an artificial inactivity countdown. An abandoned camp persists only as long as its actual structures survive.
 - **Village maintenance:** Neighbors can add fuel and defend nearby structures, allowing active communities to keep settlements alive. Even fueling a rival's bonfire is allowed if a player chooses to spend the effort.
 
