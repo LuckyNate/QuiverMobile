@@ -284,13 +284,14 @@ function updateTitleReadiness(){
  const failed=[...stages].filter(([,value])=>value.state==='FAILED');
  const terrainReady=Boolean(terrain&&terrain.requested.size&&terrain.pending.length===0&&!terrain.staging&&
   [...terrain.requested].every(key=>terrain.cache.has(key)));
- const ready=Boolean(renderer&&simulationReady&&physics&&playerCollider&&terrainReady&&stages.get('first frame')?.state==='READY'&&!failed.length);
+ const ready=Boolean(renderer&&simulationReady&&physics&&playerCollider&&terrainReady&&stages.get('GLB player')?.state==='READY'&&stages.get('first frame')?.state==='READY'&&!failed.length);
  const lines=[
   'Renderer: '+(renderer?'ready':'waiting'),
   'World and water: '+(terrain?'ready':'waiting'),
   'Terrain LOD: '+(terrainReady?'ready':terrain?'building '+terrain.pending.length+' meshes':'waiting'),
   'Player and physics: '+(simulationReady&&physics&&playerCollider?'ready':'initializing'),
   'Scenery: '+(harvesting?'ready':'waiting'),
+  'Avatar: '+(stages.get('GLB player')?.state==='READY'?'ready':'loading'),
   'First rendered frame: '+(stages.get('first frame')?.state==='READY'?'ready':'waiting')
  ];
  if(failed.length){
