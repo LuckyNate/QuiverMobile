@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
-// Reusable, allocation-free-per-frame voxel flame emitter. One draw call per layer.
-// Instance colors belong to the instanced mesh: do not enable vertexColors on the material.
+// Reusable square-particle emitter: GPU billboarding, one draw call per layer.
+// Particle transforms and instance colors stay batched; no CPU-facing rotations.
 export class VoxelFireEmitter {
  constructor({flames=420,embers=48,height=4.1,radius=1.15}={}){
   this.group=new THREE.Group();
@@ -17,8 +17,25 @@ export class VoxelFireEmitter {
  }
  makeLayer(count,size,palette){
   const mesh=new THREE.InstancedMesh(
-   new THREE.BoxGeometry(size,size,size),
-   new THREE.MeshBasicMaterial({color:0xffffff,transparent:false,depthWrite:true}),
+   new THREE.PlaneGeometry(size,size),
+   new THREE.ShaderMaterial({
+    vertexShader:`
+     attribute mat4 instanceMatrix;
+     attribute vec3 instanceColor;
+     varying vec3 vParticleColor;
+     void main(){
+      vParticleColor=instanceColor;
+      // Place the center in view space. Plane corners face the camera automatically.
+      vec4 center=viewMatrix*modelMatrix*instanceMatrix*vec4(0.0,0.0,0.0,1.0);
+      vec2 corner=position.xy*instanceMatrix[0][0];
+      gl_Position=projectionMatrix*(center+vec4(corner,0.0,0.0));
+     }`,
+    fragmentShader:`
+     varying vec3 vParticleColor;
+     void main(){gl_FragColor=vec4(vParticleColor,1.0);}
+    `,
+    depthTest:true,depthWrite:true,side:THREE.DoubleSide
+   }),
    count
   );
   mesh.frustumCulled=false;
