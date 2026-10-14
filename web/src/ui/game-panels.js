@@ -87,7 +87,10 @@ export class GamePanels {
   this.refreshInventory();
  }
  refreshInventory(){
-  const count=this.sharedWorld.getInventory(this.playerId).logs||0;
+  const inventory=this.sharedWorld.getInventory(this.playerId);
+  const count=inventory.logs||0;
+  const totalStrength=Number.isFinite(inventory.logStrength)?inventory.logStrength:count;
+  const averageStrength=count>0?totalStrength/count:0;
   const equipped=this.sharedWorld.getEquippedTool(this.playerId);
   for(const [id,entry] of this.slots){
    if(entry.isTool){
@@ -97,7 +100,7 @@ export class GamePanels {
     entry.slot.setAttribute('aria-pressed',String(active));
     entry.quantity.textContent=active?'Equipped':'Tap to equip';
    }
-   if(id==='logs')entry.quantity.textContent=count+' collected';
+   if(id==='logs')entry.quantity.textContent='Count: '+count+' | Strength: '+averageStrength.toFixed(2);
    else if(entry.isTool)continue;
    else entry.quantity.textContent='Not acquired';
   }
