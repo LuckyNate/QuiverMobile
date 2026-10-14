@@ -20,6 +20,7 @@ const vary=(range,n)=>range[0]+(range[1]-range[0])*n;
 // temporarily becomes a separate mesh for its falling/collection animation.
 export class GrassVisual {
  constructor(root){
+  if(!root?.isObject3D)throw new Error('GrassVisual requires a THREE.Object3D root');
   this.root=root;this.time=0;this.materials=new Map();this.geometries=new Map();
   this.batches=new Map();this.dummy=new THREE.Object3D();
   this.yaw=new THREE.Quaternion();this.lean=new THREE.Quaternion();
@@ -47,6 +48,7 @@ export class GrassVisual {
    const cross=base.clone();cross.rotateY(Math.PI/2);
    const merged=mergeGeometries([base,cross],false);
    base.dispose();cross.dispose();
+   if(!merged)throw new Error('Grass crossed-plane geometry merge failed');
    this.geometries.set(key,merged);
   }
   return this.geometries.get(key);
@@ -99,14 +101,23 @@ export class GrassVisual {
   dummy.updateMatrix();
   entry.batch.mesh.setMatrixAt(entry.index,dummy.matrix);
   entry.batch.mesh.instanceMatrix.needsUpdate=true;
+  entry.lastVisible=entry.group.visible;
  }
- detach(entry){
+ removeFromBatch(entry){
   const batch=entry.batch;
   if(!batch)return;
   const last=batch.entries.pop();
-  if(last!==entry){batch.entries[entry.index]=last;last.index=entry.index;}
+  if(last!==entry){
+   batch.entries[entry.index]=last;
+   last.index=entry.index;
+   this.transform(last,last.lastLean||0);
+  }
   batch.mesh.count=batch.entries.length;
   entry.batch=null;
+ }
+ detach(entry){
+  if(!entry.batch)return;
+  this.removeFromBatch(entry);
   const group=new THREE.Group();
   group.position.copy(entry.position);group.quaternion.copy(entry.up);
   const blades=new THREE.Group();blades.rotation.y=entry.angle;
@@ -117,10 +128,7 @@ export class GrassVisual {
  }
  release(entry){
   if(entry.batch){
-   const batch=entry.batch,last=batch.entries.pop();
-   if(last!==entry){batch.entries[entry.index]=last;last.index=entry.index;}
-   batch.mesh.count=batch.entries.length;
-   entry.batch=null;
+   this.removeFromBatch(entry);
   }else if(entry.blades){
    this.root.remove(entry.group);
    entry.group.clear();
@@ -130,7 +138,13 @@ export class GrassVisual {
   this.time+=dt;
   for(const c of clumps.values()){
    if(c.state!=='standing'||!c.batch)continue;
-   this.transform(c,Math.sin(this.time*c.windSpeed+c.windPhase)*c.windAmplitude);
+   if(!c.group.visible){
+    if(c.lastVisible)this.transform(c,0);
+    continue;
+   }
+   const lean=Math.sin(this.time*c.windSpeed+c.windPhase)*c.windAmplitude;
+   c.lastLean=lean;
+   this.transform(c,lean);
   }
  }
 }
