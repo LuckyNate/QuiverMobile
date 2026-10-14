@@ -33,6 +33,26 @@ export class PlayerSystem {
  // character turns smoothly into travel direction instead of tank steering.
  movement(dt){
   const {north,east}=this.basis(),{x,y}=this.controls.axes();
+  if(this.controls.mode==='one'){
+   // One-handed driving: vertical input moves along the character's heading,
+   // horizontal input steers. Camera rotation never feeds into locomotion.
+   const turn=x*2.8*dt;
+   this.heading+=turn;
+   this.lastTurn=turn/Math.max(dt,.001);
+   const facing=north.clone().multiplyScalar(Math.cos(this.heading))
+    .addScaledVector(east,Math.sin(this.heading));
+   const move=facing.multiplyScalar(y);
+   if(Math.abs(y)>.01)this.showAnimation('Walking');
+   else if(Math.abs(x)>.01)this.showAnimation('Turning');
+   else this.showAnimation('Idle');
+   // Follow heading smoothly without affecting the movement vector.
+   if(Math.abs(x)>.01||Math.abs(y)>.01){
+    const offset=THREE.MathUtils.euclideanModulo(this.heading-this.cameraHeading+Math.PI,Math.PI*2)-Math.PI;
+    this.cameraHeading+=offset*(1-Math.exp(-2.5*dt));
+   }
+   return move;
+  }
+  // Two-handed movement remains camera-relative with independent look input.
   const cameraForward=north.clone().multiplyScalar(Math.cos(this.cameraHeading))
    .addScaledVector(east,Math.sin(this.cameraHeading));
   const cameraRight=east.clone().multiplyScalar(Math.cos(this.cameraHeading))
@@ -44,12 +64,6 @@ export class PlayerSystem {
    const step=THREE.MathUtils.clamp(diff,-9*dt,9*dt);
    this.heading+=step;this.lastTurn=step/Math.max(dt,.001);
    this.showAnimation('Walking');
-   // One-handed steering naturally guides the chase camera, while the
-   // two-finger/right stick mode leaves the camera free to orbit.
-   if(this.controls.mode==='one'){
-    const offset=THREE.MathUtils.euclideanModulo(this.heading-this.cameraHeading+Math.PI,Math.PI*2)-Math.PI;
-    this.cameraHeading+=offset*(1-Math.exp(-2.5*dt));
-   }
   }else{this.lastTurn=0;this.showAnimation('Idle');}
   return move;
  }
