@@ -5,7 +5,7 @@ import {PlayerSystem} from './player.js';
 import {WorldSystem} from './world-system.js';
 import {WorldWater} from './water.js';
 import {PhysicsWorld} from './physics.js';
-import {TreeHarvestSystem} from './trees.js';
+import {ResourceHandler} from './engine/resource-handler.js';
 import {SharedWorld} from './engine/shared-world.js';
 import {GamePanels} from './ui/game-panels.js';
 
@@ -115,7 +115,7 @@ try{terrain=new WorldTerrain(scene,height,player,camera.far);report('terrain set
 catch(error){report('terrain setup','FAILED',error.message);}
 const sharedWorld=new SharedWorld({ownerId:'local-owner',seed:TERRAIN_SEED});
 sharedWorld.join('local-owner',player);
-const harvesting=new TreeHarvestSystem(scene,playerSystem,height,RADIUS,{shared:sharedWorld,playerId:'local-owner',camera});
+const harvesting=new ResourceHandler(scene,playerSystem,height,RADIUS,{terrain,shared:sharedWorld,playerId:'local-owner',camera});
 const panels=new GamePanels({app,canvas,controls:playerSystem.controls,sharedWorld,playerId:'local-owner'});
 adminPanels=panels;
 startButton.addEventListener('click',()=>{
@@ -152,7 +152,7 @@ panels.registerCommand('renderon',args=>setRenderLayer(true,args),'Show visual w
 panels.registerCommand('renderoff',args=>setRenderLayer(false,args),'Hide visual world layer');
 for(const [name,value] of stages)if(value.state==='FAILED')report(name,value.state,value.detail);
 let lastLogCount=-1;
-report('starter biome','READY','Meadows (other biomes unpopulated)');
+report('biome resources','READY','Player-centered seeded resource zones (20 D20 biomes)');
 // Permanent mathematical solidity is independent of rendered terrain triangles.
 let physics=null,fallingCubes=[],playerCollider=null;
 let physicsLoading=false,simulationReady=false;
