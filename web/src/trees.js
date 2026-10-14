@@ -5,6 +5,7 @@ import {withinSceneryRange} from './engine/scenery-visibility.js';
 import {Tree} from './engine/tree.js';
 import {ObjectRegistry} from './engine/object-registry.js';
 import {TreeVisual} from './engine/tree-visual.js';
+import {TreeContact} from './engine/tree-contact.js';
 
 // All player/world mutations use stable IDs. Only Meadows is populated now.
 export class TreeHarvestSystem {
@@ -24,6 +25,14 @@ export class TreeHarvestSystem {
   this.trunkMaterial=new THREE.MeshStandardMaterial({color:0x705038,roughness:1});
   this.leafMaterial=new THREE.MeshStandardMaterial({color:0x315934,roughness:1,transparent:true});
   this.treeVisual=new TreeVisual(this.trunkMaterial,this.leafMaterial);
+  this.contact=new TreeContact({
+   getTool:()=>this.shared?.getEquippedTool(this.playerId)||null,
+   onHit:t=>{
+    if(this.attackClock>0)return;
+    this.attackClock=.6;this.player.showAnimation('Axe Attack');
+    if(++t.hits>=2)this.fell(t,this.playerId);
+   }
+  });
   this.populate();
  }
  hash(n){let x=(n+0x9e3779b9)|0;x=Math.imul(x^(x>>>16),0x21f0aaad);x=Math.imul(x^(x>>>15),0x735a2d97);return ((x^(x>>>15))>>>0)/4294967296;}
@@ -99,41 +108,8 @@ export class TreeHarvestSystem {
   return true;
  }
  // Touching a standing trunk or branch pushes back; with the axe equipped, impact chops.
- bump(body,dt){
-  if(!body)return;
-  const equippedTool=this.shared?.getEquippedTool(this.playerId)||null;
-  if(equippedTool!=='axe')return; // Trees are scenery without the axe.
-  const position=body.getPosition(),velocity=body.getLinearVelocity();
-  const p=new THREE.Vector3(position.x,position.y,position.z);
-  for(const t of this.trees){
-   if(t.state!=='standing'||!t.object.acceptsContact('trunk',{equippedTool}))continue;
-   t.bumpCooldown=Math.max(0,t.bumpCooldown-dt);
-   const up=t.at.clone().normalize(),relative=p.clone().sub(t.at);
-   const elevation=relative.dot(up);
-   if(elevation<-.5||elevation>5.5)continue;
-   const lateral=relative.addScaledVector(up,-elevation);
-   const distance=lateral.length();
-   // Foliage cone extends from 1m to 5.5m, and trunk to 4m.
-   const canopyRadius=elevation>=1&&elevation<=5.5
-    ?1.35*(5.5-elevation)/4.5:0;
-   const contactRadius=Math.max(elevation<=4?.66:0,canopyRadius+.35);
-   if(distance>=contactRadius||distance<.0001||t.bumpCooldown>0)continue;
-   const normal=lateral.divideScalar(distance);
-   const toward=velocity.x*normal.x+velocity.y*normal.y+velocity.z*normal.z;
-   if(toward>=0)continue;
-   const kick=Math.min(2,Math.max(.4,-toward*.35));
-   body.setLinearVelocity({x:velocity.x+normal.x*(-toward+kick),
-    y:velocity.y+normal.y*(-toward+kick),z:velocity.z+normal.z*(-toward+kick)});
-   body.setAwake(true);
-   body.knockback={x:normal.x*kick,y:normal.y*kick,z:normal.z*kick,remaining:.22};
-   t.bumpCooldown=.25;
-   if(this.shared?.getEquippedTool(this.playerId)==='axe'&&this.attackClock===0){
-    this.attackClock=.6;this.player.showAnimation('Axe Attack');
-    if(++t.hits>=2)this.fell(t,this.playerId);
-   }
-  }
- }
- fell(t,harvesterId){
+ bump(body,dt){this.contact.update(this.trees,body,dt);}
+  fell(t,harvesterId){
   t.state='falling';t.object.state='falling';t.progress=0;t.ownerId=harvesterId;
   this.shared?.setEntity(t.id,{state:'felled',ownerId:harvesterId,chunk:t.chunk,serial:t.serial});
  }
