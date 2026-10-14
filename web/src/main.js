@@ -133,13 +133,16 @@ const panels=new GamePanels({app,canvas,controls:playerSystem.controls,sharedWor
 // Tap resources or terrain to walk using the normal player physics path.
 const tapRaycaster=new THREE.Raycaster();
 const tapNdc=new THREE.Vector2();
-playerSystem.controls.onManualMove=()=>playerSystem.cancelDestination();
+playerSystem.controls.onManualMove=()=>{
+ playerSystem.cancelDestination();
+ harvesting.ground.clearSelection();
+};
 playerSystem.controls.onTap=(screenX,screenY)=>{
  if(!started||!simulationReady)return;
  const bounds=canvas.getBoundingClientRect();
  tapNdc.set((screenX-bounds.left)/bounds.width*2-1,1-(screenY-bounds.top)/bounds.height*2);
  tapRaycaster.setFromCamera(tapNdc,camera);
- let destination=null,best=Infinity;
+ let destination=null,best=Infinity,targetId=null;
  for(const item of harvesting.ground.items.values()){
   if(item.state!=='standing'||!item.group.visible)continue;
   const projected=item.position.clone().project(camera);
@@ -147,8 +150,9 @@ playerSystem.controls.onTap=(screenX,screenY)=>{
   const sx=(projected.x+1)*bounds.width*.5+bounds.left;
   const sy=(1-projected.y)*bounds.height*.5+bounds.top;
   const pixels=Math.hypot(screenX-sx,screenY-sy);
-  if(pixels<Math.max(18,48/item.position.distanceTo(camera.position)*8)&&pixels<best){best=pixels;destination=item.position;}
+  if(pixels<Math.max(18,48/item.position.distanceTo(camera.position)*8)&&pixels<best){best=pixels;destination=item.position;targetId=item.id;}
  }
+ harvesting.ground.select(targetId);
  if(!destination){
   // Intersect a conservative shell, then iteratively refine to true terrain height.
   const ray=tapRaycaster.ray;
