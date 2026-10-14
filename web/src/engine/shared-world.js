@@ -1,3 +1,5 @@
+export const GEAR_SLOTS=Object.freeze(['head','torso','arms','hands','hips','legs','feet','left-hand','right-hand']);
+export const GEAR_RECIPES=Object.freeze({}); // Future biome armor and weapon definitions.
 export const TOOL_RECIPES={axe:{sticks:1,stones:1},hammer:{sticks:1,logs:1},scythe:{stones:3,logs:1}};
 // Host-owned save record; peers will exchange snapshots/events when networking is added.
 // Simulation and rendering remain local. No server or transport is instantiated here.
@@ -18,6 +20,22 @@ export class SharedWorld {
  }
  join(id,position){this.players.set(id,{id,position,logs:this.inventories.get(id)?.logs||0});}
  getInventory(id){return this.inventories.get(id)||{logs:0,equippedTool:null};}
+ canCraftGear(id,slot){
+  const candidate=GEAR_RECIPES[slot];
+  if(!this.players.has(id)||!GEAR_SLOTS.includes(slot)||!candidate)return false;
+  const inv=this.getInventory(id),worn=inv.gear?.[slot];
+  return candidate.quality>(worn?.quality||0)&&Object.entries(candidate.cost).every(([type,n])=>(inv[type]||0)>=n);
+ }
+ craftAndEquipGear(id,slot){
+  if(!this.canCraftGear(id,slot))return false;
+  const recipe=GEAR_RECIPES[slot],prior=this.getInventory(id),next={...prior};
+  for(const [type,n] of Object.entries(recipe.cost))next[type]-=n;
+  next.gear={...(prior.gear||{}),[slot]:{name:recipe.name,quality:recipe.quality,equipped:true}};
+  this.inventories.set(id,next);
+  this.events.push({version:++this.version,type:'gear-crafted',playerId:id,slot});
+  if(this.events.length>256)this.events.shift();
+  this.save();return true;
+ }
  getUnlockedDyes(id){return this.getInventory(id).unlockedDyes||[];}
  unlockDye(id,colorId){
   if(!this.players.has(id)||!Number.isInteger(colorId)||colorId<0||colorId>=64)return false;
