@@ -28,7 +28,7 @@ export class TreeHarvestSystem {
   this.treePopulation=new TreePopulation(this);
   this.trunkMaterial=new THREE.MeshStandardMaterial({color:0x705038,roughness:1});
   this.leafMaterial=new THREE.MeshStandardMaterial({color:0x315934,roughness:1,transparent:true});
-  this.treeVisual=new TreeVisual(this.trunkMaterial,this.leafMaterial);
+  this.treeVisual=new TreeVisual(this.trunkMaterial,this.leafMaterial,this.root);
   this.lifecycle=new TreeLifecycle({scene,shared,player,onLocalLog:()=>{this.wood++;}});
   this.interactions=new InteractionSystem();
   this.contact=new TreeContact({interaction:this.interactions,
@@ -64,6 +64,7 @@ export class TreeHarvestSystem {
   const object=this.objects.spawn(new Conifer({id,position:position.toArray(),state}));
   const entry={id,object,chunk,serial,tree,visual,trunk,foliage,at:position,state,hits:0,progress:0,ownerId:null,respawnTime:0,bumpCooldown:0};
   this.trees.push(entry);
+  this.treeVisual.attach(entry);
   return entry;
  }
  populate(){this.treePopulation.populate();}
@@ -86,6 +87,7 @@ export class TreeHarvestSystem {
  // Touching a standing trunk or branch pushes back; with the axe equipped, impact chops.
  bump(body,dt){this.contact.update(this.trees,body,dt);}
   fell(t,harvesterId){
+  this.treeVisual.activate(t);
   t.state='falling';t.object.state='falling';t.progress=0;t.ownerId=harvesterId;
   this.shared?.setEntity(t.id,{state:'felled',ownerId:harvesterId,chunk:t.chunk,serial:t.serial});
  }
@@ -94,8 +96,8 @@ export class TreeHarvestSystem {
   // Keep trees and their simulation alive outside the render range.
   for(const t of this.trees){
    const visible=withinSceneryRange(t.at,this.player.position);
-   if(t.state==='standing'||t.state==='falling'||t.state==='fading')
-    t.tree.visible=this.renderEnabled&&visible;
+   if(t.state==='standing')this.treeVisual.setVisible(t,this.renderEnabled&&visible);
+   else if(t.state==='falling'||t.state==='fading')t.tree.visible=this.renderEnabled&&visible;
    if(t.state==='flying')t.trunk.visible=this.renderEnabled&&withinSceneryRange(t.trunk.position,this.player.position);
   }
   this.attackClock=Math.max(0,this.attackClock-dt);
