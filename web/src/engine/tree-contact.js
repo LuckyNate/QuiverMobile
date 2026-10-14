@@ -27,7 +27,8 @@ export class TreeContact {
     const nearest=Math.max(lo,Math.min(hi,elevation));
     const heights=[lo,hi,nearest,Math.max(lo,Math.min(hi,elevation-halfHeight)),
      Math.max(lo,Math.min(hi,elevation+halfHeight))];
-    for(let k=0;k<heights.length-1;k++)heights.push((heights[k]+heights[k+1])*.5);
+    const sampleCount=heights.length;
+    for(let k=0;k<sampleCount-1;k++)heights.push((heights[k]+heights[k+1])*.5);
     for(const y of heights){
      const beyond=Math.max(0,Math.abs(y-elevation)-halfHeight);
      if(beyond>radius)continue;
