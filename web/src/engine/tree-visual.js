@@ -9,6 +9,9 @@ export class TreeVisual {
   this.trunkGeometry=null;
   this.foliageGeometry=null;
   this.instances=new Set();
+  // GLB foliage is open underneath. A downward-facing shared cap closes the base.
+  this.foliageCapGeometry=new THREE.CircleGeometry(1.35,8);
+  this.foliageCapGeometry.rotateX(Math.PI/2);
   // The conifer GLB belongs to this resource type only; trees can spawn before it loads.
   new GLTFLoader().load(import.meta.env.BASE_URL+'conifer.glb',gltf=>{
    const trunk=gltf.scene.getObjectByName('Trunk');
@@ -21,10 +24,18 @@ export class TreeVisual {
     instance.foliage.geometry.dispose();
     instance.trunk.geometry=this.trunkGeometry;
     instance.foliage.geometry=this.foliageGeometry;
+    this.capFoliage(instance.foliage);
     instance.trunk.position.y=0;
     instance.foliage.position.y=1;
    }
   },undefined,error=>console.error('Conifer GLB unavailable; retaining tree geometry',error));
+ }
+ capFoliage(foliage){
+  if(foliage.userData.baseCap)return;
+  const cap=new THREE.Mesh(this.foliageCapGeometry,foliage.material);
+  cap.position.y=-.008;
+  foliage.add(cap);
+  foliage.userData.baseCap=cap;
  }
  create(position){
   const tree=new THREE.Group();
@@ -36,6 +47,7 @@ export class TreeVisual {
   trunk.position.y=this.trunkGeometry?0:2;
   const foliage=new THREE.Mesh(this.foliageGeometry||new THREE.ConeGeometry(1.35,4.5,8),this.leafMaterial.clone());
   foliage.position.y=this.foliageGeometry?1:3.25;
+  if(this.foliageGeometry)this.capFoliage(foliage);
   visual.add(trunk,foliage);
   this.instances.add({trunk,foliage});
   return {tree,visual,trunk,foliage};
