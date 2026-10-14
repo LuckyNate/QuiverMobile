@@ -43,7 +43,9 @@ export class BiomeResourceZone {
    // Let a falling/collecting resource finish its lifecycle before eviction.
    if(ids.some(id=>this.host.findTree(id)?.state==='falling'||
                   this.host.findTree(id)?.state==='fading'||
-                  this.host.findTree(id)?.state==='flying'))continue;
+                  this.host.findTree(id)?.state==='flying'||
+                  this.host.grass?.clumps.get(id)?.state==='falling'||
+                  this.host.grass?.clumps.get(id)?.state==='flying'))continue;
    for(const id of ids)this.host.unloadResource(id);
    this.loaded.delete(key);
   }
