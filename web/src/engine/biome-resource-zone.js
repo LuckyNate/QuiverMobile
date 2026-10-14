@@ -44,7 +44,7 @@ export class BiomeResourceZone {
    if(ids.some(id=>this.host.findTree(id)?.state==='falling'||
                   this.host.findTree(id)?.state==='fading'||
                   this.host.findTree(id)?.state==='flying'))continue;
-   for(const id of ids)this.host.unloadTree(id);
+   for(const id of ids)this.host.unloadResource(id);
    this.loaded.delete(key);
   }
   if(!this.activeNear(position))return;
@@ -56,7 +56,7 @@ export class BiomeResourceZone {
   if(!next)return;
   const [cellX,cellY]=next.split(',').map(Number),ids=[];
   for(const type of Object.keys(this.biome.resourceDensity)){
-   if(this.biome.density(type)<=0)continue;
+   if(this.biome.density(type)<=0||!this.host.canSpawnResource(type))continue;
    const candidates=this.distributor.candidates({
     biome:'F'+String(this.biome.id).padStart(2,'0'),type,cellX,cellY,cellSize:this.cellSize,
     origin:this.origin,axisX:this.east,axisY:this.north,
@@ -70,10 +70,9 @@ export class BiomeResourceZone {
     }
    });
    for(const candidate of candidates){
-    if(type!=='tree')continue; // Other resource visuals will register by type later.
     const at=new THREE.Vector3(...candidate.position);
     if(at.distanceTo(position)<6)continue;
-    if(this.host.spawnTree(candidate.id,at,cellX+':'+cellY))ids.push(candidate.id);
+    if(this.host.spawnResource(type,candidate.id,at,cellX+':'+cellY))ids.push(candidate.id);
    }
   }
   this.loaded.set(next,ids);
