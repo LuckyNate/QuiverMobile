@@ -15,13 +15,13 @@ export class TallGrassField {
   Object.assign(this,{root,shared,player,playerId});
   this.clumps=new Map();this.visual=new GrassVisual();
  }
- spawn(id,position){
+ spawn(id,position,biome){
   if(this.clumps.has(id))return false;
   const saved=this.shared?.getEntity(id);
   if(saved&&saved.state!=='standing')return false;
-  const {group,blades,mesh}=this.visual.create(position);
+  const {group,blades,mesh,windPhase,windAmplitude,windSpeed}=this.visual.create(position,id,biome?.grassStyle);
   this.root.add(group);
-  this.clumps.set(id,{id,position,group,blades,mesh,
+  this.clumps.set(id,{id,position,group,blades,mesh,windPhase,windAmplitude,windSpeed,
    resource:new TallGrass({id,position:position.toArray()}),
    state:'standing',progress:0,owner:null});
   return true;
@@ -32,7 +32,7 @@ export class TallGrassField {
   this.root.remove(c.group);this.visual.release(c.mesh);this.clumps.delete(id);
  }
  update(dt,body,tool){
-  this.visual.update(dt);
+  this.visual.update(dt,this.clumps);
   const playerPosition=this.player.position;
   const avatar=body?.getPosition();
   for(const c of this.clumps.values()){
