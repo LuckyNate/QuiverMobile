@@ -5,6 +5,7 @@ import {BiomeResourceZone} from './biome-resource-zone.js';
 import {ResourceDensity} from './resource-density.js';
 import {ResourceDistributor} from './resource-distributor.js';
 import {ResourceTypeRegistry} from './resource-type-registry.js';
+import {TallGrassField} from './tall-grass.js';
 
 // Biomes request resources near the avatar. This owns the live resource bridge;
 // TreeHarvestSystem keeps its existing visuals, contact, collection and Box3D adapter.
@@ -16,10 +17,17 @@ export class ResourceHandler extends TreeHarvestSystem {
   this.entryById=new Map();
   this.resourceTypesById=new Map();
   this.resourceTypes=new ResourceTypeRegistry();
+  this.grass=new TallGrassField({root:this.root,shared,player,playerId});
+  this.grass.onDiscovery=()=>this.onDyeDiscovery?.();
   this.resourceTypes.register('tree',{
    spawn:(id,position,cell)=>this.spawnTree(id,position,cell),
    unload:id=>this.unloadTree(id),
    busy:id=>['falling','fading','flying'].includes(this.findTree(id)?.state)
+  });
+  this.resourceTypes.register('grass',{
+   spawn:(id,position)=>this.grass.spawn(id,position),
+   unload:id=>this.grass.unload(id),
+   busy:id=>['falling','flying'].includes(this.grass.clumps.get(id)?.state)
   });
   this.zones=terrain.roots.map(root=>{
    const id=Number(root.address.slice(1,3));
@@ -30,6 +38,12 @@ export class ResourceHandler extends TreeHarvestSystem {
      profiles:{['F'+String(id).padStart(2,'0')]:biome.resourceDensity}
     }))});
   });
+  const starter=this.zones.find(zone=>zone.contains(player.position.clone().normalize()));
+  if(starter){
+   starter.biome=new Biome({id:starter.biome.id,name:'Meadows',
+    resourceDensity:{...starter.biome.resourceDensity,grass:18000}});
+   starter.distributor.density.profiles['F'+String(starter.biome.id).padStart(2,'0')]=starter.biome.resourceDensity;
+  }
   this.terrain=terrain;
  }
  canSpawnResource(type){return this.resourceTypes.canSpawn(type);}
@@ -69,5 +83,6 @@ export class ResourceHandler extends TreeHarvestSystem {
   const streamRadius=this.terrain.resourceStreamRadius();
   for(const zone of this.zones)zone.update(this.player.position,streamRadius);
   super.update(dt,body);
+  this.grass.update(dt,body,this.shared?.getEquippedTool(this.playerId));
  }
 }
