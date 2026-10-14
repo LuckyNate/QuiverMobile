@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "three": "^0.180.0",
-    "box3d-wasm": "^0.2.0"
+    "box3d-wasm": "^0.2.0",
+    "three-nebula": "13.3.0"
   },
   "devDependencies": {
     "vite": "^7.1.0"
