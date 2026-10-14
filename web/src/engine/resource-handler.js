@@ -4,6 +4,7 @@ import {Biome} from './biome.js';
 import {BiomeResourceZone} from './biome-resource-zone.js';
 import {ResourceDensity} from './resource-density.js';
 import {ResourceDistributor} from './resource-distributor.js';
+import {ResourceTypeRegistry} from './resource-type-registry.js';
 
 // Biomes request resources near the avatar. This owns the live resource bridge;
 // TreeHarvestSystem keeps its existing visuals, contact, collection and Box3D adapter.
@@ -13,6 +14,12 @@ export class ResourceHandler extends TreeHarvestSystem {
   if(!terrain?.roots?.length)throw new Error('ResourceHandler requires read-only D20 biome roots');
   this.chunks=[]; // Disable the old four-cell Meadows-only population loop.
   this.entryById=new Map();
+  this.resourceTypesById=new Map();
+  this.resourceTypes=new ResourceTypeRegistry();
+  this.resourceTypes.register('tree',{
+   spawn:(id,position,cell)=>this.spawnTree(id,position,cell),
+   unload:id=>this.unloadTree(id)
+  });
   this.zones=terrain.roots.map(root=>{
    const id=Number(root.address.slice(1,3));
    const biome=new Biome({id,name:'Biome '+id,resourceDensity:biomeProfiles[id]||{tree:4500}});
@@ -24,6 +31,18 @@ export class ResourceHandler extends TreeHarvestSystem {
   });
   const startFace=this.zones.find(zone=>zone.contains(player.position.clone().normalize()));
   if(startFace)startFace.biome.name='Meadows';
+ }
+ canSpawnResource(type){return this.resourceTypes.canSpawn(type);}
+ spawnResource(type,id,position,cell){
+  const spawned=this.resourceTypes.spawn(type,id,position,cell);
+  if(spawned)this.resourceTypesById.set(id,type);
+  return spawned;
+ }
+ unloadResource(id){
+  const type=this.resourceTypesById.get(id);
+  if(!type)return;
+  this.resourceTypes.unload(type,id);
+  this.resourceTypesById.delete(id);
  }
  spawnTree(id,position,chunk){
   if(this.entryById.has(id))return false;
