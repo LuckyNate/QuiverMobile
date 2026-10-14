@@ -5,6 +5,7 @@ import {BiomeResourceZone} from './biome-resource-zone.js';
 import {ResourceDensity} from './resource-density.js';
 import {ResourceDistributor} from './resource-distributor.js';
 import {ResourceTypeRegistry} from './resource-type-registry.js';
+import {TallGrassField} from './tall-grass.js';
 
 // Biomes request resources near the avatar. This owns the live resource bridge;
 // TreeHarvestSystem keeps its existing visuals, contact, collection and Box3D adapter.
@@ -16,9 +17,15 @@ export class ResourceHandler extends TreeHarvestSystem {
   this.entryById=new Map();
   this.resourceTypesById=new Map();
   this.resourceTypes=new ResourceTypeRegistry();
+  this.grass=new TallGrassField({root:this.root,shared,player,playerId,scene});
+  this.grass.onDiscovery=()=>this.onDyeDiscovery?.();
   this.resourceTypes.register('tree',{
    spawn:(id,position,cell)=>this.spawnTree(id,position,cell),
    unload:id=>this.unloadTree(id)
+  });
+  this.resourceTypes.register('grass',{
+   spawn:(id,position)=>this.grass.spawn(id,position),
+   unload:id=>this.grass.unload(id)
   });
   this.zones=terrain.roots.map(root=>{
    const id=Number(root.address.slice(1,3));
@@ -30,7 +37,11 @@ export class ResourceHandler extends TreeHarvestSystem {
     }))});
   });
   const startFace=this.zones.find(zone=>zone.contains(player.position.clone().normalize()));
-  if(startFace)startFace.biome.name='Meadows';
+  if(startFace){
+   startFace.biome.name='Meadows';
+   // High-density harvestable grass confined to the starter biome.
+   startFace.biome.resourceDensity.grass=18000;
+  }
  }
  canSpawnResource(type){return this.resourceTypes.canSpawn(type);}
  spawnResource(type,id,position,cell){
@@ -69,5 +80,6 @@ export class ResourceHandler extends TreeHarvestSystem {
   // Each biome schedules its own nearby cells, regardless of render LOD.
   for(const zone of this.zones)zone.update(this.player.position);
   super.update(dt,body);
+  this.grass.update(dt,body,this.shared?.getEquippedTool(this.playerId));
  }
 }
