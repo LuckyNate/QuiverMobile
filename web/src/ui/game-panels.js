@@ -98,12 +98,12 @@ export class GamePanels {
   };
   const toolsGrid=makeGrid(),resourcesGrid=makeGrid();
   for(const [id,label,tab] of [
-   ['axe','Axe','tools'],['hammer','Hammer','tools'],
+   ['axe','Axe','tools'],['hammer','Hammer','tools'],['scythe','Scythe','tools'],
    ['tool-1','Empty','tools'],['tool-2','Empty','tools'],
    ['logs','4 m Logs','resources'],['resource-1','Empty','resources'],
    ['resource-2','Empty','resources'],['resource-3','Empty','resources']
   ]){
-   const isTool=id==='axe'||id==='hammer';
+   const isTool=id==='axe'||id==='hammer'||id==='scythe';
    const slot=document.createElement(isTool?'button':'div');
    if(isTool){
     slot.type='button';
