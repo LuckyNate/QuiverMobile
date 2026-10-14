@@ -13,23 +13,24 @@ export class TallGrass extends Resource {
 export class TallGrassField {
  constructor({root,shared,player,playerId}){
   Object.assign(this,{root,shared,player,playerId});
-  this.clumps=new Map();this.visual=new GrassVisual();
+  this.clumps=new Map();this.visual=new GrassVisual(root);
  }
  spawn(id,position,biome){
   if(this.clumps.has(id))return false;
   const saved=this.shared?.getEntity(id);
   if(saved&&saved.state!=='standing')return false;
-  const {group,blades,mesh,windPhase,windAmplitude,windSpeed}=this.visual.create(position,id,biome?.grassStyle);
-  this.root.add(group);
-  this.clumps.set(id,{id,position,group,blades,mesh,windPhase,windAmplitude,windSpeed,
+  const clump=this.visual.create(position,id,biome?.grassStyle);
+  Object.assign(clump,{
    resource:new TallGrass({id,position:position.toArray()}),
-   state:'standing',progress:0,owner:null});
+   state:'standing',progress:0,owner:null
+  });
+  this.clumps.set(id,clump);
   return true;
  }
  unload(id){
   const c=this.clumps.get(id);if(!c)return;
   if(c.state==='falling'||c.state==='flying')return;
-  this.root.remove(c.group);this.visual.release(c.mesh);this.clumps.delete(id);
+  this.visual.release(c);this.clumps.delete(id);
  }
  update(dt,body,tool){
   this.visual.update(dt,this.clumps);
@@ -45,6 +46,7 @@ export class TallGrassField {
     const altitude=relative.dot(up);
     const lateral=relative.addScaledVector(up,-altitude).length();
     if(lateral>1.05||altitude<-.6||altitude>2.3)continue;
+    this.visual.detach(c);
     c.state='falling';c.resource.state='falling';c.owner=this.playerId;c.progress=0;
     this.shared?.setEntity(c.id,{state:'felled',ownerId:c.owner});
    }else if(c.state==='falling'){
@@ -59,8 +61,8 @@ export class TallGrassField {
     c.group.position.addScaledVector(diff,Math.min(1,(8+Math.min(35,30-remaining))*dt/Math.max(.001,remaining)));
     c.group.scale.setScalar(Math.max(.05,Math.min(1,remaining/6)));
     if(remaining<.6){
-     c.state='collected';c.resource.state='collected';this.root.remove(c.group);
-     this.visual.release(c.mesh);
+     c.state='collected';c.resource.state='collected';
+     this.visual.release(c);
      this.shared?.awardFibers(c.owner,5,1);
      const discovered=!(this.shared?.getUnlockedDyes(c.owner)||[]).includes(MEADOWS_GREEN_DYE);
      this.shared?.unlockDye(c.owner,MEADOWS_GREEN_DYE);
