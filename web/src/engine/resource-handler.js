@@ -40,7 +40,9 @@ export class ResourceHandler extends TreeHarvestSystem {
   if(startFace){
    startFace.biome.name='Meadows';
    // High-density harvestable grass confined to the starter biome.
-   startFace.biome.resourceDensity.grass=18000;
+   startFace.biome=new Biome({id:startFace.biome.id,name:'Meadows',
+    resourceDensity:{...startFace.biome.resourceDensity,grass:18000}});
+   startFace.distributor.density.profiles['F'+String(startFace.biome.id).padStart(2,'0')]=startFace.biome.resourceDensity;
   }
  }
  canSpawnResource(type){return this.resourceTypes.canSpawn(type);}
