@@ -167,3 +167,6 @@ A player-local tangent frame is parallel transported across the spherical world 
 
 ## Intentional boundaries
 Current experience is a diagnostic engine prototype, not a finished planet renderer. Some design notes in `prototype-architecture.md` describe earlier historical milestones, not present implementation. Do not reinstate old constants or pretend older static-planet notes are active requirements.
+
+## Quiver Mobile title-screen entry (2026-10-13)
+Game startup runs behind a `QUIVER MOBILE` title screen with live readiness stages. After renderer, full initial LOD mesh generation, player physics, scenery, and first-frame rendering are ready, `START GAME` becomes available. Only player activation dismisses the title and enables gameplay controls and the Admin/Inventory UI. Engine initialization is never delayed by a cosmetic timer; any initialization failure holds the title and displays the error. This is a startup/UI/input gate independent of terrain and physics topology. Device behavior still needs verification.
