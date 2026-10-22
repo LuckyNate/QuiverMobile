@@ -7,6 +7,10 @@ import {solveTwoBone} from './two-bone-ik.js';
 const UP=new THREE.Vector3(0,1,0);
 const fit=(t)=>t*t*(3-2*t);
 const mix=(a,b,t)=>a+(b-a)*t;
+// Limb lengths proportioned for the 1.8 m Box3D collision capsule.
+const THIGH=.40,SHIN=.40,UPPER_ARM=.34,FOREARM=.32;
+// Limit the ankle so the visible sole stays inside the capsule's bottom.
+const FOOT_MIN_Y=-.86; // ankle + .025 visual offset - .045 sole = -.88.
 function material(color){return new THREE.MeshStandardMaterial({color,roughness:.86,flatShading:true});}
 function box(parent,color){
  const m=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),material(color));
@@ -119,10 +123,10 @@ export class JimBody {
  renderBody(climb){
   const p=this.parts;
   const pelvis=new THREE.Vector3(0,-.045-.09*climb,.015*climb);
-  const belly=new THREE.Vector3(0,.19-.12*climb,.055*climb);
-  const chest=new THREE.Vector3(0,.43-.16*climb,.17*climb);
-  const neck=new THREE.Vector3(0,.63-.21*climb,.23*climb);
-  const head=new THREE.Vector3(0,.78-.23*climb,.27*climb);
+  const belly=new THREE.Vector3(0,.19-.18*climb,.055*climb);
+  const chest=new THREE.Vector3(0,.43-.39*climb,.29*climb);
+  const neck=new THREE.Vector3(0,.63-.33*climb,.34*climb);
+  const head=new THREE.Vector3(0,.78-.35*climb,.38*climb);
   segment(p.neck,chest,neck,.07);
   for(const [mesh,a,b,scale] of [
    [p.pelvis,pelvis,new THREE.Vector3(0,.06-.1*climb,.02*climb),[.36,.18,.25]],
@@ -143,7 +147,9 @@ export class JimBody {
    const hip=torso.pelvis.clone().add(new THREE.Vector3(side*.16,-.03,0));
    const shoulder=torso.chest.clone().add(new THREE.Vector3(side*.26,.01,0));
    const groundFoot=this.toLocal(this.feet[i].world);
-   const footIK=solveTwoBone(hip,groundFoot,.445,.445,
+   // Terrain still controls uphill clearance, but not extra downhill leg reach.
+   groundFoot.y=Math.max(FOOT_MIN_Y,groundFoot.y);
+   const footIK=solveTwoBone(hip,groundFoot,THIGH,SHIN,
     new THREE.Vector3(side*.2,.10,.9));
    const knee=vec(footIK.joint),ankle=vec(footIK.end);
    segment(p.thigh[i],hip,knee,.076);
@@ -154,7 +160,7 @@ export class JimBody {
    const relaxedHand=new THREE.Vector3(side*.36,-.07,.025);
    const climbHand=this.toLocal(this.hands[i].world);
    const handTarget=relaxedHand.lerp(climbHand,climb);
-   const armIK=solveTwoBone(shoulder,handTarget,.44,.43,
+   const armIK=solveTwoBone(shoulder,handTarget,UPPER_ARM,FOREARM,
     new THREE.Vector3(side*.7,-.24,-.5));
    const elbow=vec(armIK.joint),wrist=vec(armIK.end);
    segment(p.upperArm[i],shoulder,elbow,.064);
