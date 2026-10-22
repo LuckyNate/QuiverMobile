@@ -4,7 +4,9 @@
 Node 22+, Vite, Three.js/WebGL2, box3d-wasm, Gradle, Android Kotlin WebView. Desktop: `cd web && npm install && npm run dev`. CI runs the Vite build, copies `web/dist` into Android app assets, signs a release APK and publishes updates. WebViewAssetLoader hosts bundled assets under `https://appassets.androidplatform.net/assets/web/`, not `file://`.
 
 ## Implementation map
-- `web/src/world.js` — D20 root size/radius, terrain LOD selection, independent leaf mesh generation, neighbor-aware conforming coarse edges, streamed mesh cache, palette.
+- `web/src/engine/world-config.js` — centralized planet dimensions and per-face biome configuration.
+- `web/src/engine/biome-map.js` — D20 face classification shared by ground coloring, spawn, and resource streaming.
+- `web/src/world.js` — D20 terrain LOD selection, streamed mesh cache, neighbor-aware edges, biome ground colors.
 - `web/src/engine/terrain-height.js` — seeded, unit-sphere layered radial elevation authority.
 - `web/src/world-system.js` and `engine/world-octree.js` — spatial extent, actor indexing.
 - `engine/implicit-sphere.js` and `engine/sphere-surface.js` — sparse static occupancy and outward 1 m collision hulls.
@@ -14,7 +16,7 @@ Node 22+, Vite, Three.js/WebGL2, box3d-wasm, Gradle, Android Kotlin WebView. Des
 - `web/src/main.js` — deterministic shoreline spawn, physics frame, camera clipping, globe LOD caps.
 
 ## Current scale (experimental, not invariant)
-`ROOT_EDGE_METERS = 8192`. Base radius derives from it; `MAX_TERRAIN_LOD = round(log2(ROOT_EDGE_METERS))` gives 13 for nominal finest 1 m original-face edges. Current `world.js` selects detail by player distance and node footprint with logarithmic falloff, updating the required mesh set on stable anchor changes; it does not implement the previously documented 20 m bands, 20% split hysteresis, or 0.35 s ghost fade. Octree current half-width 16384 m, maxDepth 15, `minCell=1` for implicit queries; all are scale-dependent. When testing another root size, recalculate derived radius, maximum elevation bound, octree bounds/depth, LOD range, camera and shoreline spawn. Do not freeze 8192 m or 13 levels into a permanent engine contract.
+`WORLD_SETUP.rootEdgeMeters = 256`. Base radius derives from it; `MAX_TERRAIN_LOD = round(log2(rootEdgeMeters / finestTerrainMeters))` gives 8 for nominal finest 1 m original-face edges. Current `world.js` selects detail by player distance and node footprint with logarithmic falloff, updating the required mesh set on stable anchor changes; it does not implement the previously documented 20 m bands, 20% split hysteresis, or 0.35 s ghost fade. Octree half-width 512 m, maxDepth 10, and `minCell=1` for implicit queries derive from the world setup. When testing another root size, recalculate derived radius, maximum elevation bound, octree bounds/depth, LOD range, camera and shoreline spawn. Do not freeze 8192 m or 13 levels into a permanent engine contract.
 
 ## Tests and regression checks
 1. Startup completes to Box3D READY; a dry shoreline spawn has actual nearby water.

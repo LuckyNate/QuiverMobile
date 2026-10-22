@@ -7,9 +7,9 @@ A continuous spherical outdoor world engine. Three.js/WebGL2 and Box3D WebAssemb
 
 ## World dimensions and levels of detail
 - Twenty icosahedron (D20) root triangles, recursively subdivided into four children each.
-- **Current experimental root edge: 8192 m** (`ROOT_EDGE_METERS` in `web/src/world.js`). **Not a fixed engine requirement.**
+- **Current experimental root edge: 256 m** (`WORLD_SETUP.rootEdgeMeters` in `web/src/engine/world-config.js`). **Not a fixed engine requirement.**
 - Derived spherical base radius: `rootEdge * sqrt(10 + 2*sqrt(5)) / 4`.
-- Finest subdivision level derives from `round(log2(rootEdge))`: currently **13** to target nominal 1 m edges. Both planet size and subdivision count are adjustable; they are not architectural constants.
+- Finest subdivision level derives from `round(log2(rootEdge))`: currently **8** to target nominal 1 m edges. Both planet size and subdivision count are adjustable; they are not architectural constants.
 - Current 20 m LOD bands are a tuning choice, not a universal rule. Near-player detail is selected by player-centered distance and stable chunk-address updates; the camera far range influences distant detail. The current `world.js` does not implement the older documented split hysteresis or zoom-specific detail caps.
 - **Current renderer (2026-10-13):** leaf geometry attempts to conform coarse boundaries to the highest-detail touching render neighbor, with mixed-LOD seams still requiring device verification. Legacy 12 m skirts were removed. No shader height morph or dither/ghost fade is active.
 
@@ -18,18 +18,18 @@ A continuous spherical outdoor world engine. Three.js/WebGL2 and Box3D WebAssemb
 - Planet-relative, layered 3D noise: broad continent/ocean relief plus progressively activated hills, ridges, crevices and fine detail. Roughness depends on broad elevation.
 - Terrain radial height is `RADIUS + height(direction)`; visual meshes never define solidity.
 - **Sea level remains `RADIUS - 1 m`**. Water is an animated transparent surface; buoyancy applies where the ground is below sea level. Water must not count as solid terrain.
-- Player spawn samples a deterministic near-zero-elevation dry shoreline near water.
+- Player spawn samples deterministic dry terrain in the configured Meadows face (F06).
 
 ## Spatial index and physics
-- Sparse `WorldOctree` indexes dynamic actor locations, and `ImplicitSphere` provides analytical static occupancy. Current 8192 m edge configuration uses a 16384 m octree half-width and maximum depth 15, retaining nominal 1 m octree cell resolution.
+- Sparse `WorldOctree` indexes dynamic actor locations, and `ImplicitSphere` provides analytical static occupancy. Current 256 m edge configuration uses a derived 512 m octree half-width and maximum depth 10, retaining nominal 1 m octree cell resolution.
 - `SphereSurface` generates 1 m local outward terrain hull patches from the same height provider. Only nearby patches are registered as static proxies with Box3D, never every triangle of the planet.
 - Dynamic capsule and demonstration boxes use Box3D; the player follows radial gravity. The movement target is currently 10 m/s. Immersion adds upward buoyancy and vertical drag; forward while looking down contributes dive effort.
 - Render geometry remains independent of Box3D's mathematical terrain and local contact hulls. The boundary adjustment is render-only and must not alter physics or water.
 
 ## Camera and controls
 - Chase camera stays in a player-local, parallel-transported navigation frame, gradually becoming overhead at high zoom. Globe orientation is relative to player heading, not geographic poles.
-- Vertical logarithmic zoom slider and mouse wheel cover 3–30000 m. The camera near plane has a 1 m minimum and rises with camera altitude; far plane is currently 60000 m.
-- Above approximately 500 / 1500 / 5000 m zoom, render LOD detail is capped at 8 / 5 / 3 respectively. These are current experimental thresholds.
+- Vertical logarithmic zoom slider and mouse wheel cover 3 m through two world diameters; camera near clip remains 1 m and far clip is six diameters, derived from world setup.
+- Terrain LOD responds to distance, while zoom and far clipping derive from the world-scale settings.
 
 ## Boundaries and ongoing validation
 - Android is the primary device test. Validate startup and shoreline spawn, capsule contact, swimming, fixed seed, map-scale camera stability, water occlusion, globe clipping, mixed-LOD seam continuity, stable streaming, and preserved frame rate.
@@ -87,7 +87,7 @@ The game starts rendering and initializing behind a full-screen `QUIVER MOBILE` 
 ### Biome-owned resource streaming (2026-10-13)
 - `engine/resource-handler.js` extends the existing tree gameplay adapter into the live world resource entry point; `main.js` starts one handler with read-only D20 roots from `WorldTerrain`.
 - `engine/biome-resource-zone.js` owns a fixed 32 m tangent-plane cell grid for each of the 20 D20 faces. Resources are requested in a bounded 5×5 cell neighborhood near the avatar and unloaded behind the player; at most one new cell is populated per biome per frame. It samples terrain elevation without modifying terrain meshes, seed, or LOD.
-- Each biome owns a configurable resource-density profile. The current default is provisionally 4,500 trees/km² for each face; this is a tuning placeholder, not a permanent biome-specific biome taxonomy. The player's actual starting face is labeled Meadows. Other profiles can be supplied through the resource handler constructor.
+- Each biome owns a configurable resource-density profile in `web/src/engine/world-config.js`. In the current prototype F06 Meadows alone generates trees, grass, sticks and stones; the nineteen other faces are empty and distinctly colored. The biome contents remain provisional. The player's actual starting face is labeled Meadows. Other profiles can be supplied through the resource handler constructor.
 - `engine/resource-type-registry.js` maps resource types to explicit spawn/unload adapters. Trees are registered. Rocks and mineral deposits have object contracts but no live rendering or harvesting adapters, so zones skip those types until installed.
 - Resource instance IDs include D20 face, resource type, cell coordinate and candidate ordinal, stable across LOD and reload. `SharedWorld` harvest records are respected; harvested resources are not recreated when a cell reloads.
 - The legacy Meadows-only four-cell population loop is disabled in the active `ResourceHandler`; its tree contact and collection logic are retained.

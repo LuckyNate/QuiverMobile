@@ -116,7 +116,7 @@ The intended **no-outcamping rule** emerges from these interconnected mechanics:
 
 ## Meadows-only starter implementation
 
-During the initial world prototype, **Meadows is the sole populated starter biome**. Other planetary areas remain navigable but contain no biome-specific trees, resources, enemies, or settlements. The 20-face biome plan remains a future design, not current generated gameplay. The prototype uses 4-meter harvested logs and 4-meter cabin wall modules. This does not imply a complete crafting/building implementation.
+During the initial world prototype, **Meadows (F06) is the sole populated starter biome**. The other nineteen D20 faces have individual ground colors, no resources, and remain navigable without biome-specific enemies or settlements. The 20-face biome plan remains a future design, not current generated gameplay. The prototype uses 4-meter harvested logs and 4-meter cabin wall modules. This does not imply a complete crafting/building implementation.
 
 Physical terrain surface queries are cached in deterministic **32-meter world-space chunks** as an initial streaming layer, independent of graphics LOD. Chunks may be discarded from memory and regenerated from the same seed. This is not yet a full volumetric crust or immutable full-resolution D20 collision mesh; caves, local cavity triangulation, persistence of terrain modifications, and complete per-chunk physics lifecycle still require implementation and validation.
 
@@ -160,7 +160,7 @@ The game design above is the intended destination. The current runtime remains a
 - `PlayerSystem` controls input, player-relative heading and camera; `main.js` orchestrates frames.
 
 ## Scalable icosphere
-Twenty D20 root faces recursively split into four triangles. Face directions are normalized radially, then displaced by the shared heightfield. The root edge is a parameter: **8192 m currently**, formerly 4096 m; neither is fixed. The target finest nominal edge is around 1 m and the needed LOD count derives from log2(root edge) (currently 13). The collision/octree extent must also grow with the planet and maximum possible relief.
+Twenty D20 root faces recursively split into four triangles. Face directions are normalized radially, then displaced by the shared heightfield. The root edge is a parameter: **256 m currently**, formerly 8192 m and 4096 m; none is fixed. The target finest nominal edge is around 1 m and the needed LOD count derives from log2(root edge) (currently 8). The collision/octree extent must also grow with the planet and maximum possible relief.
 
 ## Layered geography
 Seeded 3D value noise is sampled on the unit sphere so wavelength and amplitude scale with planet radius. Very broad layers establish ocean basins and highlands. A smooth elevation gate activates foothill hills, mountain ridges, detail and crevices without feeding fine noise back into its own biome classification. Radial height remains bounded away from the planet center. Sea level is a separate fixed `RADIUS - 1 m` datum, not an automatically recomputed water percentage.
