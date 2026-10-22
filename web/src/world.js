@@ -7,6 +7,11 @@ export const ROOT_EDGE_METERS=WORLD_SETUP.rootEdgeMeters;
 export const RADIUS=WORLD_SCALE.radius;
 export const MAX_TERRAIN_LOD=WORLD_SCALE.maxTerrainLod;
 const MAX_LOD=MAX_TERRAIN_LOD;
+// Horizontal distance from the local-up axis, excluding the far hemisphere.
+function columnDistance(up,node){
+ const dot=THREE.MathUtils.clamp(up.dot(node.center),-1,1);
+ return dot<=0?Math.PI*RADIUS:Math.max(0,RADIUS*Math.sqrt(1-dot*dot)-node.reach);
+}
 // Elevation in meters above sea level (RADIUS - 1). Palette is visual only.
 const TERRAIN_PALETTE=[
  [-35,0xc6b88a],[0,0xc6b88a],[5,0xc6b88a],
@@ -146,6 +151,7 @@ export class WorldTerrain {
   this.maxDetail=MAX_LOD;
   this.zFar=zFar;
   this.anchorAddress=null;
+  this.lodCenter=null;
   this.leafCount=0;
   // A guaranteed complete low-detail planet remains visible while new
   // generations of render geometry are prepared offscreen.
@@ -243,9 +249,7 @@ export class WorldTerrain {
   const far=Math.max(1,this.zFar);
   const range=Math.log2(1+far/16);
   const visit=n=>{
-   const arc=RADIUS*Math.acos(THREE.MathUtils.clamp(origin.dot(n.center),-1,1));
-   // Distance to the node footprint, not its distant center.
-   const distance=Math.max(0,arc-n.reach);
+   const distance=Math.max(0,columnDistance(origin,n)-WORLD_SETUP.terrainLodColumnRadiusMeters);
    // Double every distance-based LOD band without changing mesh detail levels.
    const fraction=Math.min(1,Math.log2(1+(distance/2)/16)/range);
    const target=Math.max(0,Math.floor(MAX_LOD*(1-fraction)));
@@ -303,10 +307,13 @@ export class WorldTerrain {
   const detailCap=Math.max(2,Math.min(MAX_LOD,Math.floor(maxDetail)));
   const anchor=this.anchor(position);
   const address=String(anchor.address);
+  const localUp=position.clone().normalize();
+  const moved=!this.lodCenter||RADIUS*Math.acos(THREE.MathUtils.clamp(localUp.dot(this.lodCenter),-1,1))>=WORLD_SETUP.terrainLodRefreshMeters;
   const farChanged=zFar!==this.zFar;
   this.zFar=zFar;
-  if(force||address!==this.anchorAddress||detailCap!==this.maxDetail||farChanged){
+  if(force||address!==this.anchorAddress||moved||detailCap!==this.maxDetail||farChanged){
    this.anchorAddress=address;this.maxDetail=detailCap;
+   this.lodCenter=localUp;
    const selected=this.select(anchor,position),required=new Set();
    const resolved=selected.map(({node,detail})=>({node,level:Math.max(node.level,Math.min(detail,detailCap))}));
    const seams=boundarySeams(resolved);
@@ -321,7 +328,7 @@ export class WorldTerrain {
    this.staging=true;
    // Prioritize actual spatial distance, not the subdivision level.
    const origin=position.clone().normalize();
-   queue.sort((a,b)=>a.node.center.angleTo(origin)-b.node.center.angleTo(origin));
+   queue.sort((a,b)=>columnDistance(origin,a.node)-columnDistance(origin,b.node));
    this.pending=queue;
    this.leafCount=required.size;
    // Do not expose partial new coverage. The previous complete generation
@@ -363,7 +370,7 @@ export class WorldTerrain {
   const origin=position.clone().normalize();
   const remaining=[];
   for(const job of this.pending){
-   const distance=RADIUS*job.node.center.angleTo(origin)-job.node.reach;
+   const distance=columnDistance(origin,job.node);
    if(distance>radius){remaining.push(job);continue;}
    if(this.cache.has(job.key))continue;
    const mesh=new THREE.Mesh(this.geometry(job.node,job.level,job.seams),this.material);

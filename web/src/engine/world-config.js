@@ -3,6 +3,8 @@ import {TERRAIN_AMPLITUDE_RATIO} from './terrain-height.js';
 export const WORLD_SETUP=Object.freeze({
  rootEdgeMeters:256,
  finestTerrainMeters:1,
+ terrainLodColumnRadiusMeters:16,
+ terrainLodRefreshMeters:4,
  collisionResolutionMeters:1,
  collisionChunkMeters:32,
  resourceCellMeters:32,
