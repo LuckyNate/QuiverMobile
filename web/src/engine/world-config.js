@@ -3,7 +3,7 @@ import {TERRAIN_AMPLITUDE_RATIO} from './terrain-height.js';
 export const WORLD_SETUP=Object.freeze({
  rootEdgeMeters:256,
  finestTerrainMeters:1,
- terrainLodColumnRadiusMeters:16,
+ terrainLodBandMeters:20,
  terrainLodRefreshMeters:4,
  collisionResolutionMeters:1,
  collisionChunkMeters:32,
@@ -24,6 +24,12 @@ export const WORLD_SCALE=Object.freeze({
  cameraFarMeters:diameter*WORLD_SETUP.cameraFarClipDiameters,
  resourceStreamMeters:WORLD_SETUP.rootEdgeMeters*WORLD_SETUP.resourceStreamRootFraction
 });
+// Fixed 20 m horizontal bands: LOD 8 within 20 m, then one level lower
+// for each successive ring, down to LOD 0 beyond 160 m.
+export function terrainLodAtHorizontalDistance(meters,maxLod=WORLD_SCALE.maxTerrainLod){
+ const band=Math.floor(Math.max(0,meters)/WORLD_SETUP.terrainLodBandMeters);
+ return Math.max(0,maxLod-band);
+}
 // Edit each face's name, ground color, densities, and optional grass style here.
 // null groundColor uses the original altitude-driven sand/green/rock palette.
 // Density units: expected resources per square kilometer. Empty {} spawns none.

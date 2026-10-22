@@ -1,6 +1,6 @@
 import {TerrainHeight} from './engine/terrain-height.js';
 import {rootAddress,appendChild} from './engine/d20-address.js';
-import {WORLD_SETUP,WORLD_SCALE,BIOME_SETUP} from './engine/world-config.js';
+import {WORLD_SETUP,WORLD_SCALE,BIOME_SETUP,terrainLodAtHorizontalDistance} from './engine/world-config.js';
 import {D20_ROOT_CORNERS,containsSphericalTriangle,faceAtDirection} from './engine/biome-map.js';
 import * as THREE from 'three';
 export const ROOT_EDGE_METERS=WORLD_SETUP.rootEdgeMeters;
@@ -233,26 +233,20 @@ export class WorldTerrain {
   g.computeVertexNormals();
   return g;
  }
- // One D20 hierarchy: a parent is rendered instead of its descendants.
- // Each node's detail follows player-centered radial distance, not camera position.
- // At zFar and beyond only the coarsest applicable ancestor is retained.
- // Resources occupy the nearest three terrain detail bands (highest LOD through
- // highest LOD-2), using the same doubled distance curve as terrain selection.
+ // One D20 hierarchy: parents replace descendants. Local-up vertical
+ // cylinders select detail by horizontal distance, ignoring elevation.
+ // The three highest-detail bands also define nearby resource streaming.
  resourceStreamRadius(){
-  const range=Math.log2(1+Math.max(1,this.zFar)/16);
-  return Math.min(WORLD_SCALE.resourceStreamMeters,32*(Math.pow(2,range*3/MAX_LOD)-1));
+  return Math.min(WORLD_SCALE.resourceStreamMeters,3*WORLD_SETUP.terrainLodBandMeters);
  }
  select(anchor,position){
   const selected=[];
   const origin=position.clone().normalize();
   const chunkLevel=Math.max(0,MAX_LOD-5);
-  const far=Math.max(1,this.zFar);
-  const range=Math.log2(1+far/16);
   const visit=n=>{
-   const distance=Math.max(0,columnDistance(origin,n)-WORLD_SETUP.terrainLodColumnRadiusMeters);
-   // Double every distance-based LOD band without changing mesh detail levels.
-   const fraction=Math.min(1,Math.log2(1+(distance/2)/16)/range);
-   const target=Math.max(0,Math.floor(MAX_LOD*(1-fraction)));
+   // Include the node's footprint when calculating horizontal distance.
+   const distance=columnDistance(origin,n);
+   const target=terrainLodAtHorizontalDistance(distance);
    if(n.level<Math.min(chunkLevel,target)){
     for(const child of children(n))visit(child);
    }else{
