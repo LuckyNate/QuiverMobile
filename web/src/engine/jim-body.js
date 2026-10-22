@@ -103,26 +103,43 @@ export class JimBody {
   const rise=this.height?Math.max(0,this.ground(middle).length()-middle.length()):0;
   c.lift=.14+Math.min(.5,rise);
  }
- gait(group,targets,dt,up,speed,enabled,isHand=false){
+ gait(group,targets,dt,up,speed,enabled,isHand=false,position=null,heading=null){
   for(let i=0;i<2;i++){
    const c=group[i];
    if(!c.world)c.world=targets[i].clone();
    this.advanceSupport(c,dt,up);
   }
   if(!enabled||speed<.18||group.some(c=>c.swing))return;
-  // Alternate support legs; give the trailing leg first chance to step.
-  const last=isHand?this.handNext:this.stepNext;
+  if(!isHand&&position&&heading){
+   // Predict center-of-balance movement relative to planted supports.
+   // A trailing foot must begin its swing BEFORE the torso passes over it.
+   const lookahead=Math.min(.24,speed*.045);
+   const balance=this.ground(position).addScaledVector(heading,lookahead);
+   const behind=group.map(c=>balance.clone().sub(c.world).dot(heading));
+   const next=this.stepNext;
+   const chosen=behind[next]>=behind[1-next]-.12?next:1-next;
+   if(behind[chosen]<.065)return;
+   // Advance landing target into travel direction; stance feet remain planted.
+   const ahead=Math.min(.23,.10+speed*.018);
+   const landing=this.ground(targets[chosen].clone().addScaledVector(heading,ahead),.055);
+   // Never spend 0.19 seconds airborne at 10 m/s with 0.8 m legs.
+   const duration=THREE.MathUtils.clamp(.40/Math.max(speed,.8),.03,.24);
+   this.startSupport(group[chosen],landing,up,duration);
+   this.stepNext=1-chosen;
+   return;
+  }
+  // Scrambling hands preserve their independently alternating contacts.
+  const last=this.handNext;
   const errors=group.map((c,i)=>c.world.distanceTo(targets[i]));
-  const first=errors[0]>errors[1]?0:1;
-  const chosen=errors[last]>.26?last:first;
-  if(errors[chosen] <= (isHand?.31:.27))return;
+  const chosen=errors[last]>.26?last:errors[0]>errors[1]?0:1;
+  if(errors[chosen]<=.31)return;
   this.startSupport(group[chosen],targets[chosen],up,
    THREE.MathUtils.clamp(.38-speed*.015,.19,.40));
-  if(isHand)this.handNext=1-chosen;else this.stepNext=1-chosen;
+  this.handNext=1-chosen;
  }
  renderBody(climb){
   const p=this.parts;
-  const pelvis=new THREE.Vector3(0,-.045-.09*climb,.015*climb);
+  const pelvis=new THREE.Vector3(0,-.14-.06*climb,.015*climb);
   const belly=new THREE.Vector3(0,.19-.18*climb,.055*climb);
   const chest=new THREE.Vector3(0,.43-.39*climb,.29*climb);
   const neck=new THREE.Vector3(0,.63-.33*climb,.34*climb);
@@ -179,6 +196,7 @@ export class JimBody {
   this.prevPosition=position.clone();
   const horizontal=delta.addScaledVector(up,-delta.dot(up));
   const speed=Math.min(12,horizontal.length()/interval);
+  const heading=horizontal.lengthSq()>1e-8?horizontal.clone().normalize():null;
   const moveLocal=horizontal.applyQuaternion(this.root.quaternion.clone().invert());
   const travel=moveLocal.length()>1e-5?moveLocal.normalize().multiplyScalar(Math.min(.45,speed*.09)):
    new THREE.Vector3();
@@ -196,7 +214,7 @@ export class JimBody {
   if(!closeToGround){
    this.resetContacts();
    for(let i=0;i<2;i++)this.feet[i].world=this.fromLocal(new THREE.Vector3((i?1:-1)*.16,-.83,.02));
-  }else this.gait(this.feet,footTargets,interval,up,speed,true);
+  }else this.gait(this.feet,footTargets,interval,up,speed,true,false,position,heading);
   if(closeToGround&&this.climb>.2)this.gait(this.hands,handTargets,interval,up,speed,true,true);
   else for(let i=0;i<2;i++){this.hands[i].world=handTargets[i];this.hands[i].swing=false;}
   const torso=this.renderBody(this.climb);
