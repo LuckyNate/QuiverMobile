@@ -1,5 +1,7 @@
 # TODO
 
+- [ ] Design and implement a persistent, planet-aware day/night system: derive world age from the world's creation timestamp and real elapsed time (including time while the game is closed); calculate shared sun/moon directions from world age, with a code-editable celestial/shader configuration. Drive the sky shader and real-time Three.js directional sunlight, ambient light, and shadows from the same calculations. Illumination must depend on each location's surface normal and local horizon so the day/night boundary is correct across the globe—not a uniform screen/world dimmer. Keep one authoritative world clock for future gameplay systems. Design details and implementation require separate approval.
+
 - [ ] Add an Admin-tab control for WebGL canvas render resolution/pixel ratio, independently adjustable from terrain LOD. Keep the CSS canvas size, touch coordinates, camera field of view, and gameplay unchanged. Make the chosen value persistent between app launches. Do not implement until separately approved.
 
 - [x] Implement approved fine-LOD-owned terrain seams in `web/src/world.js`: identify mixed-LOD neighbors (including cross-face); use finer-node normalized-midpoint boundary positions and shared height samples; triangulate the coarse border only; account for neighbor edge configuration in cache identity/invalidation. Preserve streaming, coarse interiors, physics, water, and observed frame rate. Implemented in source 2026-10-13; device validation still pending.
