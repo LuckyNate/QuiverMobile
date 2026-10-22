@@ -1,6 +1,8 @@
 import {TerrainHeight,TERRAIN_SEED} from './engine/terrain-height.js';
 import * as THREE from 'three';
 import {WorldTerrain,RADIUS} from './world.js';
+import {WORLD_SETUP,WORLD_SCALE,STARTER_BIOME_FACE} from './engine/world-config.js';
+import {faceAtDirection} from './engine/biome-map.js';
 import {PlayerSystem} from './player.js';
 import {WorldSystem} from './world-system.js';
 import {WorldWater} from './water.js';
@@ -82,10 +84,10 @@ scene.background=new THREE.Color(0x87ceeb);
 scene.fog=new THREE.Fog(0x87ceeb,1,5000);
 scene.add(new THREE.HemisphereLight(0xeeeeff,0x263b55,2.1));
 const sun=new THREE.DirectionalLight(0xffffff,2.0);sun.position.set(90,180,70);scene.add(sun);
-const camera=new THREE.PerspectiveCamera(55,1,1,5000);
+const camera=new THREE.PerspectiveCamera(55,1,1,WORLD_SCALE.cameraFarMeters);
 const height=new TerrainHeight(TERRAIN_SEED,RADIUS);
 let terrain=null;
-const water=new WorldWater(scene,RADIUS);
+const water=new WorldWater(scene,RADIUS,{seaLevelOffset:WORLD_SETUP.seaLevelOffsetMeters});
 const playerSystem=new PlayerSystem(scene,camera,canvas,RADIUS,report);
 playerSystem.setCameraCollision(height,RADIUS);
 const player=playerSystem.position;
@@ -97,9 +99,10 @@ function meadowsSpawn(){
   return new THREE.Vector3(c*Math.cos(longitude),c*Math.sin(longitude),Math.sin(latitude));
  };
  let best=null,bestScore=Infinity;
- const sea=RADIUS-1;
+ const sea=RADIUS+WORLD_SETUP.seaLevelOffsetMeters;
  for(let row=1;row<36;row++)for(let col=0;col<144;col++){
   const direction=radial(-Math.PI/2+Math.PI*row/36,2*Math.PI*col/144);
+  if(faceAtDirection(direction)!==STARTER_BIOME_FACE)continue;
   const surface=height.radius(direction,RADIUS);
   const elevation=surface-RADIUS;
   // Low, green Meadows land, comfortably above the ocean.
@@ -366,7 +369,7 @@ function frame(now){
   playerSystem.cancelDestination();
  }
  bonfire.update(elapsed);
- // Fixed clipping range: 1 m near, 5,000 m far.
+ // Far clipping is world-scaled; near clip stays at one meter.
  water.update(scene,camera,renderer,elapsed);
  // The immutable planet is queryable immediately. Player motion never rebuilds it.
  if(octree){

@@ -7,11 +7,12 @@ import {ResourceDistributor} from './resource-distributor.js';
 import {ResourceTypeRegistry} from './resource-type-registry.js';
 import {TallGrassField} from './tall-grass.js';
 import {GroundResources} from './ground-resources.js';
+import {WORLD_SETUP,BIOME_SETUP} from './world-config.js';
 
 // Biomes request resources near the avatar. This owns the live resource bridge;
 // TreeHarvestSystem keeps its existing visuals, contact, collection and Box3D adapter.
 export class ResourceHandler extends TreeHarvestSystem {
- constructor(scene,player,height,radius,{terrain,shared=null,playerId='local-owner',camera=null,biomeProfiles={}}={}){
+ constructor(scene,player,height,radius,{terrain,shared=null,playerId='local-owner',camera=null}={}){
   super(scene,player,height,radius,{shared,playerId,camera,autoPopulate:false});
   if(!terrain?.roots?.length)throw new Error('ResourceHandler requires read-only D20 biome roots');
   this.chunks=[]; // Disable the old four-cell Meadows-only population loop.
@@ -38,10 +39,9 @@ export class ResourceHandler extends TreeHarvestSystem {
   });
   this.zones=terrain.roots.map(root=>{
    const id=Number(root.address.slice(1,3));
-   const profile=biomeProfiles[id]||{};
-   const {grassStyle={},...densityOverrides}=profile;
-   const biome=new Biome({id,name:'Biome '+id,grassStyle,resourceDensity:{tree:4500,grass:36000,stick:12000,stone:8000,...densityOverrides}});
-   return new BiomeResourceZone({biome,root,radius,height,host:this,
+   const conf=BIOME_SETUP[id];
+   const biome=new Biome({id,name:conf.name,grassStyle:conf.grassStyle,resourceDensity:conf.resourceDensity});
+   return new BiomeResourceZone({biome,root,radius,height,host:this,cellSize:WORLD_SETUP.resourceCellMeters,
     distributor:new ResourceDistributor(new ResourceDensity({
      seed:shared?.seed||'QuiverGL',
      profiles:{['F'+String(id).padStart(2,'0')]:biome.resourceDensity}

@@ -81,7 +81,7 @@ export class PlayerSystem {
   const alpha=1-Math.exp(-6*dt);
   this.viewZoom+=(this.controls.zoom-this.viewZoom)*alpha;
   const distance=this.viewZoom;
-  const globalZoom=THREE.MathUtils.smoothstep(Math.log(distance),Math.log(40),Math.log(5000));
+  const globalZoom=THREE.MathUtils.smoothstep(Math.log(distance),Math.log(40),Math.log(this.camera.far));
   const focus=this.position.clone().addScaledVector(up,1.1);
   const chase=focus.clone().addScaledVector(up,Math.sin(this.cameraPitch)*distance)
    .addScaledVector(cameraForward,-Math.cos(this.cameraPitch)*distance);

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {WORLD_SCALE} from './engine/world-config.js';
 
 // Input only. The physics body owns position; this class returns intent.
 export class PlayerControls {
@@ -43,7 +44,7 @@ export class PlayerControls {
   this.slider=document.createElement('input');this.slider.type='range';this.slider.min='0';this.slider.max='1000';this.slider.step='1';
   this.slider.setAttribute('aria-label','Camera zoom');
   this.slider.style.cssText='position:fixed;right:12px;top:18%;height:45dvh;width:28px;z-index:5;writing-mode:vertical-lr;direction:rtl;touch-action:none;accent-color:#79b0ce';
-  this.slider.addEventListener('input',()=>{if(!this.enabled)return;this.setZoom(3*Math.pow((500/3),Number(this.slider.value)/1000));});
+  this.slider.addEventListener('input',()=>{if(!this.enabled)return;this.setZoom(3*Math.pow((WORLD_SCALE.cameraMaxZoomMeters/3),Number(this.slider.value)/1000));});
   document.getElementById('app').append(this.slider);
   this.setZoom(8);
   this.swimButtons=document.createElement('div');
@@ -87,8 +88,8 @@ export class PlayerControls {
  }
  consumeLook(){if(!this.enabled){this.lookDX=0;this.lookDY=0;return {x:0,y:0};}const result={x:this.lookDX,y:this.lookDY};this.lookDX=0;this.lookDY=0;return result;}
  setZoom(value){
-  this.zoom=THREE.MathUtils.clamp(value,3,500);
-  this.slider.value=String(Math.round(1000*Math.log(this.zoom/3)/Math.log((500/3))));
+  this.zoom=THREE.MathUtils.clamp(value,3,WORLD_SCALE.cameraMaxZoomMeters);
+  this.slider.value=String(Math.round(1000*Math.log(this.zoom/3)/Math.log((WORLD_SCALE.cameraMaxZoomMeters/3))));
  }
  setSwimming(enabled){
   this.swimButtons.style.display=enabled?'flex':'none';

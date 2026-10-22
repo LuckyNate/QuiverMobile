@@ -1,9 +1,11 @@
 import {TerrainHeight} from './engine/terrain-height.js';
 import {rootAddress,appendChild} from './engine/d20-address.js';
+import {WORLD_SETUP,WORLD_SCALE,BIOME_SETUP} from './engine/world-config.js';
+import {D20_ROOT_CORNERS,containsSphericalTriangle,faceAtDirection} from './engine/biome-map.js';
 import * as THREE from 'three';
-export const ROOT_EDGE_METERS=8192; // Current experiment, not a fixed engine limit.
-export const RADIUS=ROOT_EDGE_METERS*Math.sqrt(10+2*Math.sqrt(5))/4;
-export const MAX_TERRAIN_LOD=Math.round(Math.log2(ROOT_EDGE_METERS));
+export const ROOT_EDGE_METERS=WORLD_SETUP.rootEdgeMeters;
+export const RADIUS=WORLD_SCALE.radius;
+export const MAX_TERRAIN_LOD=WORLD_SCALE.maxTerrainLod;
 const MAX_LOD=MAX_TERRAIN_LOD;
 // Elevation in meters above sea level (RADIUS - 1). Palette is visual only.
 const TERRAIN_PALETTE=[
@@ -24,14 +26,7 @@ function terrainColor(elevation){
 }
 
 
-const base=new THREE.IcosahedronGeometry(1,0),pos=base.getAttribute('position');
-const roots=[];
-for(let i=0;i<pos.count;i+=3)roots.push([
- new THREE.Vector3().fromBufferAttribute(pos,i).normalize(),
- new THREE.Vector3().fromBufferAttribute(pos,i+1).normalize(),
- new THREE.Vector3().fromBufferAttribute(pos,i+2).normalize()
-]);
-base.dispose();
+const roots=D20_ROOT_CORNERS;
 const mid=(a,b)=>a.clone().add(b).normalize();
 function node(a,b,c,level,parent=null,address=null){
  const center=a.clone().add(b).add(c).normalize();
@@ -107,17 +102,7 @@ function boundarySeams(selected){
  }
  return seams;
 }
-function contains(n,p){
- const vs=[n.a,n.b,n.c];
- let sign=0;
- for(let i=0;i<3;i++){
-  const d=new THREE.Vector3().crossVectors(vs[i],vs[(i+1)%3]).dot(p);
-  if(Math.abs(d)<1e-10)continue;
-  if(sign&&d*sign<0)return false;
-  sign=d;
- }
- return true;
-}
+function contains(n,p){return containsSphericalTriangle(p,[n.a,n.b,n.c]);}
 // Render chunks ARE the persistent D20 hierarchy nodes. Geometry is cached
 // per node/detail/edge variant; Box3D and collision caches are separate.
 export class WorldTerrain {
@@ -194,9 +179,11 @@ export class WorldTerrain {
  // height provider as the physical terrain, without GPU morphs or fade ghosts.
  geometry(n,detail,seams=[[],[],[]]){
   const positions=[],colors=[];
+  const groundColor=BIOME_SETUP[Number(n.address.slice(1,3))].groundColor;
+  const biomeTint=groundColor===null?null:new THREE.Color(groundColor);
   const sample=v=>{
    const r=this.height.radius(v,RADIUS),p=v.clone().multiplyScalar(r);
-   const color=terrainColor(r-(RADIUS-1));
+   const color=biomeTint||terrainColor(r-(RADIUS+WORLD_SETUP.seaLevelOffsetMeters));
    return {p,color};
   };
   const addTriangle=(a,b,c)=>{
@@ -247,7 +234,7 @@ export class WorldTerrain {
  // highest LOD-2), using the same doubled distance curve as terrain selection.
  resourceStreamRadius(){
   const range=Math.log2(1+Math.max(1,this.zFar)/16);
-  return 32*(Math.pow(2,range*3/MAX_LOD)-1);
+  return Math.min(WORLD_SCALE.resourceStreamMeters,32*(Math.pow(2,range*3/MAX_LOD)-1));
  }
  select(anchor,position){
   const selected=[];
@@ -290,7 +277,9 @@ export class WorldTerrain {
     const point=corners[i];
     positions.push(...point);
     const length=Math.hypot(...point);
-    const color=terrainColor(length-(RADIUS-1));
+    const biomeId=faceAtDirection(new THREE.Vector3(...point).normalize());
+    const groundColor=BIOME_SETUP[biomeId].groundColor;
+    const color=groundColor===null?terrainColor(length-(RADIUS+WORLD_SETUP.seaLevelOffsetMeters)):new THREE.Color(groundColor);
     colors.push(color.r,color.g,color.b);
    }
   }

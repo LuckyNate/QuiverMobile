@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {containsSphericalTriangle} from './biome-map.js';
 
 // One D20 biome owns its resource cells, not terrain geometry or physics.
 // Streaming works in a fixed tangent-plane grid; cell identity never depends on LOD.
@@ -11,23 +12,17 @@ export class BiomeResourceZone {
   this.north=new THREE.Vector3().crossVectors(this.east,this.origin).normalize();
   this.loaded=new Map();
   this.reach=Math.max(...[root.a,root.b,root.c].map(v=>this.origin.angleTo(v)));
+  this.hasResources=Object.values(biome.resourceDensity).some(value=>value>0);
  }
  contains(direction){
-  const corners=[this.root.a,this.root.b,this.root.c];
-  let sign=0;
-  for(let i=0;i<3;i++){
-   const dot=new THREE.Vector3().crossVectors(corners[i],corners[(i+1)%3]).dot(direction);
-   if(Math.abs(dot)<1e-10)continue;
-   if(sign&&dot*sign<0)return false;
-   sign=dot;
-  }
-  return true;
+  return containsSphericalTriangle(direction,[this.root.a,this.root.b,this.root.c]);
  }
  activeNear(position,streamRadius){
   const angle=this.origin.angleTo(position.clone().normalize());
   return angle<=this.reach+(streamRadius+this.cellSize*2)/this.radius;
  }
  update(position,streamRadius){
+  if(!this.hasResources)return;
   // Far biome faces cannot contribute to the nearby four LOD bands.
   if(!this.activeNear(position,streamRadius)){
    for(const [key,ids] of this.loaded){
