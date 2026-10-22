@@ -22,6 +22,29 @@ The planet is based on an icosahedron with **20 root triangular faces, correspon
 
 The biomes also form a **graduated progression sequence**. The easiest biome is **Meadows**; the next is **Black Forest**. The remaining biome names, ordering, flora, enemies, and bosses are not yet specified.
 
+### Parameterized biome environments (design target)
+
+Every D20 root face is defined by a **biome parameter set**, interpreted by shared world systems rather than custom terrain or spawning engines per biome. The categories are:
+
+- **Terrain and surface:** ground color/material, elevation, terrain shape and noise, slope, roughness, and geological features. Terrain parameters must ultimately feed the single authoritative terrain/solidity definition so rendering and collision agree.
+- **Climate and weather:** local temperature, humidity, wind, cloud and fog characteristics, precipitation, and probabilities/ranges for changing weather. These define a biome's *climate*, not a frozen weather state.
+- **Water and environmental conditions:** biome-specific rivers, lakes, pools, and environmental hazards where the authoritative terrain and water models support them.
+- **Vegetation and resources:** allowed species/materials, appearance, density or population targets, tolerance, resource quality, and replenishment policy.
+- **Mobs (wildlife and enemies):** allowed mob types and per-type population/density, tolerance, territories, senses, attributes, and selected behavior definitions. Mob behavior is configurable independently of the shared spawning framework.
+- **Atmosphere and gameplay:** suitable local fog/sky/audio characteristics, environmental effects, and biome-specific gameplay/progression constraints.
+
+**World-wide settings** (planet size, gravity, world age, celestial system) are distinct from **biome settings** (local terrain, climate, ecology, mob roster). **Dynamic state** (actual weather, moving mobs, current populations) is simulated from these settings and persistent world state; it is not hardcoded as an unchanging biome property. Where appropriate, environmental parameters transition across boundaries rather than changing abruptly at an invisible face edge. The precise numeric ranges and blending rules are not yet established.
+
+**Current implementation versus target:** `web/src/engine/world-config.js` currently provides per-face names, ground colors, resource densities, and grass style; only Meadows (F06) is populated. Parameterized biome terrain shaping, weather, broader ecology, and mob spawning/AI are planned, **not implemented**.
+
+### Shared population, specialized mob behavior (design target)
+
+Resources, vegetation, wildlife, and enemies should use **one common biome-aware population/spawning contract**: deterministic face ownership and location candidates, per-type target/density and tolerance, streamed activation near players, stable identities, persistent harvest/death/state, unloading at distance, and replenishment at new valid sites hidden from all players. Reuse the rules and infrastructure; do not duplicate a separate location/spawn algorithm for enemy mobs.
+
+**Population and behavior are separate responsibilities.** A mob's biome parameters decide *what* can spawn, *how many*, and *where*. A mob-type definition and behavior controller decide what an active individual *does*: movement, sensory responses, Patrol / Alerted / Attacking state transitions, targeting, combat, and interactions with other mobs. Mob-specific logic must not be embedded in tree/resource population code. Player and mob perception share the earshot sphere and eyeshot cone described below; territories and hostile encounters obey the existing combat rules.
+
+The current `ResourceHandler` and resource-cell streaming supply part of the population foundation. No functional NPC/mob population or behavior runtime exists yet. Exact mob archetypes, numeric behavior parameters, spawn cadence, and future API/schema remain open for later design and approval.
+
 ### Two-resource dependency rule
 
 Each biome provides the local materials and infrastructure needed for much of its own progression, **except for two essential resources** that must be acquired through exploration outside that biome.
@@ -87,7 +110,7 @@ Cabin building is a lightweight, hands-on part of survival and settlement life. 
 
 The player creating a world **owns the save and must remain connected for the session to exist**. Each joining device simulates its own experience. The owner stores the authoritative persistent changes, while peers exchange shared world events; simultaneous harvest claims must resolve once through the owner's event log. Ownership is distinct from processing workload. The current local `SharedWorld` event/snapshot model and stable entity IDs are preparation for this architecture, **not an implemented networking transport**.
 
-Each of the 20 D20 face biomes defines per-type target population and tolerance; child chunks inherit their quotas (biome total divided among children, with deterministic remainder allocation). Chunks replenish depleted trees, enemies and resources at new valid locations hidden from all players. Only starter Meadows trees are currently instantiated; other population types remain planned. Standing trunks push a colliding player back slightly without causing a chop. Automatic axe harvesting is separate; felled 4-meter trunks topple, lose foliage, and fly toward the player who made the final hit, shrinking before the inventory award.
+The intended shared population policy applies to trees, gatherable resources, wildlife, and enemy mobs: each D20 face defines per-type target populations/densities and tolerances; chunk quotas and seeded candidates are derived consistently, and depleted populations replenish at new valid locations hidden from all players. The live resource handler currently supports seeded streaming for Meadows trees, grass, sticks, and stones; fully integrated replenishment and mob population/behavior remain planned. Standing trunks are intended to push a colliding player back slightly without causing a chop; automatic axe harvesting is separate. Felled 4-meter trunks topple, lose foliage, and fly toward the player who made the final hit, shrinking before the inventory award.
 
 ## Multiplayer, camps, and villages
 
