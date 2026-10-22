@@ -13,7 +13,7 @@ const THIGH=.40,SHIN=.40,UPPER_ARM=.34,FOREARM=.32;
 // Jim's editable proportions and gait. Keep tuning in one place;
 // the stepping controller and limb lengths are otherwise unchanged.
 export const JIM_GAIT={
- torso:{pelvisY:-.08,chestY:.34,chestWidth:.40,chestHeight:.22,chestDepth:.25},
+ torso:{lift:.04,pelvisY:-.08,chestY:.34,chestWidth:.40,chestHeight:.22,chestDepth:.25},
  walk:{hipYaw:.13,hipRoll:.055,hipShift:.036,shoulderYaw:.11,shoulderRoll:.038,bob:.012},
  run:{hipYaw:.19,hipRoll:.070,hipShift:.043,shoulderYaw:.15,shoulderRoll:.050,bob:.026,
   cadenceBase:1.8,cadenceSpeedGain:.08,cadenceMax:2.5,
@@ -212,6 +212,8 @@ export class JimBody {
   const shoulder=chest.clone().add(new THREE.Vector3(0,.09,-.01*climb));
   const neck=shoulder.clone().add(new THREE.Vector3(0,.15-.03*climb,.05*climb));
   const head=neck.clone().add(new THREE.Vector3(0,.19-.035*climb,.05*climb));
+  // Raise the entire articulated upper body together, including its IK roots.
+  for(const joint of [pelvis,belly,chest,shoulder,neck,head])joint.y+=t.lift;
   const hipRotation=new THREE.Quaternion().setFromEuler(new THREE.Euler(0,hipYaw,hipRoll,'YXZ'));
   const shoulderRotation=new THREE.Quaternion().setFromEuler(new THREE.Euler(0,shoulderYaw,shoulderRoll,'YXZ'));
 
