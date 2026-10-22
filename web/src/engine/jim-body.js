@@ -9,6 +9,17 @@ const fit=(t)=>t*t*(3-2*t);
 const mix=(a,b,t)=>a+(b-a)*t;
 // Limb lengths proportioned for the 1.8 m Box3D collision capsule.
 const THIGH=.40,SHIN=.40,UPPER_ARM=.34,FOREARM=.32;
+
+// Jim's editable proportions and gait. Keep tuning in one place;
+// the stepping controller and limb lengths are otherwise unchanged.
+export const JIM_GAIT={
+ torso:{pelvisY:-.08,chestY:.34,chestWidth:.40,chestHeight:.22,chestDepth:.25},
+ walk:{hipYaw:.13,hipRoll:.055,hipShift:.036,shoulderYaw:.11,shoulderRoll:.038,bob:.012},
+ run:{hipYaw:.19,hipRoll:.070,hipShift:.043,shoulderYaw:.15,shoulderRoll:.050,bob:.026,
+  cadenceBase:1.8,cadenceSpeedGain:.08,cadenceMax:2.5,
+  touchdownForward:.34,contactMaxSeconds:.075,footLift:.21},
+ poseResponse:12
+};
 // Limit the ankle so the visible sole stays inside the capsule's bottom.
 const FOOT_MIN_Y=-.86; // ankle + .025 visual offset - .045 sole = -.88.
 function material(color){return new THREE.MeshStandardMaterial({color,roughness:.86,flatShading:true});}
@@ -42,7 +53,7 @@ export class JimBody {
   root.add(this.visual);
   this.height=null;this.radius=0;
   this.prevPosition=null;this.stepNext=0;this.handNext=0;this.climb=0;
-  this.runPhase=0;this.runBlend=0;this.running=false;
+  this.runPhase=0;this.runBlend=0;this.running=false;this.gaitSwing=0;
   this.feet=[support(-1),support(1)];
   this.hands=[support(-1),support(1)];
   this.parts={
@@ -113,12 +124,13 @@ export class JimBody {
    this.runPhase=0;this.runBlend=0;
    for(const c of this.feet){c.from=c.world.clone();c.runStance=false;c.swing=false;}
   }
-  const frequency=THREE.MathUtils.clamp(1.8+(speed-3)*.08,1.8,2.5);
+  const frequency=THREE.MathUtils.clamp(JIM_GAIT.run.cadenceBase+(speed-3)*JIM_GAIT.run.cadenceSpeedGain,
+   JIM_GAIT.run.cadenceBase,JIM_GAIT.run.cadenceMax);
   this.runPhase=(this.runPhase+dt*frequency)%1;
   this.runBlend=Math.min(1,this.runBlend+dt*9);
-  const contactSeconds=Math.min(.075,.50/Math.max(speed,1));
+  const contactSeconds=Math.min(JIM_GAIT.run.contactMaxSeconds,.50/Math.max(speed,1));
   const contactFraction=contactSeconds*frequency;
-  const touchdownZ=.34;
+  const touchdownZ=JIM_GAIT.run.touchdownForward;
   const trailingZ=touchdownZ-speed*contactSeconds;
   for(let i=0;i<2;i++){
    const c=this.feet[i],side=i===0?-1:1;
@@ -136,7 +148,7 @@ export class JimBody {
     // Airborne foot follows the body; the next touchdown is sampled ahead.
     const surfaceLocal=this.toLocal(this.ground(this.fromLocal(local),.055));
     local.y=Math.max(FOOT_MIN_Y,surfaceLocal.y)+
-     Math.sin(Math.PI*t)*(.21+Math.min(.14,speed*.014));
+     Math.sin(Math.PI*t)*(JIM_GAIT.run.footLift+Math.min(.14,speed*.014));
     c.to=this.fromLocal(local);
    }
    c.world.copy(c.from).lerp(c.to,this.runBlend);
@@ -177,32 +189,60 @@ export class JimBody {
    THREE.MathUtils.clamp(.38-speed*.015,.19,.40));
   this.handNext=1-chosen;
  }
- renderBody(climb){
-  const p=this.parts;
-  const pelvis=new THREE.Vector3(0,-.14-.06*climb,.015*climb);
-  const belly=new THREE.Vector3(0,.19-.18*climb,.055*climb);
-  const chest=new THREE.Vector3(0,.43-.39*climb,.29*climb);
-  const neck=new THREE.Vector3(0,.63-.33*climb,.34*climb);
-  const head=new THREE.Vector3(0,.78-.35*climb,.38*climb);
-  segment(p.neck,chest,neck,.07);
-  for(const [mesh,a,b,scale] of [
-   [p.pelvis,pelvis,new THREE.Vector3(0,.06-.1*climb,.02*climb),[.36,.18,.25]],
-   [p.abdomen,belly,chest,[.32,.30,.23]],
-   [p.chest,chest,new THREE.Vector3(0,.55-.17*climb,.2*climb),[.48,.26,.29]]
-  ]){
-   segment(mesh,a,b,1); // orient the torso segment to its local spine axis.
-   mesh.scale.set(...scale);
-  }
+ // Anatomical torso response: pelvis turns with the stepping leg while
+ // the shoulders counter-rotate and the center of mass shifts to support.
+ renderBody(climb,dt){
+  const p=this.parts,t=JIM_GAIT.torso;
+  const active=this.feet.findIndex(foot=>foot.swing);
+  const walkSignal=active<0?0:(active===0?1:-1)*
+   Math.sin(Math.PI*Math.min(1,this.feet[active].time/this.feet[active].duration));
+  const signal=this.running?Math.sin(this.runPhase*Math.PI*2):walkSignal;
+  this.gaitSwing=mix(this.gaitSwing,signal,1-Math.exp(-JIM_GAIT.poseResponse*dt));
+  const tuning=this.running?JIM_GAIT.run:JIM_GAIT.walk;
+  const sway=this.gaitSwing*(1-.35*climb);
+  const hipYaw=sway*tuning.hipYaw,hipRoll=sway*tuning.hipRoll;
+  const shoulderYaw=-sway*tuning.shoulderYaw,shoulderRoll=-sway*tuning.shoulderRoll;
+  const shift=sway*tuning.hipShift;
+  const bob=this.running?(1-Math.cos(this.runPhase*Math.PI*4))*.5*tuning.bob:
+   Math.abs(sway)*tuning.bob;
+
+  const pelvis=new THREE.Vector3(shift,t.pelvisY-.06*climb+bob,.015*climb);
+  const belly=new THREE.Vector3(shift*.45,.16-.15*climb+bob*.5,.07*climb);
+  const chest=new THREE.Vector3(-shift*.25,t.chestY-.25*climb+bob*.35,.24*climb);
+  const shoulder=chest.clone().add(new THREE.Vector3(0,.09,-.01*climb));
+  const neck=shoulder.clone().add(new THREE.Vector3(0,.15-.03*climb,.05*climb));
+  const head=neck.clone().add(new THREE.Vector3(0,.19-.035*climb,.05*climb));
+  const hipRotation=new THREE.Quaternion().setFromEuler(new THREE.Euler(0,hipYaw,hipRoll,'YXZ'));
+  const shoulderRotation=new THREE.Quaternion().setFromEuler(new THREE.Euler(0,shoulderYaw,shoulderRoll,'YXZ'));
+
+  const halfPelvis=.09;
+  segment(p.pelvis,pelvis.clone().addScaledVector(UP,-halfPelvis),
+   pelvis.clone().addScaledVector(UP,halfPelvis),1);
+  p.pelvis.scale.set(.36,.18,.25);
+  p.pelvis.quaternion.multiply(hipRotation);
+
+  segment(p.abdomen,belly,chest,1);
+  p.abdomen.scale.set(.32,.28,.23);
+
+  // Exact chest center and dimensions are adjustable without moving its joints.
+  segment(p.chest,chest.clone().addScaledVector(UP,-.05),
+   chest.clone().addScaledVector(UP,.05),1);
+  p.chest.scale.set(t.chestWidth,t.chestHeight,t.chestDepth);
+  p.chest.quaternion.multiply(shoulderRotation);
+  segment(p.neck,shoulder,neck,.07);
   p.head.position.copy(head);
   p.nose.position.copy(head).add(new THREE.Vector3(0,-.018,.14));
-  return {pelvis,chest};
+  return {pelvis,shoulder,hipRotation,shoulderRotation};
  }
  renderLimbs(climb,torso){
   const p=this.parts;
   for(let i=0;i<2;i++){
    const side=i===0?-1:1;
-   const hip=torso.pelvis.clone().add(new THREE.Vector3(side*.16,-.03,0));
-   const shoulder=torso.chest.clone().add(new THREE.Vector3(side*.26,.01,0));
+   // Both limb roots inherit their parent's gait-driven rotation.
+   const hip=torso.pelvis.clone().add(
+    new THREE.Vector3(side*.16,-.03,0).applyQuaternion(torso.hipRotation));
+   const shoulder=torso.shoulder.clone().add(
+    new THREE.Vector3(side*.215,.01,0).applyQuaternion(torso.shoulderRotation));
    const groundFoot=this.toLocal(this.feet[i].world);
    // Terrain still controls uphill clearance, but not extra downhill leg reach.
    groundFoot.y=Math.max(FOOT_MIN_Y,groundFoot.y);
@@ -263,7 +303,7 @@ export class JimBody {
   }
   if(closeToGround&&this.climb>.2)this.gait(this.hands,handTargets,interval,up,speed,true,true);
   else for(let i=0;i<2;i++){this.hands[i].world=handTargets[i];this.hands[i].swing=false;}
-  const torso=this.renderBody(this.climb);
+  const torso=this.renderBody(this.climb,interval);
   this.renderLimbs(this.climb,torso);
  }
 }
