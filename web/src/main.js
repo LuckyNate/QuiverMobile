@@ -358,7 +358,7 @@ function frame(now){
  if(viewWidth!==resizeW||viewHeight!==resizeH){resizeW=viewWidth;resizeH=viewHeight;renderer.setSize(resizeW,resizeH,false);camera.aspect=resizeW/Math.max(1,resizeH);camera.updateProjectionMatrix();}
  if(simulationReady&&physics&&playerCollider){
   const start=performance.now();
-  physics.movePlayer(playerCollider,playerSystem.movement(dt),10,player.clone().normalize(),dt);
+  physics.movePlayer(playerCollider,playerSystem.movement(dt),6,player.clone().normalize(),dt);
   profile('move',start);
  }
  playerSystem.updateView(dt);
