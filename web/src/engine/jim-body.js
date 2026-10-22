@@ -42,6 +42,7 @@ export class JimBody {
   root.add(this.visual);
   this.height=null;this.radius=0;
   this.prevPosition=null;this.stepNext=0;this.handNext=0;this.climb=0;
+  this.runPhase=0;this.runBlend=0;this.running=false;
   this.feet=[support(-1),support(1)];
   this.hands=[support(-1),support(1)];
   this.parts={
@@ -102,6 +103,45 @@ export class JimBody {
   const middle=c.from.clone().lerp(c.to,.5);
   const rise=this.height?Math.max(0,this.ground(middle).length()-middle.length()):0;
   c.lift=.14+Math.min(.5,rise);
+ }
+ // Running uses a separate gait: brief world-locked contact and a longer
+ // airborne swing. At high speed the capsule moves farther per stride than
+ // the short legs can reach, so airborne feet follow the pelvis, not the ground.
+ runGait(dt,speed){
+  if(!this.running){
+   this.running=true;
+   this.runPhase=0;this.runBlend=0;
+   for(const c of this.feet){c.from=c.world.clone();c.runStance=false;c.swing=false;}
+  }
+  const frequency=THREE.MathUtils.clamp(1.8+(speed-3)*.08,1.8,2.5);
+  this.runPhase=(this.runPhase+dt*frequency)%1;
+  this.runBlend=Math.min(1,this.runBlend+dt*9);
+  const contactSeconds=Math.min(.075,.50/Math.max(speed,1));
+  const contactFraction=contactSeconds*frequency;
+  const touchdownZ=.34;
+  const trailingZ=touchdownZ-speed*contactSeconds;
+  for(let i=0;i<2;i++){
+   const c=this.feet[i],side=i===0?-1:1;
+   const phase=(this.runPhase+i*.5)%1;
+   if(phase<contactFraction){
+    if(!c.runStance){
+     c.to=this.ground(this.fromLocal(new THREE.Vector3(side*.16,FOOT_MIN_Y,touchdownZ)),.055);
+     c.runStance=true;
+    }
+   }else{
+    c.runStance=false;
+    const t=(phase-contactFraction)/(1-contactFraction);
+    const local=new THREE.Vector3(side*.16,FOOT_MIN_Y,
+     mix(trailingZ,touchdownZ,fit(t)));
+    // Airborne foot follows the body; the next touchdown is sampled ahead.
+    const surfaceLocal=this.toLocal(this.ground(this.fromLocal(local),.055));
+    local.y=Math.max(FOOT_MIN_Y,surfaceLocal.y)+
+     Math.sin(Math.PI*t)*(.21+Math.min(.14,speed*.014));
+    c.to=this.fromLocal(local);
+   }
+   c.world.copy(c.from).lerp(c.to,this.runBlend);
+   if(this.runBlend===1)c.from.copy(c.world);
+  }
  }
  gait(group,targets,dt,up,speed,enabled,isHand=false,position=null,heading=null){
   for(let i=0;i<2;i++){
@@ -212,9 +252,15 @@ export class JimBody {
   const footTargets=[-1,1].map(side=>this.desiredContact(side,false,travel));
   const handTargets=[-1,1].map(side=>this.desiredContact(side,true,travel));
   if(!closeToGround){
+   this.running=false;
    this.resetContacts();
    for(let i=0;i<2;i++)this.feet[i].world=this.fromLocal(new THREE.Vector3((i?1:-1)*.16,-.83,.02));
-  }else this.gait(this.feet,footTargets,interval,up,speed,true,false,position,heading);
+  }else if(speed>=3.2&&this.climb<.22){
+   this.runGait(interval,speed);
+  }else{
+   if(this.running){this.running=false;this.resetContacts();}
+   this.gait(this.feet,footTargets,interval,up,speed,true,false,position,heading);
+  }
   if(closeToGround&&this.climb>.2)this.gait(this.hands,handTargets,interval,up,speed,true,true);
   else for(let i=0;i<2;i++){this.hands[i].world=handTargets[i];this.hands[i].swing=false;}
   const torso=this.renderBody(this.climb);
