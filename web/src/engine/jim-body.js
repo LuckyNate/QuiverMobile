@@ -214,8 +214,8 @@ export class JimBody {
   const head=neck.clone().add(new THREE.Vector3(0,.19-.035*climb,.05*climb));
   // Raise the entire articulated upper body together, including its IK roots.
   for(const joint of [pelvis,belly,chest,shoulder,neck,head])joint.y+=t.lift;
-  // Raise the upper torso and its attached neck/head as one unit, leaving hips fixed.
-  for(const joint of [chest,shoulder,neck,head])joint.y+=t.upperLift;
+  // Raise the upper torso, shoulders and neck only; head and nose stay put.
+  for(const joint of [chest,shoulder,neck])joint.y+=t.upperLift;
   head.y-=t.headDrop; // Nose follows the head; neck and torso remain unchanged.
   const hipRotation=new THREE.Quaternion().setFromEuler(new THREE.Euler(0,hipYaw,hipRoll,'YXZ'));
   const shoulderRotation=new THREE.Quaternion().setFromEuler(new THREE.Euler(0,shoulderYaw,shoulderRoll,'YXZ'));
