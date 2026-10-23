@@ -257,13 +257,12 @@ export class PhysicsWorld {
   const forwardGround=heights[i0]*(1-(index-Math.floor(index)))+
    heights[(i0+1)%16]*(index-Math.floor(index));
   const slope=forwardGround-currentGround;
-  const climbing=grounded&&slope>1&&slope<=2.5;
-  const walkable=slope>=-1&&slope<=1;
-  // Steep ground switches to a slower uphill scramble instead of freezing.
-  // Box3D still resolves collisions; unsupported or sheer surfaces remain blocked.
-  const horizontal=grounded&&!walkable&&!climbing?0:speed*magnitude*(climbing?.35:1);
-  // Follow supported slopes. Gravity governs unsupported drops.
-  const vertical=grounded&&(walkable||climbing)?slope*horizontal+(climbing?.18:0):radial;
+  const walkable=Math.abs(slope)<=1; // A one-meter step, maximum 45-degree grade.
+  const horizontal=grounded&&!walkable?0:speed*magnitude;
+  // On supported ground, track the ring's slope in either direction.
+  // An unsupported drop remains airborne under gravity, never snapped down.
+  const follow=grounded&&walkable?slope*horizontal:radial;
+  const vertical=grounded&&walkable?follow:radial;
   body.setLinearVelocity({
    x:dir.x*horizontal+up.x*vertical+(knock?.x||0)*kick,
    y:dir.y*horizontal+up.y*vertical+(knock?.y||0)*kick,

@@ -20,10 +20,7 @@ export class PlayerSystem {
  }
  setDestination(position){this.walkDestination=position.clone();}
  cancelDestination(){this.walkDestination=null;}
- setCameraCollision(height,radius){
-  this.cameraCollision=new CameraCollision(height,radius);
-  this.visual.setTerrain(height,radius);
- }
+ setCameraCollision(height,radius){this.cameraCollision=new CameraCollision(height,radius);}
  basis(){
   const up=this.position.clone().normalize();
   if(!this.frameUp){
