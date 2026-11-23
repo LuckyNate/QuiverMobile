@@ -144,6 +144,7 @@ export class PhysicsWorld {
    z:dir.z*horizontal+up.z*vertical+(knock?.z||0)*kick
   });
   body.setAwake(true);
+  return horizontal;
  }
  addDynamicBox(position,half=.3,solidity,octree,id) {
   const object=new DynamicSolidBody(this,null,solidity,octree,id,'box',{half});
