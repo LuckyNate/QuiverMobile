@@ -14,17 +14,28 @@ const THIGH=.40,SHIN=.40,UPPER_ARM=.34,FOREARM=.32;
 // the stepping controller and limb lengths are otherwise unchanged.
 export const JIM_GAIT={
  torso:{lift:.04,upperLift:.035,headDrop:.035,pelvisY:-.08,chestY:.34,chestWidth:.40,chestHeight:.22,chestDepth:.25},
- walk:{hipYaw:.13,hipRoll:.055,hipShift:.036,shoulderYaw:.11,shoulderRoll:.038,bob:.012},
+ walk:{hipYaw:.13,hipRoll:.055,hipShift:.036,shoulderYaw:.11,shoulderRoll:.038,bob:.012,
+  // How far a walk step reaches, and how far behind the body it is allowed to
+  // trail before the next step starts. Both scale with speed, so a faster walk
+  // takes longer steps instead of the same short ones more often.
+  reachPerSpeed:.22,minReach:.12,maxReach:.55,
+  triggerFraction:.45,minTrigger:.05,maxTrigger:.28},
  run:{hipYaw:.19,hipRoll:.070,hipShift:.043,shoulderYaw:.15,shoulderRoll:.050,bob:.026,
-  cadenceBase:1.8,cadenceSpeedGain:.08,cadenceMax:2.5,
-  touchdownForward:.45,contactMaxSeconds:.075,footLift:.21},
+  // Cadence is the primary run quantity: speed raises it, in cycles per second.
+  // Step length then follows from speed/cadence, so a faster body takes longer
+  // steps before it takes quicker ones.
+  cadenceBase:1.2,cadenceSpeedGain:.05,cadenceMax:1.7,
+  // Each contact covers this many metres of ground, from .45 m ahead of the
+  // hips to the same distance behind them. The rest of the step is flight.
+  contactMetres:.90,touchdownForward:.45,
+  flightLiftBase:.05,flightLiftGain:.006,footLift:.21},
  // Step length grows with travel speed between these bounds; cadence follows
  // from the distance a step actually covers, so the feet never take fixed
  // short steps under a fast body. Everything here is safe to tune.
  step:{
   metresPerSpeed:.34,minMetres:.30,maxMetres:.80,
-  runMetresPerSpeed:.30,runMinMetres:.55,runMaxMetres:1.30,
-  minSeconds:.16,maxSeconds:.44,minCycles:1.4,maxCycles:2.8
+  runMinMetres:.55,runMaxMetres:2.20,
+  minSeconds:.16,maxSeconds:.44,minCycles:1.0,maxCycles:2.8
  },
  poseResponse:12
 };
@@ -63,6 +74,7 @@ export class JimBody {
   this.prevPosition=null;this.stepNext=0;this.handNext=0;this.climb=0;
   this.rest=0;this.restTarget=0;
   this.runPhase=0;this.runBlend=0;this.running=false;this.gaitSwing=0;
+  this.flight=0;this.flightArc=0;
   this.feet=[support(-1),support(1)];
   this.hands=[support(-1),support(1)];
   this.parts={
@@ -135,14 +147,17 @@ export class JimBody {
    this.runPhase=0;this.runBlend=0;
    for(const c of this.feet){c.from=c.world.clone();c.runStance=false;c.swing=false;}
   }
-  // Cadence follows from stride length: one cycle covers two steps.
+  // Cadence is set by speed and stride length follows from it, so the feet
+  // cover the ground the body actually travels instead of churning in place.
   const stepLength=this.runStepLength(speed);
   const frequency=THREE.MathUtils.clamp(speed/(2*stepLength),
    JIM_GAIT.step.minCycles,JIM_GAIT.step.maxCycles);
   this.runPhase=(this.runPhase+dt*frequency)%1;
   this.runBlend=Math.min(1,this.runBlend+dt*9);
-  const contactSeconds=Math.min(JIM_GAIT.run.contactMaxSeconds,.50/Math.max(speed,1));
-  const contactFraction=contactSeconds*frequency;
+  // Contact lasts for a fixed distance, so the planted foot passes from ahead
+  // of the hips to behind them before it lifts. What remains is flight.
+  const contactSeconds=THREE.MathUtils.clamp(JIM_GAIT.run.contactMetres/speed,.10,.24);
+  const contactFraction=Math.min(.5,contactSeconds*frequency);
   const touchdownZ=Math.min(JIM_GAIT.run.touchdownForward,stepLength*.45);
   const trailingZ=touchdownZ-speed*contactSeconds;
   for(let i=0;i<2;i++){
@@ -167,6 +182,11 @@ export class JimBody {
    c.world.copy(c.from).lerp(c.to,this.runBlend);
    if(this.runBlend===1)c.from.copy(c.world);
   }
+  // Airborne share drives the pelvis arc, so the body leaves the ground between
+  // contacts instead of sliding along at one fixed height.
+  const airborne=!this.feet[0].runStance&&!this.feet[1].runStance;
+  this.flight=mix(this.flight,airborne?1:0,1-Math.exp(-16*dt));
+  this.flightArc=THREE.MathUtils.clamp(JIM_GAIT.run.flightLiftBase+speed*JIM_GAIT.run.flightLiftGain,.03,.11);
  }
  // Gait distances are driven by travel speed instead of a fixed step: faster
  // travel takes longer steps, and cadence follows from what a step covers.
@@ -175,8 +195,9 @@ export class JimBody {
   return THREE.MathUtils.clamp(speed*s.metresPerSpeed,s.minMetres,s.maxMetres);
  }
  runStepLength(speed){
-  const s=JIM_GAIT.step;
-  return THREE.MathUtils.clamp(speed*s.runMetresPerSpeed,s.runMinMetres,s.runMaxMetres);
+  const s=JIM_GAIT.step,r=JIM_GAIT.run;
+  const cadence=THREE.MathUtils.clamp(r.cadenceBase+speed*r.cadenceSpeedGain,1,r.cadenceMax);
+  return THREE.MathUtils.clamp(speed/(2*cadence),s.runMinMetres,s.runMaxMetres);
  }
  stepSeconds(speed,length){
   const s=JIM_GAIT.step;
@@ -199,11 +220,16 @@ export class JimBody {
    const chosen=behind[next]>=behind[1-next]-.12?next:1-next;
    // Step length grows with speed; the trigger scales with it so a fast walk
    // takes long steps instead of many short ones.
-   const stepLength=this.stepLength(speed);
-   const trigger=THREE.MathUtils.clamp(stepLength*.22,.05,.16);
+   // The step must reach as far as the body travels while the foot is in the
+   // air, otherwise a fast walk can only answer with cadence.
+   const reach=THREE.MathUtils.clamp(speed*JIM_GAIT.walk.reachPerSpeed,
+    JIM_GAIT.walk.minReach,JIM_GAIT.walk.maxReach);
+   const trigger=THREE.MathUtils.clamp(reach*JIM_GAIT.walk.triggerFraction,
+    JIM_GAIT.walk.minTrigger,JIM_GAIT.walk.maxTrigger);
    if(behind[chosen]<trigger)return;
    // Land one step ahead into the travel direction; stance feet stay planted.
-   const ahead=Math.min(.34,stepLength*.6+.03);
+   const ahead=reach;
+   const stepLength=this.stepLength(speed);
    const landing=this.ground(targets[chosen].clone().addScaledVector(heading,ahead),.055);
    // A step takes as long as covering its own length at this speed.
    const duration=this.stepSeconds(speed,stepLength);
@@ -234,7 +260,7 @@ export class JimBody {
   const hipYaw=sway*tuning.hipYaw,hipRoll=sway*tuning.hipRoll;
   const shoulderYaw=-sway*tuning.shoulderYaw,shoulderRoll=-sway*tuning.shoulderRoll;
   const shift=sway*tuning.hipShift;
-  const bob=this.running?(1-Math.cos(this.runPhase*Math.PI*4))*.5*tuning.bob:
+  const bob=this.running?tuning.bob+this.flight*this.flightArc:
    Math.abs(sway)*tuning.bob;
 
   const rest=this.rest;
@@ -338,10 +364,13 @@ export class JimBody {
    this.running=false;
    this.resetContacts();
    for(let i=0;i<2;i++)this.feet[i].world=this.fromLocal(new THREE.Vector3((i?1:-1)*.16,-.83,.02));
-  }else if(speed>=3.2&&this.climb<.22){
+  }else if(speed>=3.2){
+   // Slopes keep the run gait: a walk cannot carry this speed, so uphill only
+   // changes posture and stride, never the gait itself.
    this.runGait(interval,speed);
   }else{
    if(this.running){this.running=false;this.resetContacts();}
+   this.flight=mix(this.flight,0,1-Math.exp(-10*interval));
    this.gait(this.feet,footTargets,interval,up,speed,true,false,position,heading);
   }
   if(closeToGround&&this.climb>.2)this.gait(this.hands,handTargets,interval,up,speed,true,true);
