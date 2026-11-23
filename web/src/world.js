@@ -7,6 +7,10 @@ export const ROOT_EDGE_METERS=WORLD_SETUP.rootEdgeMeters;
 export const RADIUS=WORLD_SCALE.radius;
 export const MAX_TERRAIN_LOD=WORLD_SCALE.maxTerrainLod;
 const MAX_LOD=MAX_TERRAIN_LOD;
+// Screen-space dither: an interleaved gradient noise, stable per pixel and free
+// of visible tiling. Used to stipple the band where two ground LODs meet.
+const GROUND_DITHER='float groundDither(vec2 p){return fract(52.9829189*fract(dot(p,vec2(0.06711056,0.00583715))));}';
+const GROUND_DITHER_BAND=.75;
 // Horizontal distance from the local-up axis, excluding the far hemisphere.
 function columnDistance(up,node){
  const dot=THREE.MathUtils.clamp(up.dot(node.center),-1,1);
@@ -120,24 +124,31 @@ export class WorldTerrain {
   this.collisionGroundCenter={value:startPosition.clone()};
   this.collisionGroundRadius={value:7};
   // One cutoff, two meshes. The D20 terrain is dropped inside the radius and
-  // the near collision-patch mesh is dropped outside it plus a small overlap,
-  // so exactly one flat-shaded surface covers any point and the two meet
-  // without a hairline crack. The patch mesh is built from a +/-10 m box query
-  // whose corners reach ~17 m, so without the outer cut it keeps drawing on top
-  // of the terrain and the near field shows two overlapping grids.
-  const discardGround=(material,test)=>material.onBeforeCompile=shader=>{
-   shader.uniforms.collisionGroundCenter=this.collisionGroundCenter;
-   shader.uniforms.collisionGroundRadius=this.collisionGroundRadius;
-   shader.vertexShader=shader.vertexShader.replace('#include <common>',
-    '#include <common>\nvarying vec3 vGroundWorldPosition;');
-   shader.vertexShader=shader.vertexShader.replace('#include <worldpos_vertex>',
-    '#include <worldpos_vertex>\nvGroundWorldPosition=(modelMatrix*vec4(transformed,1.0)).xyz;');
-   shader.fragmentShader=shader.fragmentShader.replace('#include <common>',
-    '#include <common>\nvarying vec3 vGroundWorldPosition;\nuniform vec3 collisionGroundCenter;\nuniform float collisionGroundRadius;');
-   shader.fragmentShader=shader.fragmentShader.replace('#include <clipping_planes_fragment>',
-    '#include <clipping_planes_fragment>\nif('+test+')discard;');
+  // the near collision-patch mesh is dropped outside it, with a screen-space
+  // dithered band between them so the handover is a stipple instead of a hard
+  // ring of edges. Both surfaces evaluate the same dither at the same pixel, so
+  // exactly one of them covers any point and the two always meet cleanly. The
+  // patch mesh is built from a +/-10 m box query whose corners reach ~17 m, so
+  // without the outer cut it keeps drawing on top of the terrain and the near
+  // field shows two overlapping grids.
+  const discardGround=(material,test)=>{
+   // The discards are the only difference between the two shaders; without this
+   // key three would reuse the first compiled program for both materials.
+   material.customProgramCacheKey=()=>test;
+   material.onBeforeCompile=shader=>{
+    shader.uniforms.collisionGroundCenter=this.collisionGroundCenter;
+    shader.uniforms.collisionGroundRadius=this.collisionGroundRadius;
+    shader.vertexShader=shader.vertexShader.replace('#include <common>',
+     '#include <common>\nvarying vec3 vGroundWorldPosition;');
+    shader.vertexShader=shader.vertexShader.replace('#include <worldpos_vertex>',
+     '#include <worldpos_vertex>\nvGroundWorldPosition=(modelMatrix*vec4(transformed,1.0)).xyz;');
+    shader.fragmentShader=shader.fragmentShader.replace('#include <common>',
+     '#include <common>\nvarying vec3 vGroundWorldPosition;\nuniform vec3 collisionGroundCenter;\nuniform float collisionGroundRadius;\n'+GROUND_DITHER);
+    shader.fragmentShader=shader.fragmentShader.replace('#include <clipping_planes_fragment>',
+     '#include <clipping_planes_fragment>\nif('+test+')discard;');
+   };
   };
-  discardGround(this.material,'distance(vGroundWorldPosition,collisionGroundCenter)<collisionGroundRadius');
+  discardGround(this.material,'distance(vGroundWorldPosition,collisionGroundCenter)<collisionGroundRadius+'+GROUND_DITHER_BAND+'*groundDither(gl_FragCoord.xy)');
   this.scene=scene;
   // Nearby visible geometry comes directly from the same surface patches as
   // the Box3D hulls. Both near and distant representations are owned here.
@@ -145,7 +156,7 @@ export class WorldTerrain {
   this.nearSurfaceSignature='';
   this.nearMaterial=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,side:THREE.DoubleSide,roughness:1,
    polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1});
-  discardGround(this.nearMaterial,'distance(vGroundWorldPosition,collisionGroundCenter)>collisionGroundRadius+.25');
+  discardGround(this.nearMaterial,'distance(vGroundWorldPosition,collisionGroundCenter)>collisionGroundRadius+'+GROUND_DITHER_BAND+'*groundDither(gl_FragCoord.xy)');
   this.nearSurfaceMesh=new THREE.Mesh(new THREE.BufferGeometry(),this.nearMaterial);
   this.nearSurfaceMesh.frustumCulled=false;
   this.scene.add(this.nearSurfaceMesh);
