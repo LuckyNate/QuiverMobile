@@ -133,11 +133,16 @@ export class PhysicsWorld {
   const slope=forwardGround-currentGround;
   const climbing=grounded&&slope>1&&slope<=2.5;
   const walkable=slope>=-1&&slope<=1;
-  // Steep ground switches to a slower uphill scramble instead of freezing.
-  // Box3D still resolves collisions; unsupported or sheer surfaces remain blocked.
-  const horizontal=grounded&&!walkable&&!climbing?0:speed*magnitude*(climbing?.35:1);
-  // Follow supported slopes. Gravity governs unsupported drops.
-  const vertical=grounded&&(walkable||climbing)?slope*horizontal+(climbing?.18:0):radial;
+  // Ground falling away ahead is not an obstacle. Only a sheer climb blocks, so
+  // a descent always keeps its horizontal control instead of freezing.
+  const sheer=grounded&&slope>2.5;
+  const descending=slope<-1;
+  const horizontal=sheer?0:speed*magnitude*(climbing?.35:1);
+  // Follow supported slopes, descents included, with the drop per metre capped
+  // so a step down never becomes a teleport. Past that it is a ledge: gravity
+  // takes the fall and horizontal control stays with the player.
+  const follow=grounded&&(walkable||climbing||(descending&&slope>-3));
+  const vertical=follow?(climbing?slope*horizontal+.18:Math.max(-2,slope)*horizontal):radial;
   body.setLinearVelocity({
    x:dir.x*horizontal+up.x*vertical+(knock?.x||0)*kick,
    y:dir.y*horizontal+up.y*vertical+(knock?.y||0)*kick,
