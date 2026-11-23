@@ -16,6 +16,12 @@ const BAND_METERS=WORLD_SETUP.terrainLodBandMeters;
 // straight line seen from both meshes: no crack, and the coarse side stays a
 // plain triangle instead of being retriangulated around its centroid.
 const MORPH_FRACTION=.5;
+// 1 bends a chunk toward its coarser parent as it nears the next band, hiding
+// the swap; 0 swaps hard instead. Bending cannot apply to seam vertices (both
+// sides must still meet), so a bending chunk folds into a ridge along every
+// seam it shares: visible as creases fanning out from the player. Set to 1 to
+// trade hard pops for smooth swaps.
+const MORPH_STRENGTH=0;
 function columnDistance(up,node){
  const dot=THREE.MathUtils.clamp(up.dot(node.center),-1,1);
  return dot<=0?Math.PI*RADIUS:Math.max(0,RADIUS*Math.sqrt(1-dot*dot)-node.reach);
@@ -240,7 +246,7 @@ transformed=mix(position,aParent,cdlodMorph);`);
    }
   };
   const hasParent=detail-1>n.level;
-  const range=hasParent?morphRange(detail):{start:1e6,end:1e6+1};
+  const range=hasParent&&MORPH_STRENGTH>0?morphRange(detail):{start:1e6,end:1e6+1};
   const push=(dir,p,parent,color)=>{
    // Only a split vertex pulled onto the coarser neighbour's boundary moves;
    // every other vertex is the plain normalized midpoint.
