@@ -61,6 +61,19 @@ function children(n){
  return n.children;
 }
 function contains(n,p){return containsSphericalTriangle(p,[n.a,n.b,n.c]);}
+// Canonical great-circle key, so edges shared across D20 faces compare equal.
+function edgePlane(a,b){
+ const normal=new THREE.Vector3().crossVectors(a,b).normalize();
+ if(normal.x<-1e-10||(Math.abs(normal.x)<=1e-10&&(normal.y<-1e-10||(Math.abs(normal.y)<=1e-10&&normal.z<0))))normal.negate();
+ return {normal,key:[normal.x,normal.y,normal.z].map(x=>Math.round(x*1e8)).join(',')};
+}
+function onArc(p,a,b){
+ const span=a.angleTo(b),u=a.angleTo(p),v=p.angleTo(b);
+ return u<=span+1e-8&&v<=span+1e-8&&Math.abs(u+v-span)<1e-8;
+}
+function overlaps(x,y){
+ return onArc(y.a,x.a,x.b)||onArc(y.b,x.a,x.b)||onArc(x.a,y.a,y.b)||onArc(x.b,y.a,y.b);
+}
 // Terrain geometry is the only ground surface: no near-field overlay mesh and
 // no dithered cross-fade. LOD is one continuous scheme (CDLOD): the selector
 // picks a detail per 20 m band, and every chunk morphs onto its parent's exact
@@ -77,15 +90,15 @@ export class WorldTerrain {
    shader.vertexShader=shader.vertexShader
     .replace('#include <common>',`#include <common>
 attribute vec3 aParent;
-attribute vec3 aCenter;
-attribute vec3 aBand;
+attribute vec2 aBand;
 const float CDLOD_RADIUS=${radiusLiteral};`)
-    // Morph by the chunk's horizontal band distance, measured exactly as the
-    // CPU selector measures it, so the swap happens at full morph.
+    // Per vertex, so the far side of a chunk is already fully morphed where it
+    // meets a coarser neighbour (that is the seam that opened a hole), while
+    // the near ground keeps its full detail.
     .replace('#include <begin_vertex>',`#include <begin_vertex>
 vec3 cdlodUp=normalize(cameraPosition);
-float cdlodDot=clamp(dot(cdlodUp,aCenter),-1.0,1.0);
-float cdlodDistance=cdlodDot<=0.0?3.14159265*CDLOD_RADIUS:max(0.0,CDLOD_RADIUS*sqrt(max(0.0,1.0-cdlodDot*cdlodDot))-aBand.z);
+float cdlodDot=clamp(dot(cdlodUp,normalize(position)),-1.0,1.0);
+float cdlodDistance=CDLOD_RADIUS*sqrt(max(0.0,1.0-cdlodDot*cdlodDot));
 float cdlodMorph=clamp((cdlodDistance-aBand.x)/max(aBand.y-aBand.x,0.001),0.0,1.0);
 transformed=mix(position,aParent,cdlodMorph);`);
   };
@@ -138,9 +151,8 @@ transformed=mix(position,aParent,cdlodMorph);`);
  // fine chunk has converged on the parent's chords, which are exactly the
  // coarser chunk's vertices.
  geometry(n,detail){
-  const positions=[],colors=[],parents=[],centers=[],bands=[];
-  const groundColor=BIOME_SETUP[Number(n.address.slice(1,3))].groundColor;
-  const biomeTint=groundColor===null?null:new THREE.Color(groundColor);
+  const positions=[],colors=[],parents=[],bands=[];
+  const groundColor=BIOME_SETUP[Number(n.address.slice(1,3))].groundColor;  const biomeTint=groundColor===null?null:new THREE.Color(groundColor);
   const radiusAt=v=>this.height.radius(v,RADIUS);
   // Parent targets are positions, not radii: the parent mesh is made of flat
   // chords between its vertices, so the morph has to land on those chords bit
@@ -152,8 +164,7 @@ transformed=mix(position,aParent,cdlodMorph);`);
    positions.push(p.x,p.y,p.z);
    parents.push(parent.x,parent.y,parent.z);
    colors.push(color.r,color.g,color.b);
-   centers.push(n.center.x,n.center.y,n.center.z);
-   bands.push(range.start,range.end,n.reach);
+   bands.push(range.start,range.end);
   };
   const addTriangle=(a,b,c,ca,cb,cc)=>{
    const A=a.clone().multiplyScalar(radiusAt(a)),B=b.clone().multiplyScalar(radiusAt(b)),C=c.clone().multiplyScalar(radiusAt(c));
@@ -189,11 +200,43 @@ transformed=mix(position,aParent,cdlodMorph);`);
    subdivide(ab,bc,ca,childLevel,kids?kids[3]:null);
   };
   subdivide(n.a,n.b,n.c,n.level,null);
+  // Skirts. A coarse chunk can sit beside a fine one at a place where the fine
+  // side is not morphed yet, which leaves a chord-sized sliver between them.
+  // Every chunk hangs a short curtain from its boundary so no sliver can be
+  // seen through, whatever the neighbour's level. The curtain morphs with the
+  // surface it hangs from, so it never detaches.
+  const cornerAt=side=>[n.a,n.b,n.c][side];
+  const edgePoints=(a,b,levels)=>{let pts=[a,b];for(let i=0;i<levels;i++){const out=[pts[0]];for(let k=1;k<pts.length;k++)out.push(mid(pts[k-1],pts[k]),pts[k]);pts=out;}return pts;};
+  const skirtDepth=2;
+  const rings=Math.max(0,detail-n.level);
+  for(let side=0;side<3;side++){
+   const fine=edgePoints(cornerAt(side),cornerAt((side+1)%3),rings);
+   const coarsePts=hasParent?edgePoints(cornerAt(side),cornerAt((side+1)%3),rings-1):null;
+   const coarsePos=coarsePts?coarsePts.map(pointAt):null;
+   // Where this ring vertex sits on the parent surface (its chord).
+   const parentOf=(i,own)=>{
+    if(!coarsePos)return own;
+    const half=i/2,low=Math.floor(half),high=Math.min(coarsePos.length-1,low+1),f=half-low;
+    return coarsePos[low].clone().lerp(coarsePos[high],f);
+   };
+   const drop=(p,offset)=>p.clone().multiplyScalar(Math.max(0,1-offset/Math.max(p.length(),1e-6)));
+   for(let i=0;i<fine.length-1;i++){
+    const t0=fine[i],t1=fine[i+1];
+    const top0=t0.clone().multiplyScalar(radiusAt(t0)),top1=t1.clone().multiplyScalar(radiusAt(t1));
+    const par0=parentOf(i,top0),par1=parentOf(i+1,top1);
+    const color=biomeTint||terrainColor(top0.length()-(RADIUS+WORLD_SETUP.seaLevelOffsetMeters));
+    const bot0=drop(top0,skirtDepth),bot1=drop(top1,skirtDepth);
+    const botPar0=drop(par0,skirtDepth),botPar1=drop(par1,skirtDepth);
+    const quad=[[top0,par0],[top1,par1],[bot1,botPar1],[bot0,botPar0]];
+    const outward=new THREE.Vector3().subVectors(top1,top0).cross(new THREE.Vector3().subVectors(bot0,top0)).dot(top0)>0;
+    const ordered=outward?quad:[quad[0],quad[3],quad[2],quad[1]];
+    for(const [v,parent] of [ordered[0],ordered[1],ordered[2],ordered[0],ordered[2],ordered[3]])push(v,parent,color);
+   }
+  }
   const g=new THREE.BufferGeometry();
   g.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
   g.setAttribute('aParent',new THREE.Float32BufferAttribute(parents,3));
-  g.setAttribute('aCenter',new THREE.Float32BufferAttribute(centers,3));
-  g.setAttribute('aBand',new THREE.Float32BufferAttribute(bands,3));
+  g.setAttribute('aBand',new THREE.Float32BufferAttribute(bands,2));
   g.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
   g.computeVertexNormals();
   return g;
@@ -219,6 +262,33 @@ transformed=mix(position,aParent,cdlodMorph);`);
    }
   };
   for(const root of this.roots)visit(root);
+  // Restricted quadtree: neighbouring chunks may differ by at most one level,
+  // so a big coarse patch can never butt straight against one two levels
+  // finer. Where they would, the coarser chunk is refined by a level, which is
+  // cheaper than giving up detail near the player.
+  for(let pass=0;pass<8;pass++){
+   const groups=new Map();
+   for(const entry of selected){
+    const n=entry.node,vs=[n.a,n.b,n.c];
+    for(let i=0;i<3;i++){
+     const plane=edgePlane(vs[i],vs[(i+1)%3]),key=plane.key;
+     if(!groups.has(key))groups.set(key,[]);
+     groups.get(key).push({a:vs[i],b:vs[(i+1)%3],entry,side:Math.sign(plane.normal.dot(vs[(i+2)%3]))});
+    }
+   }
+   const pairs=[];
+   for(const list of groups.values())for(let i=0;i<list.length;i++)for(let k=i+1;k<list.length;k++){
+    const x=list[i],y=list[k];
+    if(x.side===y.side||!overlaps(x,y))continue;
+    pairs.push([x.entry,y.entry]);
+   }
+   let changed=false;
+   for(const [x,y] of pairs){
+    if(x.detail-y.detail>1){y.detail=Math.min(MAX_LOD,x.detail-1);changed=true;}
+    else if(y.detail-x.detail>1){x.detail=Math.min(MAX_LOD,y.detail-1);changed=true;}
+   }
+   if(!changed)break;
+  }
   return selected;
  }
  // Physics owns the collision surface; terrain rendering samples the same
