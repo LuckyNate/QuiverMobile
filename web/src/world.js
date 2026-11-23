@@ -8,8 +8,8 @@ export const RADIUS=WORLD_SCALE.radius;
 export const MAX_TERRAIN_LOD=WORLD_SCALE.maxTerrainLod;
 const MAX_LOD=MAX_TERRAIN_LOD;
 // Screen-space dither: an interleaved gradient noise, stable per pixel and free
-// of visible tiling. Used to dissolve new LOD in over old and to blend the
-// near-field handover.
+// of visible tiling. Used to dissolve new LOD in over the old generation and to
+// blend the near-field handover (large triangles to/from very small).
 const GROUND_DITHER='float groundDither(vec2 p){return fract(52.9829189*fract(dot(p,vec2(0.06711056,0.00583715))));}';
 const LOD_FADE_MS=600;
 // Near-field handover: the collision-patch mesh (the better surface) is stippled
@@ -85,22 +85,41 @@ function boundarySeams(selected){
   const n=entry.node,vs=[n.a,n.b,n.c],edges=[];
   for(let i=0;i<3;i++){
    const a=vs[i],b=vs[(i+1)%3],opposite=vs[(i+2)%3],plane=edgePlane(a,b);
-   const edge={a,b,detail:entry.level,node:n,side:Math.sign(plane.normal.dot(opposite)),points:null};
+   const edge={a,b,detail:entry.level,node:n,side:Math.sign(plane.normal.dot(opposite)),points:null,morph:false};
    if(!groups.has(plane.key))groups.set(plane.key,[]);
    groups.get(plane.key).push(edge);edges.push({edge,key:plane.key});
   }
   edgesByNode.set(n,edges);
  }
+ // Geomorphic LOD. Where a chunk's neighbour is exactly one level coarser over
+ // the same arc, the finer chunk morphs its own heights onto that neighbour's
+ // surface (geometry), so no second mesh is drawn and no vertices are stitched
+ // into the coarse side. That is how CDLOD closes an LOD seam.
+ const sameArc=(x,y)=>(x.a.distanceTo(y.a)<1e-9&&x.b.distanceTo(y.b)<1e-9)||
+  (x.a.distanceTo(y.b)<1e-9&&x.b.distanceTo(y.a)<1e-9);
+ const overlaps=(x,y)=>onArc(y.a,x.a,x.b)||onArc(y.b,x.a,x.b)||
+  onArc(x.a,y.a,y.b)||onArc(x.b,y.a,y.b);
+ for(const [,list] of groups){
+  for(const edge of list){
+   for(const other of list){
+    if(other===edge||other.side===edge.side||!overlaps(edge,other))continue;
+    if(edge.detail-other.detail!==1||!sameArc(edge,other))continue;
+    // Needs at least one interior level to morph across.
+    edge.morph=edge.detail>edge.node.level;
+   }
+  }
+ }
  const seams=new Map();
  for(const entry of selected){
-  const edges=edgesByNode.get(entry.node),result=[],signature=[];
+  const edges=edgesByNode.get(entry.node),result=[],signature=[],morph=[];
   for(const {edge,key} of edges){
    const points=[];
    for(const other of groups.get(key)){
     if(other===edge||other.side===edge.side||other.detail<=edge.detail)continue;
     // Avoid subdividing a nonoverlapping collinear edge.
-    if(!onArc(other.a,edge.a,edge.b)&&!onArc(other.b,edge.a,edge.b)&&
-       !onArc(edge.a,other.a,other.b)&&!onArc(edge.b,other.a,other.b))continue;
+    if(!overlaps(edge,other))continue;
+    // A finer neighbour that morphs onto our surface closes the seam itself.
+    if(other.morph)continue;
     if(!other.points)other.points=edgeSamples(other.a,other.b,other.detail-other.node.level);
     for(const p of other.points){
      if(p.distanceTo(edge.a)<1e-9||p.distanceTo(edge.b)<1e-9)continue;
@@ -110,10 +129,11 @@ function boundarySeams(selected){
    points.sort((a,b)=>edge.a.angleTo(a)-edge.a.angleTo(b));
    const unique=points.filter((p,i)=>!i||p.distanceTo(points[i-1])>1e-9);
    result.push(unique);
+   morph.push(Boolean(edge.morph));
    // The mesh variant depends on actual boundary vertices, not neighbor IDs.
-   signature.push(unique.map(p=>[p.x,p.y,p.z].map(v=>v.toPrecision(14)).join(',')).join(';'));
+   signature.push(unique.map(p=>[p.x,p.y,p.z].map(v=>v.toPrecision(14)).join(',')).join(';')+(edge.morph?'^':''));
   }
-  seams.set(entry.node,{edges:result,signature:signature.join('|')});
+  seams.set(entry.node,{edges:result,morph,signature:signature.join('|')});
  }
  return seams;
 }
@@ -221,51 +241,92 @@ export class WorldTerrain {
   return n;
  }
  // Render a chunk at a chosen discrete detail. Sampling uses the same seeded
- // height provider as the physical terrain, without GPU morphs or fade ghosts.
- geometry(n,detail,seams=[[],[],[]]){
+ // height provider as the physical terrain. Where the neighbour across an edge
+ // is exactly one level coarser, this chunk geomorphs onto that neighbour's
+ // surface across GROUND_BLEND_METERS, so facet size grows smoothly into the
+ // seam (CDLOD); every other boundary keeps the exactly matching stitches.
+ geometry(n,detail,seams=[[],[],[]],morph=[false,false,false]){
   const positions=[],colors=[];
   const groundColor=BIOME_SETUP[Number(n.address.slice(1,3))].groundColor;
   const biomeTint=groundColor===null?null:new THREE.Color(groundColor);
-  const sample=v=>{
-   const r=this.height.radius(v,RADIUS),p=v.clone().multiplyScalar(r);
+  const nodes=[n.a,n.b,n.c];
+  const radiusAt=v=>this.height.radius(v,RADIUS);
+  const morphEdges=[];
+  if(detail-1>n.level)for(let side=0;side<3;side++)if(morph[side])morphEdges.push(
+   new THREE.Vector3().crossVectors(nodes[side],nodes[(side+1)%3]).normalize());
+  // Edges stitched to a finer neighbour must keep their exact heights, or the
+  // shared boundary vertices would separate.
+  const stitched=[];
+  for(let side=0;side<3;side++)if(seams[side].length)stitched.push(side);
+  const morphAt=u=>{
+   if(!morphEdges.length)return 0;
+   for(const side of stitched)if(onArc(u,nodes[side],nodes[(side+1)%3]))return 0;
+   let t=0;
+   for(const normal of morphEdges)t=Math.max(t,1-RADIUS*Math.abs(normal.dot(u))/GROUND_BLEND_METERS);
+   return t>0?Math.min(1,t):0;
+  };
+  const sample=(v,coarse)=>{
+   const radius=radiusAt(v);
+   const t=coarse===null?0:morphAt(v);
+   const r=t>0?radius+(coarse-radius)*t:radius;
+   const p=v.clone().multiplyScalar(r);
    const color=biomeTint||terrainColor(r-(RADIUS+WORLD_SETUP.seaLevelOffsetMeters));
    return {p,color};
   };
-  const addTriangle=(a,b,c)=>{
-   const A=sample(a),B=sample(b),C=sample(c);
+  const addTriangle=(a,b,c,ca=null,cb=null,cc=null)=>{
+   const A=sample(a,ca),B=sample(b,cb),C=sample(c,cc);
    const outward=new THREE.Vector3().subVectors(B.p,A.p).cross(new THREE.Vector3().subVectors(C.p,A.p)).dot(A.p)>0;
    const verts=outward?[A,B,C]:[A,C,B];
    for(const v of verts){positions.push(v.p.x,v.p.y,v.p.z);colors.push(v.color.r,v.color.g,v.color.b);}
   };
   // Subdivide only the border triangles that touch fine-owned edges.
   // Perimeter fan triangulation preserves the existing coarse interior.
-  const addConformingTriangle=(a,b,c)=>{
-   const corners=[a,b,c],perimeter=[];
+  const addConformingTriangle=(a,b,c,coarse)=>{
+   const corners=[a,b,c],coarses=coarse?[coarse.a,coarse.b,coarse.c]:[null,null,null],perimeter=[];
    for(let i=0;i<3;i++){
     const from=corners[i],to=corners[(i+1)%3];
-    perimeter.push(from);
+    perimeter.push({p:from,coarse:coarses[i]});
     for(let side=0;side<3;side++){
-     const ends=[n.a,n.b,n.c],u=ends[side],v=ends[(side+1)%3];
+     const u=nodes[side],v=nodes[(side+1)%3];
      if(!onArc(from,u,v)||!onArc(to,u,v))continue;
      const extras=seams[side].filter(p=>p.distanceTo(from)>1e-9&&p.distanceTo(to)>1e-9&&onArc(p,from,to));
      extras.sort((p,q)=>from.angleTo(p)-from.angleTo(q));
-     perimeter.push(...extras);
+     for(const p of extras)perimeter.push({p,coarse:null});
      break;
     }
    }
-   if(perimeter.length===3){addTriangle(a,b,c);return;}
+   if(perimeter.length===3){addTriangle(a,b,c,coarses[0],coarses[1],coarses[2]);return;}
    const center=a.clone().add(b).add(c).normalize();
-   for(let i=0;i<perimeter.length;i++)addTriangle(perimeter[i],perimeter[(i+1)%perimeter.length],center);
+   const centerCoarse=coarse?(coarse.a+coarse.b+coarse.c)/3:null;
+   for(let i=0;i<perimeter.length;i++){
+    const A=perimeter[i],B=perimeter[(i+1)%perimeter.length];
+    addTriangle(A.p,B.p,center,A.coarse,B.coarse,centerCoarse);
+   }
   };
-  const subdivide=(a,b,c,level)=>{
-   if(level>=detail){addConformingTriangle(a,b,c);return;}
-   const ab=mid(a,b),bc=mid(b,c),ca=mid(c,a);
-   subdivide(a,ab,ca,level+1);
-   subdivide(ab,b,bc,level+1);
-   subdivide(ca,bc,c,level+1);
-   subdivide(ab,bc,ca,level+1);
+  // coarse holds the corner radii of the detail-1 grid the morph targets;
+  // midpoint radii average them, so deeper vertices stay exactly on that
+  // coarser surface and the seam closes without stitching.
+  const coarseLevel=detail-1;
+  const subdivide=(a,b,c,level,coarse)=>{
+   if(level>=detail){addConformingTriangle(a,b,c,coarse);return;}
+   const ab=mid(a,b),bc=mid(b,c),ca=mid(c,a),childLevel=level+1;
+   let kids=null;
+   if(coarse){
+    const mab=(coarse.a+coarse.b)/2,mbc=(coarse.b+coarse.c)/2,mca=(coarse.c+coarse.a)/2;
+    kids=[{a:coarse.a,b:mab,c:mca},{a:mab,b:coarse.b,c:mbc},
+     {a:mca,b:mbc,c:coarse.c},{a:mab,b:mbc,c:mca}];
+   }else if(morphEdges.length&&childLevel===coarseLevel){
+    kids=[{a:radiusAt(a),b:radiusAt(ab),c:radiusAt(ca)},
+     {a:radiusAt(ab),b:radiusAt(b),c:radiusAt(bc)},
+     {a:radiusAt(ca),b:radiusAt(bc),c:radiusAt(c)},
+     {a:radiusAt(ab),b:radiusAt(bc),c:radiusAt(ca)}];
+   }
+   subdivide(a,ab,ca,childLevel,kids?kids[0]:null);
+   subdivide(ab,b,bc,childLevel,kids?kids[1]:null);
+   subdivide(ca,bc,c,childLevel,kids?kids[2]:null);
+   subdivide(ab,bc,ca,childLevel,kids?kids[3]:null);
   };
-  subdivide(n.a,n.b,n.c,n.level);
+  subdivide(n.a,n.b,n.c,n.level,null);
   const g=new THREE.BufferGeometry();
   g.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
   g.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
@@ -398,7 +459,7 @@ export class WorldTerrain {
     const seam=seams.get(n);
     const key=String(n.address)+':'+level+':'+seam.signature;
     required.add(key);
-    if(!this.cache.has(key))queue.push({key,node:n,level,seams:seam.edges});
+    if(!this.cache.has(key))queue.push({key,node:n,level,seams:seam.edges,morph:seam.morph});
    }
    this.requested=required;
    this.staging=true;
@@ -414,7 +475,7 @@ export class WorldTerrain {
   if(this.pending.length){
    const job=this.pending.shift();
    if(this.requested.has(job.key)&&!this.cache.has(job.key)){
-    const geometry=this.geometry(job.node,job.level,job.seams);
+    const geometry=this.geometry(job.node,job.level,job.seams,job.morph);
     const mesh=new THREE.Mesh(geometry,this.material);
     mesh.frustumCulled=true;
     this.scene.add(mesh);
@@ -444,7 +505,7 @@ export class WorldTerrain {
    const distance=columnDistance(origin,job.node);
    if(distance>radius){remaining.push(job);continue;}
    if(this.cache.has(job.key))continue;
-   const mesh=new THREE.Mesh(this.geometry(job.node,job.level,job.seams),this.material);
+   const mesh=new THREE.Mesh(this.geometry(job.node,job.level,job.seams,job.morph),this.material);
    mesh.visible=false;
    this.cache.set(job.key,{key:job.key,mesh});
    this.scene.add(mesh);
