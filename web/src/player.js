@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {PlayerControls} from './player-controls.js';
 import {PlayerAvatar} from './player-avatar.js';
 import {CameraCollision} from './engine/camera-collision.js';
+import {pendingCampTeleport} from './engine/camp-respawn.js';
 
 // GTA-style third-person navigation adapted to radial planetary gravity.
 // Physics in main.js remains the sole authority for world-space position.
@@ -39,6 +40,12 @@ export class PlayerSystem {
  // GTA-like movement: stick direction is relative to the orbit camera,
  // character turns smoothly into travel direction instead of tank steering.
  movement(dt){
+  // A queued camp respawn moves the avatar and camera before physics lands it.
+  const teleport=pendingCampTeleport();
+  if(teleport){
+   this.position.set(teleport.x,teleport.y,teleport.z);
+   this.cameraPosition=null;this.walkDestination=null;
+  }
   const {north,east}=this.basis(),{x,y}=this.controls.axes();
   // Automatic walking feeds the same physics and avatar animation as manual movement.
   let auto=null;
