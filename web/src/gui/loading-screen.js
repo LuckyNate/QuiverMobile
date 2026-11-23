@@ -28,8 +28,7 @@ export class LoadingScreen {
   this.root=loading;this.statusEl=status;this.button=startButton;
  }
  status(message){this.statusEl.textContent=message;}
- showStart(show){this.button.style.display=show?'block':'none';this.button.disabled=!show;
- }
+ showStart(show){this.button.style.display=show?'block':'none';this.button.disabled=!show;}
  onStart(handler){
   this.button.addEventListener('click',()=>{
    if(this.started||this.button.disabled)return;
