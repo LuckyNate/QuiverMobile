@@ -17,11 +17,10 @@ const BAND_METERS=WORLD_SETUP.terrainLodBandMeters;
 // plain triangle instead of being retriangulated around its centroid.
 const MORPH_FRACTION=.5;
 // 1 bends a chunk toward its coarser parent as it nears the next band, hiding
-// the swap; 0 swaps hard instead. Bending cannot apply to seam vertices (both
-// sides must still meet), so a bending chunk folds into a ridge along every
-// seam it shares: visible as creases fanning out from the player. Set to 1 to
-// trade hard pops for smooth swaps.
-const MORPH_STRENGTH=0;
+// the swap; 0 swaps hard instead. The bend has to fade to nothing at a chunk's
+// own edges: those vertices are shared with a neighbour that is not bending, so
+// moving them would fold the surface over itself into a ridge along the seam.
+const MORPH_STRENGTH=1;
 function columnDistance(up,node){
  const dot=THREE.MathUtils.clamp(up.dot(node.center),-1,1);
  return dot<=0?Math.PI*RADIUS:Math.max(0,RADIUS*Math.sqrt(1-dot*dot)-node.reach);
@@ -171,13 +170,14 @@ export class WorldTerrain {
     .replace('#include <common>',`#include <common>
 attribute vec3 aParent;
 attribute vec2 aBand;
+attribute float aTaper;
 uniform vec3 uLodOrigin;
 const float CDLOD_RADIUS=${radiusLiteral};`)
     .replace('#include <begin_vertex>',`#include <begin_vertex>
 vec3 cdlodUp=normalize(uLodOrigin);
 float cdlodDot=clamp(dot(cdlodUp,normalize(position)),-1.0,1.0);
 float cdlodDistance=CDLOD_RADIUS*sqrt(max(0.0,1.0-cdlodDot*cdlodDot));
-float cdlodMorph=clamp((cdlodDistance-aBand.x)/max(aBand.y-aBand.x,0.001),0.0,1.0);
+float cdlodMorph=clamp((cdlodDistance-aBand.x)/max(aBand.y-aBand.x,0.001),0.0,1.0)*aTaper;
 transformed=mix(position,aParent,cdlodMorph);`);
   };
   this.scene=scene;
@@ -215,7 +215,7 @@ transformed=mix(position,aParent,cdlodMorph);`);
   return n;
  }
  geometry(n,detail,seam=null){
-  const positions=[],colors=[],parents=[],bands=[];
+  const positions=[],colors=[],parents=[],bands=[],tapers=[];
   const nodes=[n.a,n.b,n.c];
   const groundColor=BIOME_SETUP[Number(n.address.slice(1,3))].groundColor;
   const tint=groundColor===null?null:new THREE.Color(groundColor);
@@ -247,6 +247,17 @@ transformed=mix(position,aParent,cdlodMorph);`);
   };
   const hasParent=detail-1>n.level;
   const range=hasParent&&MORPH_STRENGTH>0?morphRange(detail):{start:1e6,end:1e6+1};
+  // How far a vertex is from the chunk's own edges, as a fraction of the ramp
+  // width: 0 on an edge, 1 far enough inside that bending cannot disturb it.
+  const sidePlanes=[0,1,2].map(side=>edgePlane(nodes[side],nodes[(side+1)%3]).normal);
+  const inradius=Math.min(...sidePlanes.map(normal=>Math.abs(n.center.dot(normal))*RADIUS));
+  const ramp=Math.max(1e-3,.35*inradius);
+  const taperAt=dir=>{
+   if(!hasParent||MORPH_STRENGTH<=0)return 0;
+   let edge=Infinity;
+   for(const normal of sidePlanes)edge=Math.min(edge,Math.abs(dir.dot(normal))*RADIUS);
+   return THREE.MathUtils.smoothstep(edge,0,ramp);
+  };
   const push=(dir,p,parent,color)=>{
    // Only a split vertex pulled onto the coarser neighbour's boundary moves;
    // every other vertex is the plain normalized midpoint.
@@ -258,6 +269,7 @@ transformed=mix(position,aParent,cdlodMorph);`);
    parents.push(target.x,target.y,target.z);
    colors.push(color.r,color.g,color.b);
    bands.push(range.start,range.end);
+   tapers.push(taperAt(dir));
   };
   const addTriangle=(a,b,c,ca,cb,cc)=>{
    const A=pointAt(a),B=pointAt(b),C=pointAt(c);
@@ -300,6 +312,7 @@ transformed=mix(position,aParent,cdlodMorph);`);
   g.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
   g.setAttribute('aParent',new THREE.Float32BufferAttribute(parents,3));
   g.setAttribute('aBand',new THREE.Float32BufferAttribute(bands,2));
+  g.setAttribute('aTaper',new THREE.Float32BufferAttribute(tapers,1));
   g.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
   g.computeVertexNormals();
   return g;
