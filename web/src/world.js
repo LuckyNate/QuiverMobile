@@ -251,6 +251,10 @@ export class WorldTerrain {
   const biomeTint=groundColor===null?null:new THREE.Color(groundColor);
   const nodes=[n.a,n.b,n.c];
   const radiusAt=v=>this.height.radius(v,RADIUS);
+  // Coarse targets are positions, not radii: the coarse mesh is made of flat
+  // chords between its vertices, so the morph has to land on those chords bit
+  // for bit or a sub-millimetre mismatch opens a hairline crack at the seam.
+  const pointAt=v=>v.clone().multiplyScalar(radiusAt(v));
   const morphEdges=[];
   if(detail-1>n.level)for(let side=0;side<3;side++)if(morph[side])morphEdges.push(
    new THREE.Vector3().crossVectors(nodes[side],nodes[(side+1)%3]).normalize());
@@ -266,11 +270,10 @@ export class WorldTerrain {
    return t>0?Math.min(1,t):0;
   };
   const sample=(v,coarse)=>{
-   const radius=radiusAt(v);
-   const t=coarse===null?0:morphAt(v);
-   const r=t>0?radius+(coarse-radius)*t:radius;
-   const p=v.clone().multiplyScalar(r);
-   const color=biomeTint||terrainColor(r-(RADIUS+WORLD_SETUP.seaLevelOffsetMeters));
+   const fine=v.clone().multiplyScalar(radiusAt(v));
+   const t=coarse?morphAt(v):0;
+   const p=t>0?fine.lerp(coarse,t):fine;
+   const color=biomeTint||terrainColor(p.length()-(RADIUS+WORLD_SETUP.seaLevelOffsetMeters));
    return {p,color};
   };
   const addTriangle=(a,b,c,ca=null,cb=null,cc=null)=>{
@@ -281,6 +284,7 @@ export class WorldTerrain {
   };
   // Subdivide only the border triangles that touch fine-owned edges.
   // Perimeter fan triangulation preserves the existing coarse interior.
+  const centroid=(x,y,z)=>x.clone().add(y).add(z).multiplyScalar(1/3);
   const addConformingTriangle=(a,b,c,coarse)=>{
    const corners=[a,b,c],coarses=coarse?[coarse.a,coarse.b,coarse.c]:[null,null,null],perimeter=[];
    for(let i=0;i<3;i++){
@@ -297,14 +301,14 @@ export class WorldTerrain {
    }
    if(perimeter.length===3){addTriangle(a,b,c,coarses[0],coarses[1],coarses[2]);return;}
    const center=a.clone().add(b).add(c).normalize();
-   const centerCoarse=coarse?(coarse.a+coarse.b+coarse.c)/3:null;
+   const centerCoarse=coarse?centroid(coarse.a,coarse.b,coarse.c):null;
    for(let i=0;i<perimeter.length;i++){
     const A=perimeter[i],B=perimeter[(i+1)%perimeter.length];
     addTriangle(A.p,B.p,center,A.coarse,B.coarse,centerCoarse);
    }
   };
-  // coarse holds the corner radii of the detail-1 grid the morph targets;
-  // midpoint radii average them, so deeper vertices stay exactly on that
+  // coarse holds the corner positions of the detail-1 grid the morph targets;
+  // midpoint positions average them, so deeper vertices stay exactly on that
   // coarser surface and the seam closes without stitching.
   const coarseLevel=detail-1;
   const subdivide=(a,b,c,level,coarse)=>{
@@ -312,14 +316,16 @@ export class WorldTerrain {
    const ab=mid(a,b),bc=mid(b,c),ca=mid(c,a),childLevel=level+1;
    let kids=null;
    if(coarse){
-    const mab=(coarse.a+coarse.b)/2,mbc=(coarse.b+coarse.c)/2,mca=(coarse.c+coarse.a)/2;
+    const mab=coarse.a.clone().add(coarse.b).multiplyScalar(.5);
+    const mbc=coarse.b.clone().add(coarse.c).multiplyScalar(.5);
+    const mca=coarse.c.clone().add(coarse.a).multiplyScalar(.5);
     kids=[{a:coarse.a,b:mab,c:mca},{a:mab,b:coarse.b,c:mbc},
      {a:mca,b:mbc,c:coarse.c},{a:mab,b:mbc,c:mca}];
    }else if(morphEdges.length&&childLevel===coarseLevel){
-    kids=[{a:radiusAt(a),b:radiusAt(ab),c:radiusAt(ca)},
-     {a:radiusAt(ab),b:radiusAt(b),c:radiusAt(bc)},
-     {a:radiusAt(ca),b:radiusAt(bc),c:radiusAt(c)},
-     {a:radiusAt(ab),b:radiusAt(bc),c:radiusAt(ca)}];
+    kids=[{a:pointAt(a),b:pointAt(ab),c:pointAt(ca)},
+     {a:pointAt(ab),b:pointAt(b),c:pointAt(bc)},
+     {a:pointAt(ca),b:pointAt(bc),c:pointAt(c)},
+     {a:pointAt(ab),b:pointAt(bc),c:pointAt(ca)}];
    }
    subdivide(a,ab,ca,childLevel,kids?kids[0]:null);
    subdivide(ab,b,bc,childLevel,kids?kids[1]:null);
