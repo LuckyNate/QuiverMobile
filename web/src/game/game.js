@@ -83,7 +83,7 @@ export class Game {
   this.panels.bottom.panel.style.visibility='hidden';
   // Visual-only owner commands. Physics and game simulation remain active.
   this.renderLayers={terrain:true,water:true,trees:true,player:true,objects:true};
-  this.consoleCommands=net ConsoleCommands(this);
+  this.consoleCommands=new ConsoleCommands(this);
   this.consoleCommands.register();
   for(const [name,value] of this.status.stages)if(value.state==='FAILED')this.status.report(name,value.state,value.detail);
   this.lastLogCount=-1;
