@@ -7,14 +7,22 @@ export const ROOT_EDGE_METERS=WORLD_SETUP.rootEdgeMeters;
 export const RADIUS=WORLD_SCALE.radius;
 export const MAX_TERRAIN_LOD=WORLD_SCALE.maxTerrainLod;
 const MAX_LOD=MAX_TERRAIN_LOD;
-// Geomorphing band: next to a one-level-coarser neighbour a chunk's heights
-// converge on that neighbour's surface across this many metres, so triangle
-// size grows smoothly into the seam (CDLOD). It is the only LOD transition.
-const GROUND_BLEND_METERS=4;
+const BAND_METERS=WORLD_SETUP.terrainLodBandMeters;
+// A chunk is the chosen detail for one 20 m band. Across the outer half of that
+// band it morphs onto its parent's surface, so it is already the parent's shape
+// at the moment the selector swaps it for the coarser chunk (CDLOD). There is
+// no second mesh, no stipple and no rebuild while morphing: the factor is
+// computed per chunk in the vertex shader from the camera.
+const MORPH_FRACTION=.5;
 // Horizontal distance from the local-up axis, excluding the far hemisphere.
 function columnDistance(up,node){
  const dot=THREE.MathUtils.clamp(up.dot(node.center),-1,1);
  return dot<=0?Math.PI*RADIUS:Math.max(0,RADIUS*Math.sqrt(1-dot*dot)-node.reach);
+}
+// Distance range over which a chunk drawn at this detail morphs onto the parent.
+function morphRange(detail){
+ const end=(MAX_LOD-detail+1)*BAND_METERS;
+ return {start:Math.max(0,end-BAND_METERS*MORPH_FRACTION),end};
 }
 // Elevation in meters above sea level (RADIUS - 1). Palette is visual only.
 const TERRAIN_PALETTE=[
@@ -52,96 +60,35 @@ function children(n){
  }
  return n.children;
 }
-// Canonical great-circle key for finding edges shared across D20 faces and LODs.
-function edgePlane(a,b){
- const normal=new THREE.Vector3().crossVectors(a,b).normalize();
- if(normal.x< -1e-10||(Math.abs(normal.x)<=1e-10&&(normal.y< -1e-10||(Math.abs(normal.y)<=1e-10&&normal.z<0))))normal.negate();
- return {normal,key:[normal.x,normal.y,normal.z].map(x=>Math.round(x*1e8)).join(',')};
-}
-function onArc(p,a,b){
- const span=a.angleTo(b),u=a.angleTo(p),v=p.angleTo(b);
- return u<=span+1e-8&&v<=span+1e-8&&Math.abs(u+v-span)<1e-8;
-}
-function edgeSamples(a,b,levels){
- let points=[a,b];
- for(let level=0;level<levels;level++){
-  const split=[points[0]];
-  for(let i=1;i<points.length;i++)split.push(mid(points[i-1],points[i]),points[i]);
-  points=split;
- }
- return points;
-}
-// Selected leaf boundaries are grouped by great circle. Only the coarser
-// side receives the intermediate vertices of touching finer leaf edges.
-function boundarySeams(selected){
- const groups=new Map(),edgesByNode=new Map();
- for(const entry of selected){
-  const n=entry.node,vs=[n.a,n.b,n.c],edges=[];
-  for(let i=0;i<3;i++){
-   const a=vs[i],b=vs[(i+1)%3],opposite=vs[(i+2)%3],plane=edgePlane(a,b);
-   const edge={a,b,detail:entry.level,node:n,side:Math.sign(plane.normal.dot(opposite)),points:null,morph:false};
-   if(!groups.has(plane.key))groups.set(plane.key,[]);
-   groups.get(plane.key).push(edge);edges.push({edge,key:plane.key});
-  }
-  edgesByNode.set(n,edges);
- }
- // Geomorphic LOD. Where a chunk's neighbour is exactly one level coarser over
- // the same arc, the finer chunk morphs its own heights onto that neighbour's
- // surface (geometry), so no second mesh is drawn and no vertices are stitched
- // into the coarse side. That is how CDLOD closes an LOD seam.
- const sameArc=(x,y)=>(x.a.distanceTo(y.a)<1e-9&&x.b.distanceTo(y.b)<1e-9)||
-  (x.a.distanceTo(y.b)<1e-9&&x.b.distanceTo(y.a)<1e-9);
- const overlaps=(x,y)=>onArc(y.a,x.a,x.b)||onArc(y.b,x.a,x.b)||
-  onArc(x.a,y.a,y.b)||onArc(x.b,y.a,y.b);
- for(const [,list] of groups){
-  for(const edge of list){
-   for(const other of list){
-    if(other===edge||other.side===edge.side||!overlaps(edge,other))continue;
-    if(edge.detail-other.detail!==1||!sameArc(edge,other))continue;
-    // Needs at least one interior level to morph across.
-    edge.morph=edge.detail>edge.node.level;
-   }
-  }
- }
- const seams=new Map();
- for(const entry of selected){
-  const edges=edgesByNode.get(entry.node),result=[],signature=[],morph=[];
-  for(const {edge,key} of edges){
-   const points=[];
-   for(const other of groups.get(key)){
-    if(other===edge||other.side===edge.side||other.detail<=edge.detail)continue;
-    // Avoid subdividing a nonoverlapping collinear edge.
-    if(!overlaps(edge,other))continue;
-    // A finer neighbour that morphs onto our surface closes the seam itself.
-    if(other.morph)continue;
-    if(!other.points)other.points=edgeSamples(other.a,other.b,other.detail-other.node.level);
-    for(const p of other.points){
-     if(p.distanceTo(edge.a)<1e-9||p.distanceTo(edge.b)<1e-9)continue;
-     if(onArc(p,edge.a,edge.b))points.push(p);
-    }
-   }
-   points.sort((a,b)=>edge.a.angleTo(a)-edge.a.angleTo(b));
-   const unique=points.filter((p,i)=>!i||p.distanceTo(points[i-1])>1e-9);
-   result.push(unique);
-   morph.push(Boolean(edge.morph));
-   // The mesh variant depends on actual boundary vertices, not neighbor IDs.
-   signature.push(unique.map(p=>[p.x,p.y,p.z].map(v=>v.toPrecision(14)).join(',')).join(';')+(edge.morph?'^':''));
-  }
-  seams.set(entry.node,{edges:result,morph,signature:signature.join('|')});
- }
- return seams;
-}
 function contains(n,p){return containsSphericalTriangle(p,[n.a,n.b,n.c]);}
-// Render chunks ARE the persistent D20 hierarchy nodes. Geometry is cached
-// per node/detail/edge variant; Box3D and collision caches are separate.
 // Terrain geometry is the only ground surface: no near-field overlay mesh and
-// no dithered cross-fade, because geomorphic LOD already makes the transitions
-// continuous.
+// no dithered cross-fade. LOD is one continuous scheme (CDLOD): the selector
+// picks a detail per 20 m band, and every chunk morphs onto its parent's exact
+// surface across the outer half of its band, in the vertex shader. So a chunk
+// is never seen refining: it arrives already the shape it replaces.
 export class WorldTerrain {
  constructor(scene,height=new TerrainHeight(),startPosition=new THREE.Vector3(0,0,RADIUS+1.3),zFar=5000){
   this.height=height;
   this.roots=roots.map(([a,b,c],face)=>node(a,b,c,0,null,rootAddress(face)));
   this.material=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:1,side:THREE.DoubleSide,flatShading:true});
+  const radiusLiteral=RADIUS.toFixed(9);
+  this.material.customProgramCacheKey=()=>'terrainCdlod';
+  this.material.onBeforeCompile=shader=>{
+   shader.vertexShader=shader.vertexShader
+    .replace('#include <common>',`#include <common>
+attribute vec3 aParent;
+attribute vec3 aCenter;
+attribute vec3 aBand;
+const float CDLOD_RADIUS=${radiusLiteral};`)
+    // Morph by the chunk's horizontal band distance, measured exactly as the
+    // CPU selector measures it, so the swap happens at full morph.
+    .replace('#include <begin_vertex>',`#include <begin_vertex>
+vec3 cdlodUp=normalize(cameraPosition);
+float cdlodDot=clamp(dot(cdlodUp,aCenter),-1.0,1.0);
+float cdlodDistance=cdlodDot<=0.0?3.14159265*CDLOD_RADIUS:max(0.0,CDLOD_RADIUS*sqrt(max(0.0,1.0-cdlodDot*cdlodDot))-aBand.z);
+float cdlodMorph=clamp((cdlodDistance-aBand.x)/max(aBand.y-aBand.x,0.001),0.0,1.0);
+transformed=mix(position,aParent,cdlodMorph);`);
+  };
   this.scene=scene;
   this.cache=new Map();
   this.displayed=new Set();
@@ -160,11 +107,11 @@ export class WorldTerrain {
   // A guaranteed complete low-detail planet remains visible while new
   // generations of render geometry are prepared offscreen.
   for(const n of this.roots){
-   const key=String(n.address)+':0:fallback';
+   const key=String(n.address)+'|0';
    const mesh=new THREE.Mesh(this.geometry(n,0),this.material);
    mesh.frustumCulled=true;
    this.scene.add(mesh);
-   this.cache.set(key,{key,mesh,fallback:true});
+   this.cache.set(key,{key,mesh,detail:0,node:n,fallback:true});
    this.displayed.add(key);
   }
   this.update(startPosition,true);
@@ -185,79 +132,43 @@ export class WorldTerrain {
   }
   return n;
  }
- // Render a chunk at a chosen discrete detail. Sampling uses the same seeded
- // height provider as the physical terrain. Where the neighbour across an edge
- // is exactly one level coarser, this chunk geomorphs onto that neighbour's
- // surface across GROUND_BLEND_METERS, so facet size grows smoothly into the
- // seam (CDLOD); every other boundary keeps the exactly matching stitches.
- geometry(n,detail,seams=[[],[],[]],morph=[false,false,false]){
-  const positions=[],colors=[];
+ // Build a chunk at one detail. Every vertex also carries where it sits on the
+ // parent (detail-1) surface and the band range the shader morphs across, so
+ // runtime LOD changes are free of pops and cracks: at the swap distance the
+ // fine chunk has converged on the parent's chords, which are exactly the
+ // coarser chunk's vertices.
+ geometry(n,detail){
+  const positions=[],colors=[],parents=[],centers=[],bands=[];
   const groundColor=BIOME_SETUP[Number(n.address.slice(1,3))].groundColor;
   const biomeTint=groundColor===null?null:new THREE.Color(groundColor);
-  const nodes=[n.a,n.b,n.c];
   const radiusAt=v=>this.height.radius(v,RADIUS);
-  // Coarse targets are positions, not radii: the coarse mesh is made of flat
+  // Parent targets are positions, not radii: the parent mesh is made of flat
   // chords between its vertices, so the morph has to land on those chords bit
   // for bit or a sub-millimetre mismatch opens a hairline crack at the seam.
   const pointAt=v=>v.clone().multiplyScalar(radiusAt(v));
-  const morphEdges=[];
-  if(detail-1>n.level)for(let side=0;side<3;side++)if(morph[side])morphEdges.push(
-   new THREE.Vector3().crossVectors(nodes[side],nodes[(side+1)%3]).normalize());
-  // Edges stitched to a finer neighbour must keep their exact heights, or the
-  // shared boundary vertices would separate.
-  const stitched=[];
-  for(let side=0;side<3;side++)if(seams[side].length)stitched.push(side);
-  const morphAt=u=>{
-   if(!morphEdges.length)return 0;
-   for(const side of stitched)if(onArc(u,nodes[side],nodes[(side+1)%3]))return 0;
-   let t=0;
-   for(const normal of morphEdges)t=Math.max(t,1-RADIUS*Math.abs(normal.dot(u))/GROUND_BLEND_METERS);
-   return t>0?Math.min(1,t):0;
+  const hasParent=detail-1>n.level;
+  const range=hasParent?morphRange(detail):{start:1e6,end:1e6+1};
+  const push=(p,parent,color)=>{
+   positions.push(p.x,p.y,p.z);
+   parents.push(parent.x,parent.y,parent.z);
+   colors.push(color.r,color.g,color.b);
+   centers.push(n.center.x,n.center.y,n.center.z);
+   bands.push(range.start,range.end,n.reach);
   };
-  const sample=(v,coarse)=>{
-   const fine=v.clone().multiplyScalar(radiusAt(v));
-   const t=coarse?morphAt(v):0;
-   const p=t>0?fine.lerp(coarse,t):fine;
-   const color=biomeTint||terrainColor(p.length()-(RADIUS+WORLD_SETUP.seaLevelOffsetMeters));
-   return {p,color};
-  };
-  const addTriangle=(a,b,c,ca=null,cb=null,cc=null)=>{
-   const A=sample(a,ca),B=sample(b,cb),C=sample(c,cc);
-   const outward=new THREE.Vector3().subVectors(B.p,A.p).cross(new THREE.Vector3().subVectors(C.p,A.p)).dot(A.p)>0;
-   const verts=outward?[A,B,C]:[A,C,B];
-   for(const v of verts){positions.push(v.p.x,v.p.y,v.p.z);colors.push(v.color.r,v.color.g,v.color.b);}
-  };
-  // Subdivide only the border triangles that touch fine-owned edges.
-  // Perimeter fan triangulation preserves the existing coarse interior.
-  const centroid=(x,y,z)=>x.clone().add(y).add(z).multiplyScalar(1/3);
-  const addConformingTriangle=(a,b,c,coarse)=>{
-   const corners=[a,b,c],coarses=coarse?[coarse.a,coarse.b,coarse.c]:[null,null,null],perimeter=[];
-   for(let i=0;i<3;i++){
-    const from=corners[i],to=corners[(i+1)%3];
-    perimeter.push({p:from,coarse:coarses[i]});
-    for(let side=0;side<3;side++){
-     const u=nodes[side],v=nodes[(side+1)%3];
-     if(!onArc(from,u,v)||!onArc(to,u,v))continue;
-     const extras=seams[side].filter(p=>p.distanceTo(from)>1e-9&&p.distanceTo(to)>1e-9&&onArc(p,from,to));
-     extras.sort((p,q)=>from.angleTo(p)-from.angleTo(q));
-     for(const p of extras)perimeter.push({p,coarse:null});
-     break;
-    }
-   }
-   if(perimeter.length===3){addTriangle(a,b,c,coarses[0],coarses[1],coarses[2]);return;}
-   const center=a.clone().add(b).add(c).normalize();
-   const centerCoarse=coarse?centroid(coarse.a,coarse.b,coarse.c):null;
-   for(let i=0;i<perimeter.length;i++){
-    const A=perimeter[i],B=perimeter[(i+1)%perimeter.length];
-    addTriangle(A.p,B.p,center,A.coarse,B.coarse,centerCoarse);
+  const addTriangle=(a,b,c,ca,cb,cc)=>{
+   const A=a.clone().multiplyScalar(radiusAt(a)),B=b.clone().multiplyScalar(radiusAt(b)),C=c.clone().multiplyScalar(radiusAt(c));
+   const outward=new THREE.Vector3().subVectors(B,A).cross(new THREE.Vector3().subVectors(C,A)).dot(A)>0;
+   const verts=outward?[[A,ca],[B,cb],[C,cc]]:[[A,ca],[C,cc],[B,cb]];
+   for(const [v,parent] of verts){
+    const color=biomeTint||terrainColor(v.length()-(RADIUS+WORLD_SETUP.seaLevelOffsetMeters));
+    push(v,parent||v,color);
    }
   };
-  // coarse holds the corner positions of the detail-1 grid the morph targets;
-  // midpoint positions average them, so deeper vertices stay exactly on that
-  // coarser surface and the seam closes without stitching.
+  // coarse holds the corner positions of the parent (detail-1) grid; midpoints
+  // average them, so every finer vertex lands exactly on that coarser surface.
   const coarseLevel=detail-1;
   const subdivide=(a,b,c,level,coarse)=>{
-   if(level>=detail){addConformingTriangle(a,b,c,coarse);return;}
+   if(level>=detail){addTriangle(a,b,c,coarse?coarse.a:null,coarse?coarse.b:null,coarse?coarse.c:null);return;}
    const ab=mid(a,b),bc=mid(b,c),ca=mid(c,a),childLevel=level+1;
    let kids=null;
    if(coarse){
@@ -266,7 +177,7 @@ export class WorldTerrain {
     const mca=coarse.c.clone().add(coarse.a).multiplyScalar(.5);
     kids=[{a:coarse.a,b:mab,c:mca},{a:mab,b:coarse.b,c:mbc},
      {a:mca,b:mbc,c:coarse.c},{a:mab,b:mbc,c:mca}];
-   }else if(morphEdges.length&&childLevel===coarseLevel){
+   }else if(hasParent&&childLevel===coarseLevel){
     kids=[{a:pointAt(a),b:pointAt(ab),c:pointAt(ca)},
      {a:pointAt(ab),b:pointAt(b),c:pointAt(bc)},
      {a:pointAt(ca),b:pointAt(bc),c:pointAt(c)},
@@ -280,6 +191,9 @@ export class WorldTerrain {
   subdivide(n.a,n.b,n.c,n.level,null);
   const g=new THREE.BufferGeometry();
   g.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+  g.setAttribute('aParent',new THREE.Float32BufferAttribute(parents,3));
+  g.setAttribute('aCenter',new THREE.Float32BufferAttribute(centers,3));
+  g.setAttribute('aBand',new THREE.Float32BufferAttribute(bands,3));
   g.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
   g.computeVertexNormals();
   return g;
@@ -319,8 +233,9 @@ export class WorldTerrain {
   this.renderEnabled=Boolean(enabled);
   for(const entry of this.cache.values())entry.mesh.visible=this.renderEnabled&&this.displayed.has(entry.key);
  }
- // One generation replaces the previous one directly: geomorphic LOD makes the
- // geometry continuous, so there is no stipple or cross-fade stage.
+ // One generation replaces the previous one directly. No stipple stage is
+ // needed because a chunk is already morphed onto its parent's surface at the
+ // distance where the swap happens.
  applyGeneration(){
   for(const key of this.displayed){
    if(this.requested.has(key))continue;
@@ -348,13 +263,11 @@ export class WorldTerrain {
    this.lodCenter=localUp;
    const selected=this.select(anchor,position),required=new Set();
    const resolved=selected.map(({node,detail})=>({node,level:Math.max(node.level,Math.min(detail,detailCap))}));
-   const seams=boundarySeams(resolved);
    const queue=[];
    for(const {node:n,level} of resolved){
-    const seam=seams.get(n);
-    const key=String(n.address)+':'+level+':'+seam.signature;
+    const key=String(n.address)+'|'+level;
     required.add(key);
-    if(!this.cache.has(key))queue.push({key,node:n,level,seams:seam.edges,morph:seam.morph});
+    if(!this.cache.has(key))queue.push({key,node:n,level});
    }
    this.requested=required;
    this.staging=true;
@@ -370,11 +283,11 @@ export class WorldTerrain {
   if(this.pending.length){
    const job=this.pending.shift();
    if(this.requested.has(job.key)&&!this.cache.has(job.key)){
-    const geometry=this.geometry(job.node,job.level,job.seams,job.morph);
+    const geometry=this.geometry(job.node,job.level);
     const mesh=new THREE.Mesh(geometry,this.material);
     mesh.frustumCulled=true;
     this.scene.add(mesh);
-    this.cache.set(job.key,{key:job.key,mesh});
+    this.cache.set(job.key,{key:job.key,mesh,detail:job.level,node:job.node});
     mesh.visible=false;
    }
   }
@@ -398,9 +311,9 @@ export class WorldTerrain {
    const distance=columnDistance(origin,job.node);
    if(distance>radius){remaining.push(job);continue;}
    if(this.cache.has(job.key))continue;
-   const mesh=new THREE.Mesh(this.geometry(job.node,job.level,job.seams,job.morph),this.material);
+   const mesh=new THREE.Mesh(this.geometry(job.node,job.level),this.material);
    mesh.visible=false;
-   this.cache.set(job.key,{key:job.key,mesh});
+   this.cache.set(job.key,{key:job.key,mesh,detail:job.level,node:job.node});
    this.scene.add(mesh);
   }
   this.pending=remaining;
