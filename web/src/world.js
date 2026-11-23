@@ -11,9 +11,10 @@ const BAND_METERS=WORLD_SETUP.terrainLodBandMeters;
 // 1 m triangles are the finest level and only for ground near the player. Each
 // 20 m band further out drops one level, so the horizon is drawn with big
 // triangles and the total stays around twenty thousand instead of a million.
-// Where two chunks of different density meet, both sides take the union of every
-// overlapping neighbour's vertices along that edge, so the shared stretch gets
-// the exact same points on both meshes: no crack to hide.
+// Where two chunks of different density meet, the finer side pulls its own seam
+// vertices onto the coarser neighbour's edge, so the shared stretch is one
+// straight line seen from both meshes: no crack, and the coarse side stays a
+// plain triangle instead of being retriangulated around its centroid.
 const MORPH_FRACTION=.5;
 function columnDistance(up,node){
  const dot=THREE.MathUtils.clamp(up.dot(node.center),-1,1);
@@ -67,6 +68,7 @@ function edgePlane(a,b){
 // genuinely different circle that lands here by accident.
  return {normal,key:[normal.x,normal.y,normal.z].map(x=>Math.round(x*1e6)).join(',')};
 }
+function directionKey(v){return [v.x,v.y,v.z].map(x=>Math.round(x*1e6)).join(',');}
 function onArc(p,a,b){
  const span=a.angleTo(b),u=a.angleTo(p),v=p.angleTo(b);
  return u<=span+1e-8&&v<=span+1e-8&&Math.abs(u+v-span)<1e-8;
@@ -74,9 +76,10 @@ function onArc(p,a,b){
 function overlaps(x,y){
  return onArc(y.a,x.a,x.b)||onArc(y.b,x.a,x.b)||onArc(x.a,y.a,y.b)||onArc(x.b,y.a,y.b);
 }
-// For every chunk edge, gather the vertex directions every overlapping neighbour
-// has along it. Each side builds through the same union, so a shared stretch of
-// edge carries one identical polyline on both meshes whatever their densities.
+// For every chunk edge, record the neighbours that carry a coarser mesh along
+// the shared stretch. The finer side pulls its seam vertices onto those
+// neighbour chords, so only the fine mesh moves and the coarse mesh is built as
+// a plain triangle.
 function boundarySeams(selected){
  const groups=new Map(),edgesByNode=new Map();
  for(const entry of selected){
@@ -94,29 +97,20 @@ function boundarySeams(selected){
  const seams=new Map();
  for(const entry of selected){
   const edges=edgesByNode.get(entry);
-  const points=[[],[],[]],shared=[false,false,false],signature=[];
+  const coarseEdge=[false,false,false],shared=[false,false,false],signature=[];
   for(let i=0;i<3;i++){
-   const edge=edges[i],span=edge.a.angleTo(edge.b);
+   const edge=edges[i],step=edge.a.angleTo(edge.b)/edge.segments;
    for(const other of groups.get(edge.key)){
     if(other===edge||other.side===edge.side||!overlaps(edge,other))continue;
     if(other.entry.level!==edge.entry.level||other.segments!==edge.segments)shared[i]=true;
-    // Both sides of a seam take the union of every overlapping neighbour's
-    // vertices, so whatever their densities the shared stretch gets the exact
-    // same set of points on both meshes. No crack, and no single owner to get
-    // wrong when an edge borders two chunks of different sizes.
-    for(let k=1;k<other.segments;k++){
-     const t=k/other.segments;
-     const dir=other.a.clone().multiplyScalar(1-t).addScaledVector(other.b,t).normalize();
-     if(!onArc(dir,edge.a,edge.b))continue;
-     const s=edge.a.angleTo(dir)/span;
-     if(s>1e-9&&s<1-1e-9)points[i].push(dir);
-    }
+    // Step length depends on display detail alone, so a coarser neighbour is
+    // always exactly half as dense and its boundary vertices are our parent
+    // grid: the split vertices have somewhere to land.
+    if(other.a.angleTo(other.b)/other.segments>step*(1+1e-9))coarseEdge[i]=true;
    }
-   points[i].sort((p,q)=>edge.a.angleTo(p)-edge.a.angleTo(q));
-   for(let k=points[i].length-1;k>0;k--)if(points[i][k].distanceTo(points[i][k-1])<1e-9)points[i].splice(k,1);
-   signature.push(shared[i]?(points[i].length?'s'+points[i].length:'s'):'');
+   signature.push(shared[i]?'s'+(coarseEdge[i]?'c':''):'');
   }
-  seams.set(entry,{edges:points,shared,signature:signature.join('|')});
+  seams.set(entry,{coarse:coarseEdge,shared,signature:signature.join('|')});
  }
  return seams;
 }
@@ -185,19 +179,35 @@ transformed=mix(position,aParent,cdlodMorph);`);
   const tint=groundColor===null?null:new THREE.Color(groundColor);
   const radiusAt=v=>this.height.radius(v,RADIUS);
   const pointAt=v=>v.clone().multiplyScalar(radiusAt(v));
-  const extras=seam?seam.edges:[[],[],[]];
+  const coarseEdge=seam?seam.coarse:[false,false,false];
   const shared=seam?seam.shared:[false,false,false];
   const onSeam=dir=>{
    for(let side=0;side<3;side++)if(shared[side]&&onArc(dir,nodes[side],nodes[(side+1)%3]))return true;
    return false;
   };
+  // A vertex created one step above the leaf grid, on a seam shared with a
+  // coarser neighbour, sits halfway between the two vertices either side of it
+  // instead of on the sphere. Those two are the coarser neighbour's own
+  // vertices, so both meshes draw the same straight boundary without the coarse
+  // side gaining a vertex.
+  const snapped=new Map();
+  const snapMidpoint=(mid,from,to)=>{
+   for(let side=0;side<3;side++){
+    if(!coarseEdge[side]||!onArc(mid,nodes[side],nodes[(side+1)%3]))continue;
+    snapped.set(directionKey(mid),pointAt(from).add(pointAt(to)).multiplyScalar(.5));
+    return;
+   }
+  };
   const hasParent=detail-1>n.level;
   const range=hasParent?morphRange(detail):{start:1e6,end:1e6+1};
   const push=(dir,p,parent,color)=>{
-   positions.push(p.x,p.y,p.z);
+   // Only a split vertex pulled onto the coarser neighbour's boundary moves;
+   // every other vertex is the plain normalized midpoint.
+   const at=snapped.get(directionKey(dir))||p;
+   positions.push(at.x,at.y,at.z);
    // Seam vertices belong to a shared polyline: no morphing, or the neighbour's
    // split edge would be chasing a moving target.
-   const target=onSeam(dir)||!parent?p:parent;
+   const target=onSeam(dir)||!parent?at:parent;
    parents.push(target.x,target.y,target.z);
    colors.push(color.r,color.g,color.b);
    bands.push(range.start,range.end);
@@ -208,37 +218,18 @@ transformed=mix(position,aParent,cdlodMorph);`);
    const verts=outward?[[a,A,ca],[b,B,cb],[c,C,cc]]:[[a,A,ca],[c,C,cc],[b,B,cb]];
    for(const [dir,p,parent] of verts)push(dir,p,parent,tint||terrainColor(p.length()-(RADIUS+WORLD_SETUP.seaLevelOffsetMeters)));
   };
-  const centroid=(x,y,z)=>x.clone().add(y).add(z).multiplyScalar(1/3);
-  // A leaf triangle touching a seam edge is filled as a fan through the extra
-  // vertices the denser neighbour already uses, so both meshes share them.
-  const addLeaf=(a,b,c,coarse)=>{
-   const corners=[a,b,c],coarses=coarse?[coarse.a,coarse.b,coarse.c]:[null,null,null],perimeter=[];
-   for(let i=0;i<3;i++){
-    const from=corners[i],to=corners[(i+1)%3];
-    perimeter.push({p:from,coarse:coarses[i]});
-    for(let side=0;side<3;side++){
-     if(!shared[side])continue;
-     const u=nodes[side],v=nodes[(side+1)%3];
-     if(!onArc(from,u,v)||!onArc(to,u,v))continue;
-     const along=extras[side].filter(p=>p.distanceTo(from)>1e-9&&p.distanceTo(to)>1e-9&&onArc(p,from,to));
-     along.sort((p,q)=>from.angleTo(p)-from.angleTo(q));
-     for(const p of along)perimeter.push({p,coarse:null});
-     break;
-    }
-   }
-   if(perimeter.length===3){addTriangle(a,b,c,coarses[0],coarses[1],coarses[2]);return;}
-   const center=a.clone().add(b).add(c).normalize();
-   const centerCoarse=coarse?centroid(coarse.a,coarse.b,coarse.c):null;
-   for(let i=0;i<perimeter.length;i++){
-    const A=perimeter[i],B=perimeter[(i+1)%perimeter.length];
-    addTriangle(A.p,B.p,center,A.coarse,B.coarse,centerCoarse);
-   }
-  };
+  // Every leaf is one plain triangle: four congruent children all the way down,
+  // with no centroid fan and no inherited neighbour vertices.
+  const addLeaf=(a,b,c,coarse)=>addTriangle(a,b,c,
+   coarse?coarse.a:null,coarse?coarse.b:null,coarse?coarse.c:null);
   // coarse carries the positions of the parent (detail-1) grid the morph targets.
   const coarseLevel=detail-1;
   const subdivide=(a,b,c,level,coarse)=>{
    if(level>=detail){addLeaf(a,b,c,coarse);return;}
    const ab=mid(a,b),bc=mid(b,c),ca=mid(c,a),childLevel=level+1;
+   // The vertices created by this last step are the odd ones from the coarser
+   // neighbour's point of view, so they are the ones that move onto its edge.
+   if(childLevel===detail){snapMidpoint(ab,a,b);snapMidpoint(bc,b,c);snapMidpoint(ca,c,a);}
    let kids=null;
    if(coarse){
     const mab=coarse.a.clone().add(coarse.b).multiplyScalar(.5);
