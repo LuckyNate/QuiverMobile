@@ -119,7 +119,13 @@ export class WorldTerrain {
   // Keep D20 for far LOD only; never draw a second surface under the player.
   this.collisionGroundCenter={value:startPosition.clone()};
   this.collisionGroundRadius={value:7};
-  this.material.onBeforeCompile=shader=>{
+  // One cutoff, two meshes. The D20 terrain is dropped inside the radius and
+  // the near collision-patch mesh is dropped outside it plus a small overlap,
+  // so exactly one flat-shaded surface covers any point and the two meet
+  // without a hairline crack. The patch mesh is built from a +/-10 m box query
+  // whose corners reach ~17 m, so without the outer cut it keeps drawing on top
+  // of the terrain and the near field shows two overlapping grids.
+  const discardGround=(material,test)=>material.onBeforeCompile=shader=>{
    shader.uniforms.collisionGroundCenter=this.collisionGroundCenter;
    shader.uniforms.collisionGroundRadius=this.collisionGroundRadius;
    shader.vertexShader=shader.vertexShader.replace('#include <common>',
@@ -129,16 +135,18 @@ export class WorldTerrain {
    shader.fragmentShader=shader.fragmentShader.replace('#include <common>',
     '#include <common>\nvarying vec3 vGroundWorldPosition;\nuniform vec3 collisionGroundCenter;\nuniform float collisionGroundRadius;');
    shader.fragmentShader=shader.fragmentShader.replace('#include <clipping_planes_fragment>',
-    '#include <clipping_planes_fragment>\nif(distance(vGroundWorldPosition,collisionGroundCenter)<collisionGroundRadius)discard;');
+    '#include <clipping_planes_fragment>\nif('+test+')discard;');
   };
+  discardGround(this.material,'distance(vGroundWorldPosition,collisionGroundCenter)<collisionGroundRadius');
   this.scene=scene;
   // Nearby visible geometry comes directly from the same surface patches as
   // the Box3D hulls. Both near and distant representations are owned here.
   this.collisionSurface=null;
   this.nearSurfaceSignature='';
-  this.nearSurfaceMesh=new THREE.Mesh(new THREE.BufferGeometry(),
-   new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,side:THREE.DoubleSide,roughness:1,
-    polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1}));
+  this.nearMaterial=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,side:THREE.DoubleSide,roughness:1,
+   polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1});
+  discardGround(this.nearMaterial,'distance(vGroundWorldPosition,collisionGroundCenter)>collisionGroundRadius+.25');
+  this.nearSurfaceMesh=new THREE.Mesh(new THREE.BufferGeometry(),this.nearMaterial);
   this.nearSurfaceMesh.frustumCulled=false;
   this.scene.add(this.nearSurfaceMesh);
   this.cache=new Map();
