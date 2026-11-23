@@ -9,6 +9,7 @@ import {ResourceHandler} from '../engine/resource-handler.js';
 import {SharedWorld} from '../engine/shared-world.js';
 import {Bonfire} from '../engine/bonfire.js';
 import {GamePanels} from '../ui/game-panels.js';
+import {Survival} from './survival.js';
 import {StatusReport} from '../gui/status-report.js';
 import {LoadingScreen} from '../gui/loading-screen.js';
 import {Profiler} from '../gui/profiler.js';
@@ -58,6 +59,8 @@ export class Game {
   this.sharedWorld.join('local-owner',this.player);
   this.harvesting=new ResourceHandler(this.scene,this.playerSystem,this.height,RADIUS,{terrain:this.terrain,shared:this.sharedWorld,playerId:'local-owner',camera:this.camera});
   this.panels=new GamePanels({app,canvas:this.canvas,controls:this.playerSystem.controls,sharedWorld:this.sharedWorld,playerId:'local-owner'});
+  this.survival=new Survival();
+  this.panels.updateSurvival(this.survival.needs());
   this.bonfire=new Bonfire({scene:this.scene,shared:this.sharedWorld,player:this.playerSystem,playerId:'local-owner',camera:this.camera,app});
   this.pendingBonfire=null;
   this.status.onFailed=(problems,reported)=>{
@@ -77,10 +80,12 @@ export class Game {
    this.started=true;
    this.panels.top.panel.style.visibility='visible';
    this.panels.bottom.panel.style.visibility='visible';
+   this.panels.setSurvivalVisible(true);
    this.playerSystem.controls.setEnabled(true);
   });
   this.panels.top.panel.style.visibility='hidden';
   this.panels.bottom.panel.style.visibility='hidden';
+  this.panels.setSurvivalVisible(false);
   // Visual-only owner commands. Physics and game simulation remain active.
   this.renderLayers={terrain:true,water:true,trees:true,player:true,objects:true};
   this.consoleCommands=new ConsoleCommands(this);
