@@ -8,9 +8,15 @@ export const RADIUS=WORLD_SCALE.radius;
 export const MAX_TERRAIN_LOD=WORLD_SCALE.maxTerrainLod;
 const MAX_LOD=MAX_TERRAIN_LOD;
 // Screen-space dither: an interleaved gradient noise, stable per pixel and free
-// of visible tiling. Used to dissolve a new LOD generation in over the old one.
+// of visible tiling. Used to dissolve new LOD in over old and to blend the
+// near-field handover.
 const GROUND_DITHER='float groundDither(vec2 p){return fract(52.9829189*fract(dot(p,vec2(0.06711056,0.00583715))));}';
 const LOD_FADE_MS=600;
+// Near-field handover: the collision-patch mesh (the better surface) is stippled
+// in over the D20 terrain across this many metres, so the two never meet in one
+// hard ring. The patch query box must reach past the end of the ramp.
+const GROUND_BLEND_METERS=4;
+const NEAR_QUERY_METERS=12.5;
 // Horizontal distance from the local-up axis, excluding the far hemisphere.
 function columnDistance(up,node){
  const dot=THREE.MathUtils.clamp(up.dot(node.center),-1,1);
@@ -124,17 +130,17 @@ export class WorldTerrain {
   this.collisionGroundCenter={value:startPosition.clone()};
   this.collisionGroundRadius={value:7};
   // One cutoff, two meshes. The D20 terrain is dropped inside the radius and
-  // the near collision-patch mesh is dropped just outside it, so exactly one
-  // flat-shaded surface covers any point. The patch mesh is built from a
-  // +/-10 m box query whose corners reach ~17 m, so without the outer cut it
-  // keeps drawing on top of the terrain and the near field shows two grids.
+  // the near collision-patch mesh owns everything outside it, blending into
+  // the terrain across GROUND_BLEND_METERS. The patch mesh is built from a box
+  // query whose corners reach ~17 m, so the outer ramp is what keeps it from
+  // drawing on top of the terrain in a second grid.
   // A finished LOD generation is exposed by dissolving it in over the old one
-  // (beginSwap); the spatial cutoff itself stays a clean edge.
+  // (beginSwap).
   this.groundFade={value:1};
-  const discardGround=(material,test,fade=null)=>{
+  const discardGround=(material,test,fade=null,helper='')=>{
    // The discards are the only difference between the shaders; without this
    // key three would reuse the first compiled program for every material.
-   material.customProgramCacheKey=()=>test+(fade?'|fade':'');
+   material.customProgramCacheKey=()=>test+(fade?'|fade':'')+helper;
    material.onBeforeCompile=shader=>{
     shader.uniforms.collisionGroundCenter=this.collisionGroundCenter;
     shader.uniforms.collisionGroundRadius=this.collisionGroundRadius;
@@ -144,7 +150,7 @@ export class WorldTerrain {
     shader.vertexShader=shader.vertexShader.replace('#include <worldpos_vertex>',
      '#include <worldpos_vertex>\nvGroundWorldPosition=(modelMatrix*vec4(transformed,1.0)).xyz;');
     shader.fragmentShader=shader.fragmentShader.replace('#include <common>',
-     '#include <common>\nvarying vec3 vGroundWorldPosition;\nuniform vec3 collisionGroundCenter;\nuniform float collisionGroundRadius;\n'+(fade?'uniform float groundFade;\n':'')+GROUND_DITHER);
+     '#include <common>\nvarying vec3 vGroundWorldPosition;\nuniform vec3 collisionGroundCenter;\nuniform float collisionGroundRadius;\n'+(fade?'uniform float groundFade;\n':'')+GROUND_DITHER+helper);
     shader.fragmentShader=shader.fragmentShader.replace('#include <clipping_planes_fragment>',
      '#include <clipping_planes_fragment>\nif('+test+')discard;');
    };
@@ -157,7 +163,13 @@ export class WorldTerrain {
   this.nearSurfaceSignature='';
   this.nearMaterial=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,side:THREE.DoubleSide,roughness:1,
    polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1});
-  discardGround(this.nearMaterial,'distance(vGroundWorldPosition,collisionGroundCenter)>collisionGroundRadius+.25');
+  // Coverage ramps from solid at the cutoff to nothing GROUND_BLEND_METERS
+  // outside it, so the better surface dissolves into the terrain instead of
+  // ending on a line. Only this mesh is stippled; the terrain stays solid
+  // underneath and simply isn't replaced where the ramp is still sparse.
+  discardGround(this.nearMaterial,'groundDither(gl_FragCoord.xy)>=groundNear(vGroundWorldPosition)',null,
+   'float groundNear(vec3 p){return clamp(1.0-(distance(p,collisionGroundCenter)-collisionGroundRadius)/'+
+   GROUND_BLEND_METERS.toFixed(1)+',0.0,1.0);}');
   // Incoming terrain chunks dissolve in over the generation they replace. The
   // polygon offset makes the incoming surface win depth where it is drawn.
   this.fadeMaterial=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:1,side:THREE.DoubleSide,flatShading:true,
@@ -289,8 +301,9 @@ export class WorldTerrain {
  }
  updateCollisionSurface(position){
   if(!this.collisionSurface)return;
-  const bounds={min:[position.x-10,position.y-10,position.z-10],
-   max:[position.x+10,position.y+10,position.z+10]};
+  // Query wide enough to cover the whole blend ramp, not just its solid part.
+  const bounds={min:[position.x-NEAR_QUERY_METERS,position.y-NEAR_QUERY_METERS,position.z-NEAR_QUERY_METERS],
+   max:[position.x+NEAR_QUERY_METERS,position.y+NEAR_QUERY_METERS,position.z+NEAR_QUERY_METERS]};
   const patches=this.collisionSurface.query(bounds);
   const signature=patches.map(p=>p.id).join('|');
   if(signature===this.nearSurfaceSignature)return;
