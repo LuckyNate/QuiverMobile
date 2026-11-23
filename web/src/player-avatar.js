@@ -52,13 +52,13 @@ export class PlayerAvatar {
   action.reset().fadeIn(.12).play();
   this.currentAction=action;
  }
- update(position,up,forward,dt=1/60){
+ update(position,up,forward,dt=1/60,commanded=0){
   this.root.position.copy(position);
   const f=forward.clone().addScaledVector(up,-forward.dot(up)).normalize();
   const right=new THREE.Vector3().crossVectors(up,f).normalize();
   this.root.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(right,up,f));
   if(this.jim){
-   try{this.jim.update(position,up,dt);}
+   try{this.jim.update(position,up,dt,commanded);}
    catch(error){
     console.warn('Jim IK fallback',error);
     this.jim.visual.visible=false;

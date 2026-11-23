@@ -18,7 +18,11 @@ export class PlayerSystem {
   this.viewZoom=8;this.cameraPosition=null;this.lastTurn=0;
   this.cameraCollision=null;
   this.walkDestination=null;
+  this.commandedSpeed=0;
  }
+ // Physics resolution can hold the capsule below the speed the stick asked for;
+ // the gait reads the command so the run starts when the player pushes the stick.
+ setCommandedSpeed(speed){this.commandedSpeed=speed;}
  setDestination(position){this.walkDestination=position.clone();}
  cancelDestination(){this.walkDestination=null;}
  setCameraCollision(height,radius){
@@ -86,8 +90,7 @@ export class PlayerSystem {
   }
   this.cameraPitch=THREE.MathUtils.clamp(this.cameraPitch+look.y*.004,-.35,1.15);
   const facing=north.clone().multiplyScalar(Math.cos(this.heading)).addScaledVector(east,Math.sin(this.heading));
-  const cameraForward=north.clone().multiplyScalar(Math.cos(this.cameraHeading))
-   .addScaledVector(east,Math.sin(this.cameraHeading));
+  const cameraForward=north.clone().multiplyScalar(Math.cos(this.cameraHeading)).addScaledVector(east,Math.sin(this.cameraHeading));
   const alpha=1-Math.exp(-6*dt);
   this.viewZoom+=(this.controls.zoom-this.viewZoom)*alpha;
   const distance=this.viewZoom;
@@ -110,7 +113,7 @@ export class PlayerSystem {
   this.camera.position.copy(this.cameraPosition);
   this.camera.up.copy(up);
   this.camera.lookAt(focus);
-  this.visual.update(this.position,up,facing,dt);
+  this.visual.update(this.position,up,facing,dt,this.commandedSpeed);
  }
  showAnimation(name){this.visual.show(name);}
  setResting(enabled){this.visual.setResting(enabled);}
