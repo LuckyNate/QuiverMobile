@@ -33,17 +33,19 @@ export function boarGeometry(){
   parts.push(paint(geometry,hex));
  };
  const laying=(top,bottom,length,segments=7)=>new THREE.CylinderGeometry(top,bottom,length,segments,1).rotateZ(Math.PI/2);
- // barrel body, a slightly fatter rump, a big head and a comically fat snout
- add(laying(.27,.25,1),0x8a5a3b,{y:.52});
- add(laying(.25,.2,.2),0x80533a,{x:-.56,y:.52});
+ // Barrel body that tapers into the rump (no plug on the end), a big head and
+ // a comically fat snout. laying(top,bottom): top becomes the rump radius.
+ add(laying(.23,.28,1),0x8a5a3b,{y:.52});
  add(laying(.21,.19,.34),0x96684a,{x:.56,y:.56});
  add(laying(.13,.12,.22),0xc98f7c,{x:.82,y:.5});
  add(laying(.13,.13,.05,8),0xe0a894,{x:.93,y:.5});
  // ears and tusks
  add(new THREE.CylinderGeometry(.004,.1,.24,4),0x6b4630,{x:.62,y:.74,z:.14,rx:.34});
  add(new THREE.CylinderGeometry(.004,.1,.24,4),0x6b4630,{x:.62,y:.74,z:-.14,rx:-.34});
- add(new THREE.CylinderGeometry(.008,.026,.18,4),0xf2e6c8,{x:.88,y:.4,z:.1,rz:-.5});
- add(new THREE.CylinderGeometry(.008,.026,.18,4),0xf2e6c8,{x:.88,y:.4,z:-.1,rz:-.5});
+ // Tusks curve up and forward from the corners of the mouth, either side of
+ // the snout, so they clear the jaw instead of hanging under it.
+ add(new THREE.CylinderGeometry(.006,.028,.22,4),0xf2e6c8,{x:.85,y:.54,z:.1,rz:-.85});
+ add(new THREE.CylinderGeometry(.006,.028,.22,4),0xf2e6c8,{x:.85,y:.54,z:-.1,rz:-.85});
  // eyes
  add(laying(.04,.04,.03,6),0x14100e,{x:.72,y:.64,z:.14});
  add(laying(.04,.04,.03,6),0x14100e,{x:.72,y:.64,z:-.14});
@@ -51,9 +53,11 @@ export function boarGeometry(){
  for(const x of [-.32,.32])for(const z of [-.16,.16]){
   add(new THREE.CylinderGeometry(.05,.042,.4,5),0x6f4a33,{x,y:.2,z});
  }
- // curly tail, two short cylinders
- add(new THREE.CylinderGeometry(.02,.03,.14,4),0x6b4630,{x:-.55,y:.62,rz:.9});
- add(new THREE.CylinderGeometry(.012,.02,.12,4),0x6b4630,{x:-.6,y:.7,rz:1.7});
+ // Thin curly tail: three short segments rising from the top of the rump and
+ // curling back over themselves, the way a piglet's does.
+ add(new THREE.CylinderGeometry(.028,.034,.12,5),0x8a5a3b,{x:-.49,y:.6,rz:.9});
+ add(new THREE.CylinderGeometry(.02,.026,.11,5),0x8a5a3b,{x:-.54,y:.66,rz:2.4});
+ add(new THREE.CylinderGeometry(.014,.02,.09,5),0x8a5a3b,{x:-.48,y:.69,rz:3.5});
  const merged=mergeGeometries(parts,false);
  for(const part of parts)part.dispose();
  if(!merged)throw new Error('Boar geometry merge failed');
