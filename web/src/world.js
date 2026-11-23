@@ -10,10 +10,10 @@ const MAX_LOD=MAX_TERRAIN_LOD;
 const BAND_METERS=WORLD_SETUP.terrainLodBandMeters;
 // 1 m triangles are the finest level and only for ground near the player. Each
 // 20 m band further out drops one level, so the horizon is drawn with big
-// triangles and the total stays around twelve thousand instead of a million.
-// Where two chunks of different density meet, the coarser chunk's edge is split
-// at the finer chunk's vertices and follows that seam, so the two surfaces share
-// one polyline and there is no crack to hide.
+// triangles and the total stays around twenty thousand instead of a million.
+// Where two chunks of different density meet, both sides take the union of every
+// overlapping neighbour's vertices along that edge, so the shared stretch gets
+// the exact same points on both meshes: no crack to hide.
 const MORPH_FRACTION=.5;
 function columnDistance(up,node){
  const dot=THREE.MathUtils.clamp(up.dot(node.center),-1,1);
@@ -62,7 +62,10 @@ function contains(n,p){return containsSphericalTriangle(p,[n.a,n.b,n.c]);}
 function edgePlane(a,b){
  const normal=new THREE.Vector3().crossVectors(a,b).normalize();
  if(normal.x<-1e-10||(Math.abs(normal.x)<=1e-10&&(normal.y<-1e-10||(Math.abs(normal.y)<=1e-10&&normal.z<0))))normal.negate();
- return {normal,key:[normal.x,normal.y,normal.z].map(x=>Math.round(x*1e8)).join(',')};
+ // Coarse key: two chunks that share an edge must land in the same group even
+// when their normals differ by floating-point noise. overlaps() rejects any
+// genuinely different circle that lands here by accident.
+ return {normal,key:[normal.x,normal.y,normal.z].map(x=>Math.round(x*1e6)).join(',')};
 }
 function onArc(p,a,b){
  const span=a.angleTo(b),u=a.angleTo(p),v=p.angleTo(b);
@@ -71,9 +74,9 @@ function onArc(p,a,b){
 function overlaps(x,y){
  return onArc(y.a,x.a,x.b)||onArc(y.b,x.a,x.b)||onArc(x.a,y.a,y.b)||onArc(x.b,y.a,y.b);
 }
-// For every chunk edge, gather the vertex directions a denser neighbour already
-// has along it. The denser side owns the seam; the coarser side splits its edge
-// to pass through exactly those vertices.
+// For every chunk edge, gather the vertex directions every overlapping neighbour
+// has along it. Each side builds through the same union, so a shared stretch of
+// edge carries one identical polyline on both meshes whatever their densities.
 function boundarySeams(selected){
  const groups=new Map(),edgesByNode=new Map();
  for(const entry of selected){
@@ -82,7 +85,7 @@ function boundarySeams(selected){
    const plane=edgePlane(vs[i],vs[(i+1)%3]);
    const edge={a:vs[i],b:vs[(i+1)%3],key:plane.key,entry,
     side:Math.sign(plane.normal.dot(vs[(i+2)%3])),
-    segments:1<<Math.max(0,entry.detail-n.level)};
+    segments:1<<Math.max(0,entry.level-n.level)};
    if(!groups.has(plane.key))groups.set(plane.key,[]);
    groups.get(plane.key).push(edge);list.push(edge);
   }
@@ -96,11 +99,11 @@ function boundarySeams(selected){
    const edge=edges[i],span=edge.a.angleTo(edge.b);
    for(const other of groups.get(edge.key)){
     if(other===edge||other.side===edge.side||!overlaps(edge,other))continue;
-    if(other.segments<edge.segments)continue;
-    // This edge is shared with a chunk of a different density: both sides
-    // freeze their seam heights so the shared polyline stays put.
-    if(other.segments>edge.segments||other.entry.detail!==edge.entry.detail)shared[i]=true;
-    if(other.segments<=edge.segments)continue;
+    if(other.entry.level!==edge.entry.level||other.segments!==edge.segments)shared[i]=true;
+    // Both sides of a seam take the union of every overlapping neighbour's
+    // vertices, so whatever their densities the shared stretch gets the exact
+    // same set of points on both meshes. No crack, and no single owner to get
+    // wrong when an edge borders two chunks of different sizes.
     for(let k=1;k<other.segments;k++){
      const t=k/other.segments;
      const dir=other.a.clone().multiplyScalar(1-t).addScaledVector(other.b,t).normalize();
@@ -110,6 +113,7 @@ function boundarySeams(selected){
     }
    }
    points[i].sort((p,q)=>edge.a.angleTo(p)-edge.a.angleTo(q));
+   for(let k=points[i].length-1;k>0;k--)if(points[i][k].distanceTo(points[i][k-1])<1e-9)points[i].splice(k,1);
    signature.push(shared[i]?(points[i].length?'s'+points[i].length:'s'):'');
   }
   seams.set(entry,{edges:points,shared,signature:signature.join('|')});
