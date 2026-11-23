@@ -7,16 +7,10 @@ export const ROOT_EDGE_METERS=WORLD_SETUP.rootEdgeMeters;
 export const RADIUS=WORLD_SCALE.radius;
 export const MAX_TERRAIN_LOD=WORLD_SCALE.maxTerrainLod;
 const MAX_LOD=MAX_TERRAIN_LOD;
-// Screen-space dither: an interleaved gradient noise, stable per pixel and free
-// of visible tiling. Used to dissolve new LOD in over the old generation and to
-// blend the near-field handover (large triangles to/from very small).
-const GROUND_DITHER='float groundDither(vec2 p){return fract(52.9829189*fract(dot(p,vec2(0.06711056,0.00583715))));}';
-const LOD_FADE_MS=600;
-// Near-field handover: the collision-patch mesh (the better surface) is stippled
-// in over the D20 terrain across this many metres, so the two never meet in one
-// hard ring. The patch query box must reach past the end of the ramp.
+// Geomorphing band: next to a one-level-coarser neighbour a chunk's heights
+// converge on that neighbour's surface across this many metres, so triangle
+// size grows smoothly into the seam (CDLOD). It is the only LOD transition.
 const GROUND_BLEND_METERS=4;
-const NEAR_QUERY_METERS=12.5;
 // Horizontal distance from the local-up axis, excluding the far hemisphere.
 function columnDistance(up,node){
  const dot=THREE.MathUtils.clamp(up.dot(node.center),-1,1);
@@ -140,67 +134,16 @@ function boundarySeams(selected){
 function contains(n,p){return containsSphericalTriangle(p,[n.a,n.b,n.c]);}
 // Render chunks ARE the persistent D20 hierarchy nodes. Geometry is cached
 // per node/detail/edge variant; Box3D and collision caches are separate.
+// Terrain geometry is the only ground surface: no near-field overlay mesh and
+// no dithered cross-fade, because geomorphic LOD already makes the transitions
+// continuous.
 export class WorldTerrain {
  constructor(scene,height=new TerrainHeight(),startPosition=new THREE.Vector3(0,0,RADIUS+1.3),zFar=5000){
   this.height=height;
   this.roots=roots.map(([a,b,c],face)=>node(a,b,c,0,null,rootAddress(face)));
   this.material=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:1,side:THREE.DoubleSide,flatShading:true});
-  // The collision hull's exact top faces own the near-ground pixels.
-  // Keep D20 for far LOD only; never draw a second surface under the player.
-  this.collisionGroundCenter={value:startPosition.clone()};
-  this.collisionGroundRadius={value:7};
-  // One cutoff, two meshes. The D20 terrain is dropped inside the radius and
-  // the near collision-patch mesh owns everything outside it, blending into
-  // the terrain across GROUND_BLEND_METERS. The patch mesh is built from a box
-  // query whose corners reach ~17 m, so the outer ramp is what keeps it from
-  // drawing on top of the terrain in a second grid.
-  // A finished LOD generation is exposed by dissolving it in over the old one
-  // (beginSwap).
-  this.groundFade={value:1};
-  const discardGround=(material,test,fade=null,helper='')=>{
-   // The discards are the only difference between the shaders; without this
-   // key three would reuse the first compiled program for every material.
-   material.customProgramCacheKey=()=>test+(fade?'|fade':'')+helper;
-   material.onBeforeCompile=shader=>{
-    shader.uniforms.collisionGroundCenter=this.collisionGroundCenter;
-    shader.uniforms.collisionGroundRadius=this.collisionGroundRadius;
-    if(fade)shader.uniforms.groundFade=fade;
-    shader.vertexShader=shader.vertexShader.replace('#include <common>',
-     '#include <common>\nvarying vec3 vGroundWorldPosition;');
-    shader.vertexShader=shader.vertexShader.replace('#include <worldpos_vertex>',
-     '#include <worldpos_vertex>\nvGroundWorldPosition=(modelMatrix*vec4(transformed,1.0)).xyz;');
-    shader.fragmentShader=shader.fragmentShader.replace('#include <common>',
-     '#include <common>\nvarying vec3 vGroundWorldPosition;\nuniform vec3 collisionGroundCenter;\nuniform float collisionGroundRadius;\n'+(fade?'uniform float groundFade;\n':'')+GROUND_DITHER+helper);
-    shader.fragmentShader=shader.fragmentShader.replace('#include <clipping_planes_fragment>',
-     '#include <clipping_planes_fragment>\nif('+test+')discard;');
-   };
-  };
-  discardGround(this.material,'distance(vGroundWorldPosition,collisionGroundCenter)<collisionGroundRadius');
   this.scene=scene;
-  // Nearby visible geometry comes directly from the same surface patches as
-  // the Box3D hulls. Both near and distant representations are owned here.
-  this.collisionSurface=null;
-  this.nearSurfaceSignature='';
-  this.nearMaterial=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,side:THREE.DoubleSide,roughness:1,
-   polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1});
-  // Coverage ramps from solid at the cutoff to nothing GROUND_BLEND_METERS
-  // outside it, so the better surface dissolves into the terrain instead of
-  // ending on a line. Only this mesh is stippled; the terrain stays solid
-  // underneath and simply isn't replaced where the ramp is still sparse.
-  discardGround(this.nearMaterial,'groundDither(gl_FragCoord.xy)>=groundNear(vGroundWorldPosition)',null,
-   'float groundNear(vec3 p){return clamp(1.0-(distance(p,collisionGroundCenter)-collisionGroundRadius)/'+
-   GROUND_BLEND_METERS.toFixed(1)+',0.0,1.0);}');
-  // Incoming terrain chunks dissolve in over the generation they replace. The
-  // polygon offset makes the incoming surface win depth where it is drawn.
-  this.fadeMaterial=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:1,side:THREE.DoubleSide,flatShading:true,
-   polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1});
-  discardGround(this.fadeMaterial,
-   'distance(vGroundWorldPosition,collisionGroundCenter)<collisionGroundRadius||groundDither(gl_FragCoord.xy)>groundFade',this.groundFade);
-  this.nearSurfaceMesh=new THREE.Mesh(new THREE.BufferGeometry(),this.nearMaterial);
-  this.nearSurfaceMesh.frustumCulled=false;
-  this.scene.add(this.nearSurfaceMesh);
   this.cache=new Map();
-  this.active=new Set();
   this.displayed=new Set();
   this.staging=false;
   this.pending=[];
@@ -211,7 +154,9 @@ export class WorldTerrain {
   this.anchorAddress=null;
   this.lodCenter=null;
   this.leafCount=0;
-  this.fading=false;this.fadeStart=0;this.fadeKeys=null;this.replaced=null;
+  // The collision surface is physics-owned; the renderer samples the same
+  // height provider, so it needs no copy of it.
+  this.collisionSurface=null;
   // A guaranteed complete low-detail planet remains visible while new
   // generations of render geometry are prepared offscreen.
   for(const n of this.roots){
@@ -362,91 +307,35 @@ export class WorldTerrain {
   for(const root of this.roots)visit(root);
   return selected;
  }
+ // Physics owns the collision surface; terrain rendering samples the same
+ // height provider directly, so there is nothing to mirror here.
  setCollisionSurface(surface){
   this.collisionSurface=surface;
-  this.nearSurfaceSignature='';
  }
- updateCollisionSurface(position){
+ updateCollisionSurface(){
   if(!this.collisionSurface)return;
-  // Query wide enough to cover the whole blend ramp, not just its solid part.
-  const bounds={min:[position.x-NEAR_QUERY_METERS,position.y-NEAR_QUERY_METERS,position.z-NEAR_QUERY_METERS],
-   max:[position.x+NEAR_QUERY_METERS,position.y+NEAR_QUERY_METERS,position.z+NEAR_QUERY_METERS]};
-  const patches=this.collisionSurface.query(bounds);
-  const signature=patches.map(p=>p.id).join('|');
-  if(signature===this.nearSurfaceSignature)return;
-  this.nearSurfaceSignature=signature;
-  const positions=[],colors=[];
-  for(const patch of patches){
-   const corners=patch.corners;
-   for(const i of [0,1,2,0,2,3]){
-    const point=corners[i];
-    positions.push(...point);
-    const length=Math.hypot(...point);
-    const biomeId=faceAtDirection(new THREE.Vector3(...point).normalize());
-    const groundColor=BIOME_SETUP[biomeId].groundColor;
-    const color=groundColor===null?terrainColor(length-(RADIUS+WORLD_SETUP.seaLevelOffsetMeters)):new THREE.Color(groundColor);
-    colors.push(color.r,color.g,color.b);
-   }
-  }
-  const geometry=new THREE.BufferGeometry();
-  geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
-  geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
-  geometry.computeVertexNormals();
-  const previous=this.nearSurfaceMesh.geometry;
-  this.nearSurfaceMesh.geometry=geometry;
-  previous.dispose();
  }
  setRenderEnabled(enabled){
   this.renderEnabled=Boolean(enabled);
-  this.nearSurfaceMesh.visible=this.renderEnabled;
-  for(const entry of this.cache.values())entry.mesh.visible=this.renderEnabled&&this.isShown(entry.key);
+  for(const entry of this.cache.values())entry.mesh.visible=this.renderEnabled&&this.displayed.has(entry.key);
  }
- isShown(key){return this.displayed.has(key)||Boolean(this.replaced&&this.replaced.has(key));}
- // The better generation is exposed by dissolving it in over the old one. Old
- // meshes keep drawing underneath until the fade ends, so nothing pops and no
- // point loses coverage; only the incoming chunks are dithered.
- beginSwap(){
-  if(this.fading)this.finishFade();
-  this.replaced=this.displayed;
-  this.fadeKeys=new Set();
-  for(const key of this.requested){
-   const entry=this.cache.get(key);
-   if(!entry)continue;
-   entry.mesh.visible=this.renderEnabled;
-   if(this.replaced.has(key))continue;
-   entry.mesh.material=this.fadeMaterial;
-   this.fadeKeys.add(key);
-  }
-  this.displayed=new Set(this.requested);
-  this.staging=false;
-  this.groundFade.value=0;
-  this.fadeStart=performance.now();
-  this.fading=this.fadeKeys.size>0;
-  if(!this.fading)this.finishFade();
- }
- advanceFade(){
-  if(!this.fading)return;
-  const t=Math.min(1,(performance.now()-this.fadeStart)/LOD_FADE_MS);
-  this.groundFade.value=t;
-  if(t>=1)this.finishFade();
- }
- finishFade(){
-  this.groundFade.value=1;
-  for(const key of this.replaced||[]){
-   if(this.displayed.has(key))continue;
+ // One generation replaces the previous one directly: geomorphic LOD makes the
+ // geometry continuous, so there is no stipple or cross-fade stage.
+ applyGeneration(){
+  for(const key of this.displayed){
+   if(this.requested.has(key))continue;
    const entry=this.cache.get(key);
    if(entry)entry.mesh.visible=false;
   }
-  for(const key of this.fadeKeys||[]){
+  for(const key of this.requested){
    const entry=this.cache.get(key);
-   if(entry)entry.mesh.material=this.material;
+   if(entry)entry.mesh.visible=this.renderEnabled;
   }
-  this.fading=false;this.fadeKeys=null;this.replaced=null;
+  this.displayed=new Set(this.requested);
+  this.staging=false;
  }
  // A chunk address change only alters the target set; mesh work is streamed.
  update(position,force=false,maxDetail=MAX_LOD,zFar=this.zFar){
-  this.collisionGroundCenter.value.copy(position);
-  this.updateCollisionSurface(position);
   const detailCap=Math.max(2,Math.min(MAX_LOD,Math.floor(maxDetail)));
   const anchor=this.anchor(position);
   const address=String(anchor.address);
@@ -489,14 +378,12 @@ export class WorldTerrain {
     mesh.visible=false;
    }
   }
-  // Expose a finished generation by dissolving it in over the one it replaces.
-  if(this.staging&&[...this.requested].every(key=>this.cache.has(key)))this.beginSwap();
-  this.advanceFade();
+  if(this.staging&&[...this.requested].every(key=>this.cache.has(key)))this.applyGeneration();
   // Evict inactive geometry, never evict chunks required by the current view.
   if(this.cache.size>2200){
    for(const [key,entry] of this.cache){
     if(this.cache.size<=1800)break;
-    if(this.requested.has(key)||this.isShown(key)||entry.fallback)continue;
+    if(this.requested.has(key)||this.displayed.has(key)||entry.fallback)continue;
     this.scene.remove(entry.mesh);entry.mesh.geometry.dispose();
     this.cache.delete(key);
    }
@@ -517,6 +404,6 @@ export class WorldTerrain {
    this.scene.add(mesh);
   }
   this.pending=remaining;
-  if(this.staging&&[...this.requested].every(key=>this.cache.has(key)))this.beginSwap();
+  if(this.staging&&[...this.requested].every(key=>this.cache.has(key)))this.applyGeneration();
  }
 }
