@@ -83,7 +83,7 @@ export class Game {
   this.panels.bottom.panel.style.visibility='hidden';
   // Visual-only owner commands. Physics and game simulation remain active.
   this.renderLayers={terrain:true,water:true,trees:true,player:true,objects:true};
-  this.consoleCommands=new ConsoleCommands(this);
+  this.consoleCommands=net ConsoleCommands(this);
   this.consoleCommands.register();
   for(const [name,value] of this.status.stages)if(value.state==='FAILED')this.status.report(name,value.state,value.detail);
   this.lastLogCount=-1;
@@ -91,7 +91,7 @@ export class Game {
   // Permanent mathematical solidity is independent of rendered terrain triangles.
   this.physics=null;this.fallingCubes=[];this.playerCollider=null;
   this.physicsLoading=false;this.simulationReady=false;
-  this.debugAabb=new DebugAaBb(this.scene);
+  this.debugAabb=new DebugAabb(this.scene);
   if(!this.terrain)throw new Error('Terrain geometry unavailable');
   this.worldSystem=new WorldSystem(RADIUS,this.player,this.height);
   this.octree=this.worldSystem.octree;
