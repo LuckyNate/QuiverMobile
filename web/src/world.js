@@ -8,6 +8,14 @@ export const RADIUS=WORLD_SCALE.radius;
 export const MAX_TERRAIN_LOD=WORLD_SCALE.maxTerrainLod;
 const MAX_LOD=MAX_TERRAIN_LOD;
 const BAND_METERS=WORLD_SETUP.terrainLodBandMeters;
+// Every chunk is the same power-of-two piece of a biome face: 256 m face, 128,
+// then 64. Fixed-size chunks keep every edge shared with exactly one neighbour
+// over its whole length and with the same two corner vertices, so boundaries
+// meet by construction and only the tessellation inside a chunk changes with
+// distance. Letting far chunks keep coarser pieces is what broke that: their
+// edges then had different corners and a different number of vertices, which no
+// amount of matching can reconcile.
+const CHUNK_LEVEL=Math.max(0,MAX_LOD-6);
 // 1 m triangles are the finest level and only for ground near the player. Each
 // 20 m band further out drops one level, so the horizon is drawn with big
 // triangles and the total stays around twenty thousand instead of a million.
@@ -161,9 +169,9 @@ export class WorldTerrain {
   // origin, and it is the player: zooming the camera must not warp the ground.
   this.lodOrigin={value:new THREE.Vector3(0,0,1)};
   // Chunks morph onto their parent's surface as they approach the next band, so
-  // the swap to a coarser mesh is already the same shape. Seam vertices opt out
-  // (their parent equals their own position) because they belong to a shared
-  // polyline that a coarser neighbour is also passing through.
+  // the swap to a coarser mesh is already the same shape. The bend fades out at
+  // a chunk's own edges, where it would otherwise fold against a neighbour that
+  // is not bending.
   this.material.onBeforeCompile=shader=>{
    shader.uniforms.uLodOrigin=this.lodOrigin;
    shader.vertexShader=shader.vertexShader
@@ -206,7 +214,7 @@ transformed=mix(position,aParent,cdlodMorph);`);
   const p=position.clone().normalize();
   let n=this.roots.find(root=>contains(root,p));
   if(!n)n=this.roots.reduce((best,item)=>item.center.dot(p)>best.center.dot(p)?item:best);
-  const anchorLevel=Math.max(0,MAX_LOD-5);
+  const anchorLevel=CHUNK_LEVEL;
   while(n.level<anchorLevel){
    const options=children(n);
    n=options.find(child=>contains(child,p))||
@@ -323,11 +331,11 @@ transformed=mix(position,aParent,cdlodMorph);`);
  select(anchor,position){
   const selected=[];
   const origin=position.clone().normalize();
-  const chunkLevel=Math.max(0,MAX_LOD-5);
+  const chunkLevel=CHUNK_LEVEL;
   const visit=n=>{
    const distance=columnDistance(origin,n);
    const target=terrainLodAtHorizontalDistance(distance);
-   if(n.level<Math.min(chunkLevel,target)){
+   if(n.level<chunkLevel){
     for(const child of children(n))visit(child);
    }else{
     selected.push({node:n,detail:Math.max(n.level,target)});
