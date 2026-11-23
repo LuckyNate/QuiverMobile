@@ -18,9 +18,12 @@ export class GameView {
   // Shared tint lookup: dyes inventory and renderer sample the same fixed 8x8 RGB palette.
   this.scene.userData.dyePaletteTexture=createDyePaletteTexture();
   this.scene.userData.dyeUV=dyeUV;
-  // Sky-blue distance fog blends the world into the matching background at 5 km.
+  // Aerial haze: distant ground fades into the sky colour so ridges read as
+  // depth instead of hard silhouettes. The band is scaled to the planet, not to
+  // the camera far plane: it starts past the near field and is complete around
+  // the far side, which is as far as anything can ever be seen from up here.
   this.scene.background=new THREE.Color(0x87ceeb);
-  this.scene.fog=new THREE.Fog(0x87ceeb,1,5000);
+  this.scene.fog=new THREE.Fog(0x87ceeb,WORLD_SCALE.radius*.35,WORLD_SCALE.radius*2.1);
   this.scene.add(new THREE.HemisphereLight(0xeeeeff,0x263b55,2.1));
   const sun=new THREE.DirectionalLight(0xffffff,2.0);
   sun.position.set(90,180,70);
