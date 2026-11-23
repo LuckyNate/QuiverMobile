@@ -125,7 +125,7 @@ The world is hostile and genuinely safe places are scarce. Bonfire protection is
 - **Resting:** standing near a burning bonfire without moving makes the character **sit**. That moment sets the camp as the respawn point. **Implemented.**
 - **`/die`:** respawn at the **most recently used camp or bonfire**. If no camp exists yet, the command refuses and says so. **Implemented.**
 - **`/suicide`:** reset character progress and respawn at the fixed **Meadows start**. **Implemented.**
-- Building a new bonfire makes that spot your respawn point immediately. **Implemented.**
+- Building a new bonfire immediately sets that spot as your respawn point. **Implemented.**
 - A full combat death/respawn rule (what death costs, where you wake up in a boss fight, corpse recovery) is **not designed yet**; `/die` is the current stand-in.
 
 ## 13. Multiplayer and villages
