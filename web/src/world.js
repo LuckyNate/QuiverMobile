@@ -152,18 +152,23 @@ export class WorldTerrain {
   this.material=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:1,side:THREE.DoubleSide,flatShading:true});
   const radiusLiteral=RADIUS.toFixed(9);
   this.material.customProgramCacheKey=()=>'terrainCdlod';
+  // Chunk detail and the morph that hides detail swaps must agree on one
+  // origin, and it is the player: zooming the camera must not warp the ground.
+  this.lodOrigin={value:new THREE.Vector3(0,0,1)};
   // Chunks morph onto their parent's surface as they approach the next band, so
   // the swap to a coarser mesh is already the same shape. Seam vertices opt out
   // (their parent equals their own position) because they belong to a shared
   // polyline that a coarser neighbour is also passing through.
   this.material.onBeforeCompile=shader=>{
+   shader.uniforms.uLodOrigin=this.lodOrigin;
    shader.vertexShader=shader.vertexShader
     .replace('#include <common>',`#include <common>
 attribute vec3 aParent;
 attribute vec2 aBand;
+uniform vec3 uLodOrigin;
 const float CDLOD_RADIUS=${radiusLiteral};`)
     .replace('#include <begin_vertex>',`#include <begin_vertex>
-vec3 cdlodUp=normalize(cameraPosition);
+vec3 cdlodUp=normalize(uLodOrigin);
 float cdlodDot=clamp(dot(cdlodUp,normalize(position)),-1.0,1.0);
 float cdlodDistance=CDLOD_RADIUS*sqrt(max(0.0,1.0-cdlodDot*cdlodDot));
 float cdlodMorph=clamp((cdlodDistance-aBand.x)/max(aBand.y-aBand.x,0.001),0.0,1.0);
@@ -361,6 +366,9 @@ transformed=mix(position,aParent,cdlodMorph);`);
   this.staging=false;
  }
  update(position,force=false,maxDetail=MAX_LOD,zFar=this.zFar){
+  // The morph origin follows the player continuously; the mesh itself only
+  // rebuilds when the band or the anchor chunk actually changes.
+  if(this.lodOrigin)this.lodOrigin.value.copy(position).normalize();
   const detailCap=Math.max(2,Math.min(MAX_LOD,Math.floor(maxDetail)));
   const anchor=this.anchor(position);
   const address=String(anchor.address);
