@@ -53,6 +53,7 @@ export class JimBody {
   root.add(this.visual);
   this.height=null;this.radius=0;
   this.prevPosition=null;this.stepNext=0;this.handNext=0;this.climb=0;
+  this.rest=0;this.restTarget=0;
   this.runPhase=0;this.runBlend=0;this.running=false;this.gaitSwing=0;
   this.feet=[support(-1),support(1)];
   this.hands=[support(-1),support(1)];
@@ -77,6 +78,8 @@ export class JimBody {
   this.parts.nose.scale.set(.058,.055,.055);
  }
  setTerrain(height,radius){this.height=height;this.radius=radius;}
+ // Sitting is a visual pose only; the Box3D capsule stays authoritative.
+ setResting(enabled){this.restTarget=enabled?1:0;}
  // Use the same procedural surface as rendering and collision. World radial
  // projection works across all D20 faces and respects changing local gravity.
  ground(worldPoint,clearance=.06){
@@ -206,12 +209,14 @@ export class JimBody {
   const bob=this.running?(1-Math.cos(this.runPhase*Math.PI*4))*.5*tuning.bob:
    Math.abs(sway)*tuning.bob;
 
-  const pelvis=new THREE.Vector3(shift,t.pelvisY-.06*climb+bob,.015*climb);
-  const belly=new THREE.Vector3(shift*.45,.16-.15*climb+bob*.5,.07*climb);
-  const chest=new THREE.Vector3(-shift*.25,t.chestY-.25*climb+bob*.35,.24*climb);
-  const shoulder=chest.clone().add(new THREE.Vector3(0,.09,-.01*climb));
-  const neck=shoulder.clone().add(new THREE.Vector3(0,.15-.03*climb,.05*climb));
-  const head=neck.clone().add(new THREE.Vector3(0,.19-.035*climb,.05*climb));
+  const rest=this.rest;
+  // Sitting drops the pelvis and folds the torso forward over the lap.
+  const pelvis=new THREE.Vector3(shift,t.pelvisY-.06*climb+bob-.26*rest,.015*climb-.03*rest);
+  const belly=new THREE.Vector3(shift*.45,.16-.15*climb+bob*.5-.17*rest,.07*climb+.04*rest);
+  const chest=new THREE.Vector3(-shift*.25,t.chestY-.25*climb+bob*.35-.09*rest,.24*climb+.09*rest);
+  const shoulder=chest.clone().add(new THREE.Vector3(0,.09-.01*rest,-.01*climb));
+  const neck=shoulder.clone().add(new THREE.Vector3(0,.15-.05*rest-.03*climb,.05*climb));
+  const head=neck.clone().add(new THREE.Vector3(0,.19-.11*rest-.035*climb,.05*climb));
   // Raise the entire articulated upper body together, including its IK roots.
   for(const joint of [pelvis,belly,chest,shoulder,neck,head])joint.y+=t.lift;
   // Raise the upper torso, shoulders and neck only; head and nose stay put.
@@ -249,8 +254,10 @@ export class JimBody {
    const shoulder=torso.shoulder.clone().add(
     new THREE.Vector3(side*.215,.01,0).applyQuaternion(torso.shoulderRotation));
    const groundFoot=this.toLocal(this.feet[i].world);
+   // Seated: feet move forward so the knees bend in front of the body.
+   groundFoot.z+=.34*this.rest;
    // Terrain still controls uphill clearance, but not extra downhill leg reach.
-   groundFoot.y=Math.max(FOOT_MIN_Y,groundFoot.y);
+   groundFoot.y=Math.max(FOOT_MIN_Y,groundFoot.y+.06*this.rest);
    const footIK=solveTwoBone(hip,groundFoot,THIGH,SHIN,
     new THREE.Vector3(side*.2,.10,.9));
    const knee=vec(footIK.joint),ankle=vec(footIK.end);
@@ -262,6 +269,8 @@ export class JimBody {
    const relaxedHand=new THREE.Vector3(side*.36,-.07,.025);
    const climbHand=this.toLocal(this.hands[i].world);
    const handTarget=relaxedHand.lerp(climbHand,climb);
+   // Seated hands rest on the knees instead of hanging at the sides.
+   handTarget.lerp(knee.clone().add(new THREE.Vector3(0,.03,.10)),this.rest);
    const armIK=solveTwoBone(shoulder,handTarget,UPPER_ARM,FOREARM,
     new THREE.Vector3(side*.7,-.24,-.5));
    const elbow=vec(armIK.joint),wrist=vec(armIK.end);
@@ -293,6 +302,7 @@ export class JimBody {
   const grade=(groundAhead-groundHere)/Math.max(.3,.65+travel.z);
   const climbTarget=speed>.16?THREE.MathUtils.smoothstep(grade,.48,1.55):0;
   this.climb=mix(this.climb,climbTarget,1-Math.exp(-6*interval));
+  this.rest=mix(this.rest,this.restTarget,1-Math.exp(-8*interval));
   const closeToGround=position.length()-groundHere<1.65;
   const footTargets=[-1,1].map(side=>this.desiredContact(side,false,travel));
   const handTargets=[-1,1].map(side=>this.desiredContact(side,true,travel));
