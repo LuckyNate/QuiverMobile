@@ -126,7 +126,9 @@ function meadowsSpawn(){
  // Full capsule has clearance; leave room for Box3D contact settling.
  return best.multiplyScalar(height.radius(best,RADIUS)+2);
 }
-player.copy(meadowsSpawn());
+// Keep the authoritative start pose; character reset returns here.
+const spawnPoint=meadowsSpawn();
+player.copy(spawnPoint);
 // Initialize visual LOD from the actual deterministic spawn, not a placeholder pole.
 try{terrain=new WorldTerrain(scene,height,player,camera.far);report('terrain setup','READY');}
 catch(error){report('terrain setup','FAILED',error.message);}
@@ -219,6 +221,57 @@ function setRenderLayer(enabled,args){
 }
 panels.registerCommand('renderon',args=>setRenderLayer(true,args),'Show visual world layer');
 panels.registerCommand('renderoff',args=>setRenderLayer(false,args),'Hide visual world layer');
+// Owner recovery commands. Reset and wipe are power-cycles: the window blanks,
+// the page reloads, and the engine boots from scratch. Saved data survives a
+// reset; a wipe writes the empty save before the reload, so it is durable even
+// if the reload never happens.
+function hardReset(label){
+ resetting=true;
+ playerSystem.controls.setEnabled(false);
+ const blank=document.createElement('div');
+ blank.style.cssText='position:fixed;inset:0;z-index:100;background:#090c14;color:#8cb7cf;display:grid;place-items:center;font:600 15px monospace;letter-spacing:.16em';
+ blank.textContent=label;
+ // Drop the canvas, panels and overlays: a reset means an empty window.
+ app.replaceChildren(blank);
+ // Two frames so the blank window paints before the reload tears it down.
+ requestAnimationFrame(()=>requestAnimationFrame(()=>{
+  try{location.reload();}catch(error){location.replace(location.href);}
+ }));
+ return '';
+}
+function syncAvatarToCapsule(){
+ const p=playerCollider.getPosition();
+ player.set(p.x,p.y,p.z);
+ // Snap the chase camera instead of sweeping it across the planet.
+ playerSystem.cameraPosition=null;
+}
+panels.registerCommand('reset',()=>hardReset('RESETTING'),'Hard reset: blank the window and restart the engine');
+panels.registerCommand('wipe',args=>{
+ if(args.length!==1||args[0].toLowerCase()!=='confirm')return 'Usage: /wipe confirm — erases inventory, dyes and harvested resources';
+ if(!sharedWorld.wipeGathering('local-owner'))return 'Nothing to wipe';
+ return hardReset('WIPING');
+},'Erase inventory, dyes and harvested resources, then restart');
+panels.registerCommand('stuck',()=>{
+ if(!simulationReady||!playerCollider)return 'Player physics not ready';
+ pendingBonfire=null;
+ playerSystem.cancelDestination();
+ harvesting.ground.clearSelection();
+ playerCollider.knockback=null;
+ if(!playerCollider.panicEscape())return 'Not stuck: position already clear';
+ syncAvatarToCapsule();
+ return 'Moved to the nearest clear ground';
+},'Escape if wedged in terrain or objects');
+panels.registerCommand('suicide',()=>{
+ if(!simulationReady||!playerCollider)return 'Player physics not ready';
+ pendingBonfire=null;
+ playerSystem.cancelDestination();
+ harvesting.ground.clearSelection();
+ playerCollider.knockback=null;
+ playerCollider.placeAt({x:spawnPoint.x,y:spawnPoint.y,z:spawnPoint.z});
+ if(!playerCollider.clear(playerCollider.getPosition()))playerCollider.panicEscape();
+ syncAvatarToCapsule();
+ return 'Character reset at the Meadows start';
+},'Reset character progress and respawn at the Meadows start');
 for(const [name,value] of stages)if(value.state==='FAILED')report(name,value.state,value.detail);
 let lastLogCount=-1;
 report('biome resources','READY','Player-centered seeded resource zones (20 D20 biomes)');
@@ -346,7 +399,9 @@ function updateTitleReadiness(){
  loadStatus(lines.join('\n'));
 }
 let last=performance.now(),elapsed=0,frames=0,lastTerrain=0,resizeW=0,resizeH=0;
+let resetting=false;
 function frame(now){
+ if(resetting)return;
  requestAnimationFrame(frame);
  const perfFrameStart=performance.now();
  perfFrames++;
