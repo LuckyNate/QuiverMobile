@@ -41,7 +41,7 @@ const biomeDefinitions=[
  {name:'Face 03',groundColor:0x9bca68,resources:{}},
  {name:'Face 04',groundColor:0x58ad80,resources:{}},
  {name:'Face 05',groundColor:0x59bba9,resources:{}},
- {name:'Meadows',groundColor:null,resources:{tree:4500,grass:36000,stick:12000,stone:8000}},
+ {name:'Meadows',groundColor:null,resources:{tree:4500,grass:36000,stick:12000,stone:8000,boar:350}},
  {name:'Face 07',groundColor:0x579fcd,resources:{}},
  {name:'Face 08',groundColor:0x6477ca,resources:{}},
  {name:'Face 09',groundColor:0x956ac8,resources:{}},

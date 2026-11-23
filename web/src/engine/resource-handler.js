@@ -7,6 +7,7 @@ import {ResourceDistributor} from './resource-distributor.js';
 import {ResourceTypeRegistry} from './resource-type-registry.js';
 import {TallGrassField} from './tall-grass.js';
 import {GroundResources} from './ground-resources.js';
+import {BoarVisual} from './boar-visual.js';
 import {WORLD_SETUP,BIOME_SETUP} from './world-config.js';
 
 // Biomes request resources near the avatar. This owns the live resource bridge;
@@ -22,6 +23,7 @@ export class ResourceHandler extends TreeHarvestSystem {
   this.grass=new TallGrassField({root:this.root,shared,player,playerId});
   this.grass.onDiscovery=()=>this.onDyeDiscovery?.();
   this.ground=new GroundResources({root:this.root,shared,player,playerId});
+  this.boars=new BoarVisual({root:this.root,shared,player,playerId});
   this.resourceTypes.register('tree',{
    spawn:(id,position,cell)=>this.spawnTree(id,position,cell),
    unload:id=>this.unloadTree(id),
@@ -36,6 +38,10 @@ export class ResourceHandler extends TreeHarvestSystem {
    spawn:(id,position)=>this.ground.spawn(type,id,position),
    unload:id=>this.ground.unload(id),
    busy:id=>this.ground.isBusy(id)
+  });
+  this.resourceTypes.register('boar',{
+   spawn:(id,position)=>this.boars.spawn(id,position),
+   unload:id=>this.boars.unload(id)
   });
   this.zones=terrain.roots.map(root=>{
    const id=Number(root.address.slice(1,3));
@@ -89,5 +95,6 @@ export class ResourceHandler extends TreeHarvestSystem {
   super.update(dt,body);
   this.grass.update(dt,body,this.shared?.getEquippedTool(this.playerId));
   this.ground.update(dt,body);
+  this.boars.update();
  }
 }
