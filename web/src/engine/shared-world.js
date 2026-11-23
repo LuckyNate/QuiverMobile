@@ -131,6 +131,18 @@ export class SharedWorld {
   if(this.events.length>256)this.events.shift();
   this.save();return true;
  }
+ // Explicit owner command. No automatic code path calls this; it clears saved
+ // gathering state for one player and writes the empty record immediately.
+ wipeGathering(id){
+  if(!this.players.has(id))return false;
+  this.players.get(id).logs=0;
+  this.inventories.delete(id);
+  this.entities.clear();
+  this.events.push({version:++this.version,type:'gathering-wiped',playerId:id});
+  if(this.events.length>256)this.events.shift();
+  this.save();return true;
+ }
+
  save(){
   try{this.storage?.setItem(this.saveKey,JSON.stringify(this.snapshot()));}
   catch{} // Storage may be unavailable; network layer must surface persistence failure.
