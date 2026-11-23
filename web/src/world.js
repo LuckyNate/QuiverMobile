@@ -69,6 +69,30 @@ function edgePlane(a,b){
  return {normal,key:[normal.x,normal.y,normal.z].map(x=>Math.round(x*1e6)).join(',')};
 }
 function directionKey(v){return [v.x,v.y,v.z].map(x=>Math.round(x*1e6)).join(',');}
+// Order-independent key for one mesh edge, so a chunk can look up whether the
+// coarser neighbour across it actually spans that exact segment.
+function pairKey(a,b){
+ const ka=directionKey(a),kb=directionKey(b);
+ return ka<kb?ka+'|'+kb:kb+'|'+ka;
+}
+function hashKey(s){
+ let h=0;
+ for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;
+ return (h>>>0).toString(36);
+}
+// Walk the same bisection the mesh uses, so a coarse edge contributes exactly
+// the segments its own subdivision creates. steps must be a power of two.
+function arcSegments(a,b,steps){
+ let pts=[a,b];
+ for(let s=1;s<steps;s*=2){
+  const next=[pts[0]];
+  for(let i=1;i<pts.length;i++){next.push(mid(pts[i-1],pts[i]),pts[i]);}
+  pts=next;
+ }
+ const out=[];
+ for(let i=0;i<pts.length-1;i++)out.push([pts[i],pts[i+1]]);
+ return out;
+}
 function onArc(p,a,b){
  const span=a.angleTo(b),u=a.angleTo(p),v=p.angleTo(b);
  return u<=span+1e-8&&v<=span+1e-8&&Math.abs(u+v-span)<1e-8;
@@ -97,7 +121,10 @@ function boundarySeams(selected){
  const seams=new Map();
  for(const entry of selected){
   const edges=edgesByNode.get(entry);
-  const coarseEdge=[false,false,false],shared=[false,false,false],signature=[];
+  const coarse=[false,false,false],shared=[false,false,false];
+  // Which concrete edges across this side are coarser. A neighbour may cover
+  // only part of a side, so the exact segments matter, not just the side.
+  const coarsePairs=[new Set(),new Set(),new Set()],signature=[];
   for(let i=0;i<3;i++){
    const edge=edges[i],step=edge.a.angleTo(edge.b)/edge.segments;
    for(const other of groups.get(edge.key)){
@@ -106,11 +133,15 @@ function boundarySeams(selected){
     // Step length depends on display detail alone, so a coarser neighbour is
     // always exactly half as dense and its boundary vertices are our parent
     // grid: the split vertices have somewhere to land.
-    if(other.a.angleTo(other.b)/other.segments>step*(1+1e-9))coarseEdge[i]=true;
+    if(other.a.angleTo(other.b)/other.segments>step*(1+1e-9)){
+     coarse[i]=true;
+     for(const [x,y] of arcSegments(other.a,other.b,other.segments))coarsePairs[i].add(pairKey(x,y));
+    }
    }
-   signature.push(shared[i]?'s'+(coarseEdge[i]?'c':''):'');
+   signature.push(shared[i]?'s'+(coarse[i]?
+    'c'+hashKey([...coarsePairs[i]].sort().join('|')):''):'');
   }
-  seams.set(entry,{coarse:coarseEdge,shared,signature:signature.join('|')});
+  seams.set(entry,{coarse,shared,coarsePairs,signature:signature.join('|')});
  }
  return seams;
 }
@@ -179,7 +210,7 @@ transformed=mix(position,aParent,cdlodMorph);`);
   const tint=groundColor===null?null:new THREE.Color(groundColor);
   const radiusAt=v=>this.height.radius(v,RADIUS);
   const pointAt=v=>v.clone().multiplyScalar(radiusAt(v));
-  const coarseEdge=seam?seam.coarse:[false,false,false];
+  const coarsePairs=seam?seam.coarsePairs:null;
   const shared=seam?seam.shared:[false,false,false];
   const onSeam=dir=>{
    for(let side=0;side<3;side++)if(shared[side]&&onArc(dir,nodes[side],nodes[(side+1)%3]))return true;
@@ -192,8 +223,13 @@ transformed=mix(position,aParent,cdlodMorph);`);
   // side gaining a vertex.
   const snapped=new Map();
   const snapMidpoint=(mid,from,to)=>{
+   if(!coarsePairs)return;
+   const pair=pairKey(from,to);
    for(let side=0;side<3;side++){
-    if(!coarseEdge[side]||!onArc(mid,nodes[side],nodes[(side+1)%3]))continue;
+    // Only a segment a coarser neighbour actually spans may move. Snapping
+    // past its coverage would pull the fine mesh off the surface with nothing
+    // on the far side to meet it.
+    if(!coarsePairs[side].has(pair)||!onArc(mid,nodes[side],nodes[(side+1)%3]))continue;
     snapped.set(directionKey(mid),pointAt(from).add(pointAt(to)).multiplyScalar(.5));
     return;
    }
