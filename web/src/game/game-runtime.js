@@ -192,7 +192,6 @@ export const gameRuntime={
     }catch(error){this.status.report('render','FAILED',error.message);this.renderer=null;}
    }
   }catch(error){this.status.report('frame logic','FAILED',error.message);}
-  this.profiler.mark('frame',perFrameStart=>perFrameStart);
   this.profiler.mark('frame',perfFrameStart);
   this.profiler.update();
   this.updateTitleReadiness();
