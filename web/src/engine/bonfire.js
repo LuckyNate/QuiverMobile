@@ -35,6 +35,7 @@ export class Bonfire {
   if(this.exists)this.positionAt(saved.position);
   else this.root.visible=false;
  }
+ near(position,range=5){return this.exists&&position.distanceTo(this.root.position)<range;}
  positionAt(position){
   this.root.position.fromArray(position);
   this.root.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),this.root.position.clone().normalize());

@@ -106,6 +106,7 @@ export class PlayerSystem {
   this.visual.update(this.position,up,facing,dt);
  }
  showAnimation(name){this.visual.show(name);}
+ setResting(enabled){this.visual.setResting(enabled);}
  playIdle(){this.showAnimation('Idle');}
  playWalking(){this.showAnimation('Walking');}
  playStrafeLeft(){this.showAnimation('Walking');}
