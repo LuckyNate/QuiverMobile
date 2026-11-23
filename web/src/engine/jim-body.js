@@ -35,7 +35,10 @@ export const JIM_GAIT={
  step:{
   metresPerSpeed:.34,minMetres:.30,maxMetres:.80,
   runMinMetres:.55,runMaxMetres:2.20,
-  minSeconds:.16,maxSeconds:.44,minCycles:1.0,maxCycles:2.8
+  minSeconds:.16,maxSeconds:.44,minCycles:1.0,maxCycles:2.8,
+  // Run above this speed. Measured motion and the commanded speed are both
+  // considered, so a stick push that physics cannot fully deliver still runs.
+  runSpeed:3.2
  },
  poseResponse:12
 };
@@ -138,6 +141,14 @@ export class JimBody {
   const rise=this.height?Math.max(0,this.ground(middle).length()-middle.length()):0;
   c.lift=.14+Math.min(.5,rise);
  }
+ // Contacts can be cleared by a teleport or a frame hitch; the run gait seeds
+ // them from the current pose instead of assuming a previous stance exists.
+ ensureFeet(){
+  for(let i=0;i<2;i++){
+   const c=this.feet[i];
+   if(!c.world)c.world=this.desiredContact(i===0?-1:1,false,new THREE.Vector3());
+  }
+ }
  // Running uses a separate gait: brief world-locked contact and a longer
  // airborne swing. At high speed the capsule moves farther per stride than
  // the short legs can reach, so airborne feet follow the pelvis, not the ground.
@@ -145,6 +156,7 @@ export class JimBody {
   if(!this.running){
    this.running=true;
    this.runPhase=0;this.runBlend=0;
+   this.ensureFeet();
    for(const c of this.feet){c.from=c.world.clone();c.runStance=false;c.swing=false;}
   }
   // Cadence is set by speed and stride length follows from it, so the feet
@@ -334,7 +346,7 @@ export class JimBody {
    p.hand[i].position.copy(wrist);
   }
  }
- update(position,up,dt=1/60){
+ update(position,up,dt=1/60,commanded=0){
   if(!this.height||dt<=0)return;
   const interval=Math.max(1/120,Math.min(dt,.06));
   this.root.updateMatrixWorld(true);
@@ -359,15 +371,16 @@ export class JimBody {
   this.rest=mix(this.rest,this.restTarget,1-Math.exp(-8*interval));
   const closeToGround=position.length()-groundHere<1.65;
   const footTargets=[-1,1].map(side=>this.desiredContact(side,false,travel));
+  this.ensureFeet();
   const handTargets=[-1,1].map(side=>this.desiredContact(side,true,travel));
   if(!closeToGround){
    this.running=false;
    this.resetContacts();
    for(let i=0;i<2;i++)this.feet[i].world=this.fromLocal(new THREE.Vector3((i?1:-1)*.16,-.83,.02));
-  }else if(speed>=3.2){
+  }else if(Math.max(speed,commanded)>=JIM_GAIT.step.runSpeed){
    // Slopes keep the run gait: a walk cannot carry this speed, so uphill only
    // changes posture and stride, never the gait itself.
-   this.runGait(interval,speed);
+   this.runGait(interval,Math.max(speed,commanded));
   }else{
    if(this.running){this.running=false;this.resetContacts();}
    this.flight=mix(this.flight,0,1-Math.exp(-10*interval));
