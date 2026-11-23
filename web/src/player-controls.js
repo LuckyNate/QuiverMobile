@@ -8,7 +8,7 @@ export class PlayerControls {
   this.moveId=null;this.lookId=null;
   this.x=0;this.y=0;this.lookDX=0;this.lookDY=0;
   this.swimUp=false;this.swimDown=false;this.zoom=8;
-  this.onTap=null;this.onManualMove=null;this.tapStart=new Map();
+  this.onTap=null;this.onManualMove=null;this.tapStart=new Map();this.lastPinch=null;
   this.onKeyDown=e=>{if(!this.enabled)return;if(e.target?.matches?.('input,textarea,[contenteditable]'))return;const key=e.key.toLowerCase();this.keys.add(key);if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(key))e.preventDefault();};
   this.onKeyUp=e=>this.keys.delete(e.key.toLowerCase());
   window.addEventListener('keydown',this.onKeyDown);
@@ -19,6 +19,7 @@ export class PlayerControls {
    canvas.setPointerCapture(e.pointerId);
    const side=e.clientX<canvas.getBoundingClientRect().left+canvas.getBoundingClientRect().width/2?'move':'look';
    this.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY,originX:e.clientX,originY:e.clientY,side});
+   this.lastPinch=null;
    this.tapStart.set(e.pointerId,{x:e.clientX,y:e.clientY,moved:false,multi:this.pointers.size>1});
    if(this.pointers.size>1)for(const tap of this.tapStart.values())tap.multi=true;
    this.assign();
@@ -26,26 +27,32 @@ export class PlayerControls {
   canvas.addEventListener('pointermove',e=>{
    if(!this.enabled)return;
    const p=this.pointers.get(e.pointerId);if(!p)return;
-   if(e.pointerId===this.lookId){this.lookDX+=e.clientX-p.x;this.lookDY+=e.clientY-p.y;}
+   const dx=e.clientX-p.x,dy=e.clientY-p.y;
    const tap=this.tapStart.get(e.pointerId);
    if(tap&&Math.hypot(e.clientX-tap.x,e.clientY-tap.y)>12)tap.moved=true;
-   p.x=e.clientX;p.y=e.clientY;this.updateStick();
+   p.x=e.clientX;p.y=e.clientY;
+   // Two fingers on the look side pinch the camera in and out; the left side
+   // stays the movement stick, so a pinch never fights a thumb.
+   const pinch=this.pinchSpan();
+   if(pinch===null)this.lastPinch=null;
+   else{
+    if(this.lastPinch)this.setZoom(this.zoom*(this.lastPinch/pinch));
+    this.lastPinch=pinch;
+   }
+   if(e.pointerId===this.lookId&&pinch===null){this.lookDX+=dx;this.lookDY+=dy;}
+   this.updateStick();
    if(e.pointerId===this.moveId&&(Math.abs(this.x)+Math.abs(this.y)>.06))this.onManualMove?.();
   });
   const release=e=>{
    const tap=this.tapStart.get(e.pointerId);this.tapStart.delete(e.pointerId);
    if(!this.pointers.delete(e.pointerId))return;
+   this.lastPinch=null;
    this.assign();
    if(e.type==='pointerup'&&tap&&!tap.moved&&!tap.multi)this.onTap?.(e.clientX,e.clientY);
   };
   canvas.addEventListener('pointerup',release);canvas.addEventListener('pointercancel',release);
-  window.addEventListener('blur',()=>{this.pointers.clear();this.tapStart.clear();this.keys.clear();this.assign();this.swimUp=false;this.swimDown=false;});
+  window.addEventListener('blur',()=>{this.pointers.clear();this.tapStart.clear();this.keys.clear();this.assign();this.swimUp=false;this.swimDown=false;this.lastPinch=null;});
   canvas.addEventListener('wheel',e=>{e.preventDefault();if(!this.enabled)return;this.setZoom(this.zoom*Math.exp(e.deltaY*.001));},{passive:false});
-  this.slider=document.createElement('input');this.slider.type='range';this.slider.min='0';this.slider.max='1000';this.slider.step='1';
-  this.slider.setAttribute('aria-label','Camera zoom');
-  this.slider.style.cssText='position:fixed;right:12px;top:18%;height:45dvh;width:28px;z-index:5;writing-mode:vertical-lr;direction:rtl;touch-action:none;accent-color:#79b0ce';
-  this.slider.addEventListener('input',()=>{if(!this.enabled)return;this.setZoom(3*Math.pow((WORLD_SCALE.cameraMaxZoomMeters/3),Number(this.slider.value)/1000));});
-  document.getElementById('app').append(this.slider);
   this.setZoom(8);
   this.swimButtons=document.createElement('div');
   this.swimButtons.style.cssText='position:fixed;bottom:90px;right:16px;z-index:4;display:none;flex-direction:column;gap:10px';
@@ -62,7 +69,6 @@ export class PlayerControls {
  setEnabled(enabled){
   this.enabled=Boolean(enabled);
   if(!this.enabled){this.keys.clear();this.pointers.clear();this.swimUp=false;this.swimDown=false;this.assign();}
-  this.slider.style.visibility=this.enabled?'visible':'hidden';
   this.swimButtons.style.visibility=this.enabled?'visible':'hidden';
  }
  assign(){
@@ -87,9 +93,16 @@ export class PlayerControls {
   };
  }
  consumeLook(){if(!this.enabled){this.lookDX=0;this.lookDY=0;return {x:0,y:0};}const result={x:this.lookDX,y:this.lookDY};this.lookDX=0;this.lookDY=0;return result;}
+ // Both fingers of a pinch must be on the look side; returns their span or null.
+ pinchSpan(){
+  if(this.pointers.size<2)return null;
+  const [a,b]=[...this.pointers.values()];
+  if(a.side!=='look'||b.side!=='look')return null;
+  const span=Math.hypot(a.x-b.x,a.y-b.y);
+  return span>24?span:null;
+ }
  setZoom(value){
   this.zoom=THREE.MathUtils.clamp(value,3,WORLD_SCALE.cameraMaxZoomMeters);
-  this.slider.value=String(Math.round(1000*Math.log(this.zoom/3)/Math.log((WORLD_SCALE.cameraMaxZoomMeters/3))));
  }
  setSwimming(enabled){
   this.swimButtons.style.display=enabled?'flex':'none';
