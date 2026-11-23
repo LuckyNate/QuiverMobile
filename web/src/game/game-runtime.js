@@ -121,7 +121,10 @@ export const gameRuntime={
    }
    if(this.simulationReady&&this.physics&&this.playerCollider){
     const start=performance.now();
-    this.physics.movePlayer(this.playerCollider,this.playerSystem.movement(dt),6,this.player.clone().normalize(),dt);
+    // The gait follows the speed the controls asked for, so the run begins with
+    // the input instead of waiting for the physics body to reach a threshold.
+    const applied=this.physics.movePlayer(this.playerCollider,this.playerSystem.movement(dt),6,this.player.clone().normalize(),dt);
+    this.playerSystem.setCommandedSpeed(applied||0);
     this.profiler.mark('move',start);
    }
    this.playerSystem.updateView(dt);
