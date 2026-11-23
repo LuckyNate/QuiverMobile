@@ -115,6 +115,10 @@ export const gameRuntime={
    const logs=this.sharedWorld.getPlayer('local-owner')?.logs||0;
    if(logs!==this.lastLogCount){this.panels.refreshInventory();this.lastLogCount=logs;}
    this.view.syncSize();
+   if(this.started){
+    this.survival.update(dt);
+    this.panels.updateSurvival(this.survival.needs());
+   }
    if(this.simulationReady&&this.physics&&this.playerCollider){
     const start=performance.now();
     this.physics.movePlayer(this.playerCollider,this.playerSystem.movement(dt),6,this.player.clone().normalize(),dt);
@@ -188,6 +192,7 @@ export const gameRuntime={
     }catch(error){this.status.report('render','FAILED',error.message);this.renderer=null;}
    }
   }catch(error){this.status.report('frame logic','FAILED',error.message);}
+  this.profiler.mark('frame',perFrameStart=>perFrameStart);
   this.profiler.mark('frame',perfFrameStart);
   this.profiler.update();
   this.updateTitleReadiness();
