@@ -200,11 +200,10 @@ transformed=mix(position,aParent,cdlodMorph);`);
    subdivide(ab,bc,ca,childLevel,kids?kids[3]:null);
   };
   subdivide(n.a,n.b,n.c,n.level,null);
-  // Skirts. A coarse chunk can sit beside a fine one at a place where the fine
-  // side is not morphed yet, which leaves a chord-sized sliver between them.
-  // Every chunk hangs a short curtain from its boundary so no sliver can be
-  // seen through, whatever the neighbour's level. The curtain morphs with the
-  // surface it hangs from, so it never detaches.
+  // Skirts. Seam offsets are sub-millimetre on the shared edges but a few
+  // decimetres on some lateral ones, so every chunk hangs a short curtain from
+  // its boundary: no sliver between neighbours can be seen through, whatever
+  // their levels. The curtain morphs with the surface it hangs from.
   const cornerAt=side=>[n.a,n.b,n.c][side];
   const edgePoints=(a,b,levels)=>{let pts=[a,b];for(let i=0;i<levels;i++){const out=[pts[0]];for(let k=1;k<pts.length;k++)out.push(mid(pts[k-1],pts[k]),pts[k]);pts=out;}return pts;};
   const skirtDepth=2;
