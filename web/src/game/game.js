@@ -1,0 +1,293 @@
+import * as THREE from 'three';
+import {TerrainHeight,TERRAIN_SEED} from '../engine/terrain-height.js';
+import {WorldTerrain,RADIUS} from '../world.js';
+import {WORLD_SETUP} from '../engine/world-config.js';
+import {PlayerSystem} from '../player.js';
+import {WorldSystem} from '../world-system.js';
+import {WorldWater} from '../water.js';
+import {PhysicsWorld} from '../physics.js';
+import {ResourceHandler} from '../engine/resource-handler.js';
+import {SharedWorld} from '../engine/shared-world.js';
+import {Bonfire} from '../engine/bonfire.js';
+import {GamePanels} from '../ui/game-panels.js';
+import {StatusReport} from '../gui/status-report.js';
+import {LoadingScreen} from '../gui/loading-screen.js';
+import {Profiler} from '../gui/profiler.js';
+import {GameView} from '../engine/game-view.js';
+import {SpawnPoint} from '../engine/spawn-point.js';
+import {DebugAabb} from '../engine/debug-aabb.js';
+import {TapController} from './tap-controller.js';
+import {ConsoleCommands} from '../console/commands.js';
+
+// One game instance owns the systems, the panels and the frame loop. Each
+// system lives in its own script; this class only wires them together.
+export class Game {
+ constructor({app}){
+  this.app=app;
+  this.started=false;
+  this.resetting=false;
+  this.status=new StatusReport();
+  this.loading=new LoadingScreen(app);
+  const report=(name,state,detail='')=>this.status.report(name,state,detail);
+  this.controls=document.createElement('div');
+  this.controls.style.cssText='position:fixed;bottom:12px;left:12px;z-index:3;display:flex;gap:8px';
+  app.append(this.controls);
+  this.canvas=document.createElement('canvas');
+  this.canvas.style.cssText='position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none';
+  app.prepend(this.canvas);
+  report('document','READY');
+  this.view=new GameView({canvas:this.canvas,report});
+  this.renderer=this.view.renderer;
+  this.scene=this.view.scene;
+  this.camera=this.view.camera;
+  this.height=new TerrainHeight(TERRAIN_SEED,RADIUS);
+  this.terrain=null;
+  this.water=new WorldWater(this.scene,RADIUS,{seaLevelOffset:WORLD_SETUP.seaLevelOffsetMeters});
+  this.playerSystem=new PlayerSystem(this.scene,this.camera,this.canvas,RADIUS,report);
+  this.playerSystem.setCameraCollision(this.height,RADIUS);
+  this.player=this.playerSystem.position;
+  // Keep the authoritative start pose; character reset returns here.
+  this.spawnPoint=new SpawnPoint({height:this.height,radius:RADIUS}).find();
+  this.player.copy(this.spawnPoint);
+  // Initialize visual LOD from the actual deterministic spawn, not a placeholder pole.
+  try{
+   this.terrain=new WorldTerrain(this.scene,this.height,this.player,this.camera.far);
+   report('terrain setup','READY');
+  }catch(error){report('terrain setup','FAILED',error.message);}
+  this.sharedWorld=new SharedWorld({ownerId:'local-owner',seed:TERRAIN_SEED});
+  this.sharedWorld.join('local-owner',this.player);
+  this.harvesting=new ResourceHandler(this.scene,this.playerSystem,this.height,RADIUS,{terrain:this.terrain,shared:this.sharedWorld,playerId:'local-owner',camera:this.camera});
+  this.panels=new GamePanels({app,canvas:this.canvas,controls:this.playerSystem.controls,sharedWorld:this.sharedWorld,playerId:'local-owner'});
+  this.bonfire=new Bonfire({scene:this.scene,shared:this.sharedWorld,player:this.playerSystem,playerId:'local-owner',camera:this.camera,app});
+  this.pendingBonfire=null;
+  this.status.onFailed=(problems,reported)=>{
+   for(const [name,value] of problems){
+    const message=name+': FAILED'+(value.detail?' — '+value.detail:'');
+    if(reported.get(name)!==message){this.panels.print(message);reported.set(name,message);}
+   }
+  };
+  this.tap=new TapController({
+   canvas:this.canvas,camera:this.camera,height:this.height,radius:RADIUS,
+   harvesting:this.harvesting,sharedWorld:this.sharedWorld,playerSystem:this.playerSystem,
+   bonfire:this.bonfire,isActive:()=>this.started&&this.simulationReady,
+   setBonfireCandidate:point=>{this.pendingBonfire=point;}
+  });
+  setInterval(()=>{if(this.panels.openPanel==='inventory')this.panels.refreshInventory();},500);
+  this.loading.onStart(()=>{
+   this.started=true;
+   this.panels.top.panel.style.visibility='visible';
+   this.panels.bottom.panel.style.visibility='visible';
+   this.playerSystem.controls.setEnabled(true);
+  });
+  this.panels.top.panel.style.visibility='hidden';
+  this.panels.bottom.panel.style.visibility='hidden';
+  // Visual-only owner commands. Physics and game simulation remain active.
+  this.renderLayers={terrain:true,water:true,trees:true,player:true,objects:true};
+  this.consoleCommands=new ConsoleCommands(this);
+  this.consoleCommands.register();
+  for(const [name,value] of this.status.stages)if(value.state==='FAILED')this.status.report(name,value.state,value.detail);
+  this.lastLogCount=-1;
+  report('biome resources','READY','Player-centered seeded resource zones (20 D20 biomes)');
+  // Permanent mathematical solidity is independent of rendered terrain triangles.
+  this.physics=null;this.fallingCubes=[];this.playerCollider=null;
+  this.physicsLoading=false;this.simulationReady=false;
+  this.debugAabb=new DebugAabb(this.scene);
+  if(!this.terrain)throw new Error('Terrain geometry unavailable');
+  this.worldSystem=new WorldSystem(RADIUS,this.player,this.height);
+  this.octree=this.worldSystem.octree;
+  this.solidity=this.worldSystem.solidity;
+  this.surface=this.worldSystem.surface;
+  this.terrain.setCollisionSurface(this.surface);
+  this.terrain.updateCollisionSurface(this.player);
+  report('terrain geometry','READY',this.terrain.leafCount+' fixed faces');
+  report('octree solidity','READY','Implicit 1 m spherical octree');
+  report('Box3D','WAITING','Physics initialization');
+  window.addEventListener('resize',()=>this.panels.layout());
+  this.profiler=new Profiler(this.panels.top.profiler);
+  this.last=performance.now();
+  this.elapsed=0;this.frames=0;
+  this.frame=this.frame.bind(this);
+ }
+ start(){
+  this.status.report('frame loop','RUNNING');
+  requestAnimationFrame(this.frame);
+ }
+ applyRenderLayers(){
+  this.terrain.setRenderEnabled(this.renderLayers.terrain);
+  this.water.mesh.visible=this.renderLayers.water;
+  this.harvesting.renderEnabled=this.renderLayers.trees;
+  this.harvesting.root.visible=this.renderLayers.trees;
+  this.playerSystem.visual.root.visible=this.renderLayers.player;
+  this.debugAabb.setEnabled(this.renderLayers.objects);
+  for(const item of this.fallingCubes)item.mesh.visible=this.renderLayers.objects;
+ }
+ setBonfireCandidate(point){this.pendingBonfire=point;}
+ // Owner recovery: blank the window, then reload so the engine boots from scratch.
+ // Saved data survives a reset; a wipe writes the empty save first, so it is
+  // durable even if the reload never happens.
+ hardReset(label){
+  this.resetting=true;
+  this.playerSystem.controls.setEnabled(false);
+  const blank=document.createElement('div');
+  blank.style.cssText='position:fixed;inset:0;z-index:100;background:#090c14;color:#8cb7cf;display:grid;place-items:center;font:600 15px monospace;letter-spacing:.16em';
+  blank.textContent=label;
+  // Drop the canvas, panels and overlays: a reset means an empty window.
+  this.app.replaceChildren(blank);
+  // Two frames so the blank window paints before the reload tears it down.
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+   try{location.reload();}catch(error){location.replace(location.href);}
+  }));
+  return '';
+ }
+ syncAvatarToCapsule(){
+  const p=this.playerCollider.getPosition();
+  this.player.set(p.x,p.y1,p.z);
+ }
+ boundsAt(p,half){return {min:[p.x-half,p.y-half,p.z-half],max:[p.x+half,p.y+half,p.z+half]};}
+ activeCollisionAreas(){
+  const areas=[this.boundsAt(this.player,5)];
+  for(const item of this.fallingCubes){
+   const p=item.body.getPosition();
+   areas.push(this.boundsAt(p,3));
+  }
+  return areas;
+ }
+ async initializePhysics(){
+  try{
+   this.physicsLoading=true;
+   this.loading.status('Initializing Box3D and registering solid terrain...');
+   this.status.report('Box3D','LOADING');
+   const world=await new PhysicsWorld().init();
+   // The player is a dynamic capsule; the octree's AABB is only broad-phase occupancy.
+   world.syncStatic(this.surface,this.boundsAt(this.player,5),this.solidity);
+   this.playerCollider=world.addPlayerCapsule(this.player,this.solidity,this.octree,'player');
+   {const p=this.playerCollider.getPosition();this.player.set(p.x,p.y,p.z);}
+   // A Meadows start must have dry ground and registered collision support.
+   if(this.height.radius(this.player.clone().normalize(),RADIUS)<=this.water.radius+3)
+    throw new Error('Meadows spawn is too close to the waterline');
+   if(world.staticBodies.size===0)throw new Error('No solid terrain registered near Meadows spawn');
+   // Meadows starter: no diagnostic falling cubes or other biome content.
+   const cubes=[];
+   world.syncStatic(this.surface,this.activeCollisionAreas(),this.solidity);
+   this.physics=world;this.fallingCubes=cubes;this.simulationReady=true;
+   this.status.report('Box3D','READY','Meadows starter; player and terrain contacts');
+  }catch(error){
+   this.loading.status('Physics initialization failed: '+error.message);
+   this.status.report('Box3D','FAILED',error.stack||error.message);
+  }
+ }
+ // Readiness is evaluated in the running frame loop after world updates.
+ updateTitleReadiness(){
+  if(this.started)return;
+  const terrain=this.terrain;
+  const failed=this.status.failures();
+  const terrainReady=Boolean(terrain&&terrain.requested.size&&terrain.pending.length===0&&!terrain.staging&&
+   [...terrain.requested].every(key=>terrain.cache.has(key)));
+  const ready=Boolean(this.renderer&&this.simulationReady&&this.physics&&this.playerCollider&&terrainReady&&
+   this.status.state('GLB player')==='READY'&&this.status.state('first frame')==='READY'&&!failed.length);
+  const lines=[
+   'Renderer: '+(this.renderer?'ready':'waiting'),
+   'World and water: '+(terrain?'ready':'waiting'),
+   'Terrain LOD: '+(terrainReady?'ready':terrain?'building '+terrain.pending.length+' meshes':'waiting'),
+   'Player and physics: '+(this.simulationReady&&this.physics&&this.playerCollider?'ready':'initializing'),
+   'Scenery: '+(this.harvesting?'ready':'waiting'),
+   'Avatar: '+(this.status.state('GLB player')==='READY'?'ready':'loading'),
+   'First rendered frame: '+(this.status.state('first frame')==='READY'?'ready':'waiting')
+  ];
+  if(failed.length){
+   lines.push('Initialization failed: '+failed.map(([name,value])=>name+': '+value.detail).join('; '));
+   this.loading.showStart(false);
+  }else if(ready){
+   lines.push('Ready to play');
+   this.loading.showStart(true);
+  }else this.loading.showStart(false);
+  this.loading.status(lines.join('\n'));
+ }
+ frame(now){
+  if(this.resetting)return;
+  requestAnimationFrame(this.frame);
+  const perfFrameStart=performance.now();
+  this.profiler.countFrame();
+  try{
+   const dt=Math.min(.05,(now-this.last)/1000);this.last=now;this.elapsed+=dt;this.frames++;
+   const logs=this.sharedWorld.getPlayer('local-owner')?.logs||0;
+   if(logs!==this.lastLogCount){this.panels.refreshInventory();this.lastLogCount=logs;}
+   this.view.syncSize();
+   if(this.simulationReady&&this.physics&&this.playerCollider){
+    const start=performance.now();
+    this.physics.movePlayer(this.playerCollider,this.playerSystem.movement(dt),6,this.player.clone().normalize(),dt);
+    this.profiler.mark('move',start);
+   }
+   this.playerSystem.updateView(dt);
+   this.harvesting.update(dt,this.playerCollider);
+   if(this.pendingBonfire&&this.player.distanceTo(this.pendingBonfire)<2.4){
+    this.bonfire.build(this.pendingBonfire);
+    this.pendingBonfire=null;
+    this.playerSystem.cancelDestination();
+   }
+   this.bonfire.update(this.elapsed);
+   // Far clipping is world-scaled; near clip stays at one meter.
+   this.water.update(this.scene,this.camera,this.renderer,this.elapsed);
+   // The immutable planet is queryable immediately. Player motion never rebuilds it.
+   if(this.octree){
+    try{
+     if(!this.simulationReady&&!this.physicsLoading)void this.initializePhysics();
+     const up=this.player.clone().normalize();
+     if(this.simulationReady&&this.physics){
+      // World-space radial gravity; the frame never rotates independently.
+      this.physics.setPlanetGravity(this.player);
+      // Gravity remains active: submerged volume generates upward buoyancy and drag.
+      if(this.playerCollider){
+       const groundRadius=this.height.radius(up,RADIUS);
+       const immersion=this.water.immersion(this.player,groundRadius);
+       const swimming=immersion>0;
+       this.playerSystem.setSwimming(swimming);
+       if(swimming){
+        const velocity=this.playerCollider.getLinearVelocity();
+        const radial=velocity.x*up.x+velocity.y*up.y+velocity.z*up.z;
+        const swim=this.playerSystem.swimAxis()-this.playerSystem.diveByLooking();
+        // Box3D gravity contributes -9.81 m/s²; buoyancy and radial drag
+        // are per-frame velocity increments, not forced position corrections.
+        const acceleration=(20*immersion+14*swim*immersion-2.5*radial*immersion);
+        const delta=acceleration*dt;
+        this.playerCollider.setLinearVelocity({
+         x:velocity.x+up.x*delta,y:velocity.y+up.y*delta,z:velocity.z+up.z*delta
+        });
+       }
+      }
+      let start=performance.now();
+      this.physics.syncStatic(this.surface,this.activeCollisionAreas(),this.solidity);
+      this.profiler.mark('collision',start);
+      start=performance.now();
+      this.physics.step(dt);
+      this.profiler.mark('physics',start);
+      if(this.playerCollider){const p=this.playerCollider.getPosition();this.player.set(p.x,p.y,p.z);}
+      for(const item of this.fallingCubes){
+       const p=item.body.getPosition();
+       item.mesh.position.set(p.x,p.y,p.z);
+       if(typeof item.body.getRotation==='function'){
+        const q=item.body.getRotation();
+        if(q)item.mesh.quaternion.set(q.x,q.y,q.z,q.w);
+       }
+      }
+     }
+     // Terrain detail follows the capsule, independent of camera and zoom.
+     const terrainStart=performance.now();
+     this.terrain.update(this.player,false,undefined,this.camera.far);
+     this.profiler.mark('lod',terrainStart);
+    }catch(error){this.status.report('Box3D','FAILED',error.message);this.physics=null;}
+   }
+   if(this.renderer){
+    try{
+     const renderStart=performance.now();
+     this.renderer.render(this.scene,this.camera);
+     this.profiler.mark('render',renderStart);
+     if(this.frames===1)this.status.report('first frame','READY');
+    }catch(error){this.status.report('render','FAILED',error.message);this.renderer=null;}
+   }
+  }catch(error){this.status.report('frame logic','FAILED',error.message);}
+  this.profiler.mark('frame',perfFrameStart);
+  this.profiler.update();
+  this.updateTitleReadiness();
+ }
+}
