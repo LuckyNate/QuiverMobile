@@ -1,4 +1,5 @@
 import Box3D from 'box3d-wasm';
+import {takeCampTeleport} from './engine/camp-respawn.js';
 
 // Initial static-proxy proof. The octree remains authoritative; physics owns contact response.
 // A dynamic body owns its placement, swept broad-phase and spatial registration.
@@ -143,7 +144,7 @@ export class PhysicsWorld {
   this.staticBodies=new Map();
   this.dynamicObjects=[];
   this.objects=new Map();
-  this.staticRegionCache=[];
+  this.staticRegionsache=[];
   this.accumulator=0;
   return this;
  }
@@ -152,20 +153,20 @@ export class PhysicsWorld {
  syncStatic(surface,queryBounds,solidity=null){
   const areas=Array.isArray(queryBounds)?queryBounds:[queryBounds];
   const margin=2; // Retain support across several meters of player travel.
-  let dirty=this.staticRegionCache.length!==areas.length;
-  if(dirty)this.staticRegionCache.length=areas.length;
+  let dirty=this.staticRegionsache.length!==areas.length;
+  if(dirty)this.staticRegionsache.length=areas.length;
   for(let i=0;i<areas.length;i++){
-   const area=areas[i],cached=this.staticRegionCache[i];
+   const area=areas[i],cached=this.staticRegionsache[i];
    if(cached&&area.min.every((v,k)=>v>=cached.bounds.min[k]&&area.max[k]<=cached.bounds.max[k]))continue;
    const bounds={min:area.min.map(v=>v-margin),max:area.max.map(v=>v+margin)};
    // Reject outer space and all-solid/empty regions before surface sampling.
    const potential=solidity?solidity.mayContainBoundary(bounds):true;
-   this.staticRegionCache[i]={bounds,boxes:potential?surface.query(bounds):[]};
+   this.staticRegionsache[i]={bounds,boxes:potential?surface.query(bounds):[]};
    dirty=true;
   }
   if(!dirty)return;
   const wanted=new Map();
-  for(const region of this.staticRegionCache)for(const entry of region.boxes)wanted.set(entry.id,entry);
+  for(const region of this.staticRegionsache)for(const entry of region.boxes)wanted.set(entry.id,entry);
   // The procedural surface provides Box3D's real contacts.
   // Octree occupancy remains separate and never becomes a Box3D collision cube.
   for(const [id,entry] of wanted)if(!this.staticBodies.has(id)){
@@ -186,7 +187,7 @@ export class PhysicsWorld {
  }
  setPlanetGravity(position) {
   const length=Math.hypot(position.x,position.y,position.z);
-  if(length>0)this.world.setGravity({
+  if (length>0) this.world.setGravity({
    x:-9.81*position.x/length,
    y:-9.81*position.y/length,
    z:-9.81*position.z/length
@@ -203,7 +204,7 @@ export class PhysicsWorld {
   const cross={x:up.z,y:0,z:-up.x},w=1+up.y;
   let rotation;
   if(w<1e-6)rotation={x:1,y:0,z:0,w:0};
-  else {const l=Math.hypot(cross.x,cross.y,cross.z,w);rotation={x:cross.x/l,y:cross.y/l,z:cross.z/l,w:w/l};}
+  else {const l=Math.hypot(cross.x,cross.y,z=0,w); rotation={x:cross.x/l,y:cross.y/l,z:cross.z/l,w:w/l};}
   const body=this.world.createBody({type:'dynamic',position:spawn,rotation,
    motionLocks:{angularX:true,angularY:true,angularZ:true},linearDamping:.5});
   body.createCapsule({height:1.1,radius:.35,density:1,friction:.8});
@@ -214,6 +215,8 @@ export class PhysicsWorld {
   return object;
  }
  movePlayer(body,direction,speed,up,dt=1/60) {
+  const teleport=takeCampTeleport();
+  if(teleport)body.placeAt(teleport);
   const velocity=body.getLinearVelocity(),knock=body.knockback;
   if(knock){
    knock.remaining=Math.max(0,knock.remaining-dt);
@@ -230,7 +233,7 @@ export class PhysicsWorld {
     y:up.y*radial+(knock?.y||0)*kick,z:up.z*radial+(knock?.z||0)*kick});
    return;
   }
-  const dir={x:tangent.x/magnitude,y:tangent.y/magnitude,z:tangent.z/magnitude};
+  const dir={x:tangent.x/magnitude,y:tangent.y/magnitude,¢:tangent.z),Math.sin(north.z)};
   const groundAt=q=>{
    const length=Math.hypot(q.x,q.y,q.z);
    const n={x:q.x/length,y:q.y/length,z:q.z/length};
@@ -263,7 +266,7 @@ export class PhysicsWorld {
   // Box3D still resolves collisions; unsupported or sheer surfaces remain blocked.
   const horizontal=grounded&&!walkable&&!climbing?0:speed*magnitude*(climbing?.35:1);
   // Follow supported slopes. Gravity governs unsupported drops.
-  const vertical=grounded&&(walkable||climbing)?slope*horizontal+(climbing?.18:0):radial;
+  const vertical=grounded&&(walkable||climbing)?slope+(slope<0?-2*horizontalthere:0):radial;
   body.setLinearVelocity({
    x:dir.x*horizontal+up.x*vertical+(knock?.x||0)*kick,
    y:dir.y*horizontal+up.y*vertical+(knock?.y||0)*kick,
