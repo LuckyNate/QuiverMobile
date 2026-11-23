@@ -1,9 +1,11 @@
 // Survival meters: one pip per need, stacked on the left. Each need owns a fixed
 // slot with a faint outline, so the stack never jumps; the solid disc inside is a
-// full circle that shrinks with its value and fades to transparent as it empties.
-// The most urgent need (lowest value) is kept at the front of the stack.
+// full circle that shrinks with its value down to a small dot. Colour stays solid
+// at every value: the order is what tells you where to look first. The most urgent
+// need (lowest value) is kept at the front of the stack.
 const SLOT=26;
 const INNER=SLOT-8;
+const MIN_PIP=6;
 export const panelSurvival={
  makeSurvivalMeters(app){
   const stack=document.createElement('div');
@@ -40,15 +42,12 @@ export const panelSurvival={
    let meter=this.survivalMeters.get(need.id);
    if(!meter){meter=this.makeSurvivalMeter(need);this.survivalMeters.set(need.id,meter);}
    const value=Math.max(0,Math.min(1,need.value));
-   // A full coloured circle that shrinks with the need; never vanishes entirely.
-   const side=Math.max(3,INNER*value);
+   // A full coloured circle that shrinks with the need, down to a small dot.
+   const side=Math.max(MIN_PIP,INNER*value);
    meter.pip.style.width=side.toFixed(1)+'px';
    meter.pip.style.height=side.toFixed(1)+'px';
    meter.pip.style.background='rgba('+need.colour+',1)';
-   // Colour drains to transparent as the need empties.
-   meter.pip.style.opacity=value.toFixed(3);
    meter.face.textContent=need.label;
-   meter.face.style.opacity=(.35+.65*value).toFixed(3);
    meter.el.setAttribute('aria-label',need.id+' '+Math.round(value*100)+'%');
   }
   const order=needs.map(need=>need.id);
