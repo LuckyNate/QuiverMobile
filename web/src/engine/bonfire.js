@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {VoxelFireEmitter} from './voxel-fire-emitter.js';
+import {CampRest} from './camp-rest.js';
 
 const HOUR=3600000;
 const MAX_FUEL=720*HOUR;
@@ -34,8 +35,8 @@ export class Bonfire {
   this.endAt=saved?.endAt||0;
   if(this.exists)this.positionAt(saved.position);
   else this.root.visible=false;
+  this.rest=new CampRest({shared,player,playerId});
  }
- near(position,range=5){return this.exists&&position.distanceTo(this.root.position)<range;}
  positionAt(position){
   this.root.position.fromArray(position);
   this.root.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),this.root.position.clone().normalize());
@@ -49,6 +50,8 @@ export class Bonfire {
   this.positionAt(position.toArray());
   this.endAt=0;
   this.persist();
+  // Standing beside the new camp becomes the respawn spot.
+  this.rest.saveAt(this.player.position);
   return true;
  }
  persist(){this.shared.setEntity(this.recordId,{state:'standing',position:this.root.position.toArray(),endAt:this.endAt,ownerId:this.playerId});}
@@ -60,11 +63,12 @@ export class Bonfire {
   this.endAt=next;this.persist();return true;
  }
  update(time){
-  if(!this.exists){this.button.style.display='none';return;}
+  if(!this.exists){this.button.style.display='none';this.rest.clear();return;}
   const now=Date.now(),burning=this.endAt>now;
   this.fire.setEnabled(burning);
   this.fire.update(time);
   const close=this.player.position.distanceTo(this.root.position)<5;
+  this.rest.update(close);
   const visible=close&&this.root.visible;
   const screen=this.root.position.clone().addScaledVector(this.root.position.clone().normalize(),2.1).project(this.camera);
   if(!visible||screen.z<0||screen.z>1||Math.abs(screen.x)>1||Math.abs(screen.y)>1){this.button.style.display='none';return;}
