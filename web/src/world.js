@@ -8,9 +8,9 @@ export const RADIUS=WORLD_SCALE.radius;
 export const MAX_TERRAIN_LOD=WORLD_SCALE.maxTerrainLod;
 const MAX_LOD=MAX_TERRAIN_LOD;
 // Screen-space dither: an interleaved gradient noise, stable per pixel and free
-// of visible tiling. Used to stipple the band where two ground LODs meet.
+// of visible tiling. Used to dissolve a new LOD generation in over the old one.
 const GROUND_DITHER='float groundDither(vec2 p){return fract(52.9829189*fract(dot(p,vec2(0.06711056,0.00583715))));}';
-const GROUND_DITHER_BAND=.75;
+const LOD_FADE_MS=600;
 // Horizontal distance from the local-up axis, excluding the far hemisphere.
 function columnDistance(up,node){
  const dot=THREE.MathUtils.clamp(up.dot(node.center),-1,1);
@@ -124,31 +124,32 @@ export class WorldTerrain {
   this.collisionGroundCenter={value:startPosition.clone()};
   this.collisionGroundRadius={value:7};
   // One cutoff, two meshes. The D20 terrain is dropped inside the radius and
-  // the near collision-patch mesh is dropped outside it, with a screen-space
-  // dithered band between them so the handover is a stipple instead of a hard
-  // ring of edges. Both surfaces evaluate the same dither at the same pixel, so
-  // exactly one of them covers any point and the two always meet cleanly. The
-  // patch mesh is built from a +/-10 m box query whose corners reach ~17 m, so
-  // without the outer cut it keeps drawing on top of the terrain and the near
-  // field shows two overlapping grids.
-  const discardGround=(material,test)=>{
-   // The discards are the only difference between the two shaders; without this
-   // key three would reuse the first compiled program for both materials.
-   material.customProgramCacheKey=()=>test;
+  // the near collision-patch mesh is dropped just outside it, so exactly one
+  // flat-shaded surface covers any point. The patch mesh is built from a
+  // +/-10 m box query whose corners reach ~17 m, so without the outer cut it
+  // keeps drawing on top of the terrain and the near field shows two grids.
+  // A finished LOD generation is exposed by dissolving it in over the old one
+  // (beginSwap); the spatial cutoff itself stays a clean edge.
+  this.groundFade={value:1};
+  const discardGround=(material,test,fade=null)=>{
+   // The discards are the only difference between the shaders; without this
+   // key three would reuse the first compiled program for every material.
+   material.customProgramCacheKey=()=>test+(fade?'|fade':'');
    material.onBeforeCompile=shader=>{
     shader.uniforms.collisionGroundCenter=this.collisionGroundCenter;
     shader.uniforms.collisionGroundRadius=this.collisionGroundRadius;
+    if(fade)shader.uniforms.groundFade=fade;
     shader.vertexShader=shader.vertexShader.replace('#include <common>',
      '#include <common>\nvarying vec3 vGroundWorldPosition;');
     shader.vertexShader=shader.vertexShader.replace('#include <worldpos_vertex>',
      '#include <worldpos_vertex>\nvGroundWorldPosition=(modelMatrix*vec4(transformed,1.0)).xyz;');
     shader.fragmentShader=shader.fragmentShader.replace('#include <common>',
-     '#include <common>\nvarying vec3 vGroundWorldPosition;\nuniform vec3 collisionGroundCenter;\nuniform float collisionGroundRadius;\n'+GROUND_DITHER);
+     '#include <common>\nvarying vec3 vGroundWorldPosition;\nuniform vec3 collisionGroundCenter;\nuniform float collisionGroundRadius;\n'+(fade?'uniform float groundFade;\n':'')+GROUND_DITHER);
     shader.fragmentShader=shader.fragmentShader.replace('#include <clipping_planes_fragment>',
      '#include <clipping_planes_fragment>\nif('+test+')discard;');
    };
   };
-  discardGround(this.material,'distance(vGroundWorldPosition,collisionGroundCenter)<collisionGroundRadius+'+GROUND_DITHER_BAND+'*groundDither(gl_FragCoord.xy)');
+  discardGround(this.material,'distance(vGroundWorldPosition,collisionGroundCenter)<collisionGroundRadius');
   this.scene=scene;
   // Nearby visible geometry comes directly from the same surface patches as
   // the Box3D hulls. Both near and distant representations are owned here.
@@ -156,7 +157,13 @@ export class WorldTerrain {
   this.nearSurfaceSignature='';
   this.nearMaterial=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,side:THREE.DoubleSide,roughness:1,
    polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1});
-  discardGround(this.nearMaterial,'distance(vGroundWorldPosition,collisionGroundCenter)>collisionGroundRadius+'+GROUND_DITHER_BAND+'*groundDither(gl_FragCoord.xy)');
+  discardGround(this.nearMaterial,'distance(vGroundWorldPosition,collisionGroundCenter)>collisionGroundRadius+.25');
+  // Incoming terrain chunks dissolve in over the generation they replace. The
+  // polygon offset makes the incoming surface win depth where it is drawn.
+  this.fadeMaterial=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:1,side:THREE.DoubleSide,flatShading:true,
+   polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1});
+  discardGround(this.fadeMaterial,
+   'distance(vGroundWorldPosition,collisionGroundCenter)<collisionGroundRadius||groundDither(gl_FragCoord.xy)>groundFade',this.groundFade);
   this.nearSurfaceMesh=new THREE.Mesh(new THREE.BufferGeometry(),this.nearMaterial);
   this.nearSurfaceMesh.frustumCulled=false;
   this.scene.add(this.nearSurfaceMesh);
@@ -172,6 +179,7 @@ export class WorldTerrain {
   this.anchorAddress=null;
   this.lodCenter=null;
   this.leafCount=0;
+  this.fading=false;this.fadeStart=0;this.fadeKeys=null;this.replaced=null;
   // A guaranteed complete low-detail planet remains visible while new
   // generations of render geometry are prepared offscreen.
   for(const n of this.roots){
@@ -311,7 +319,49 @@ export class WorldTerrain {
  setRenderEnabled(enabled){
   this.renderEnabled=Boolean(enabled);
   this.nearSurfaceMesh.visible=this.renderEnabled;
-  for(const entry of this.cache.values())entry.mesh.visible=this.renderEnabled&&this.displayed.has(entry.key);
+  for(const entry of this.cache.values())entry.mesh.visible=this.renderEnabled&&this.isShown(entry.key);
+ }
+ isShown(key){return this.displayed.has(key)||Boolean(this.replaced&&this.replaced.has(key));}
+ // The better generation is exposed by dissolving it in over the old one. Old
+ // meshes keep drawing underneath until the fade ends, so nothing pops and no
+ // point loses coverage; only the incoming chunks are dithered.
+ beginSwap(){
+  if(this.fading)this.finishFade();
+  this.replaced=this.displayed;
+  this.fadeKeys=new Set();
+  for(const key of this.requested){
+   const entry=this.cache.get(key);
+   if(!entry)continue;
+   entry.mesh.visible=this.renderEnabled;
+   if(this.replaced.has(key))continue;
+   entry.mesh.material=this.fadeMaterial;
+   this.fadeKeys.add(key);
+  }
+  this.displayed=new Set(this.requested);
+  this.staging=false;
+  this.groundFade.value=0;
+  this.fadeStart=performance.now();
+  this.fading=this.fadeKeys.size>0;
+  if(!this.fading)this.finishFade();
+ }
+ advanceFade(){
+  if(!this.fading)return;
+  const t=Math.min(1,(performance.now()-this.fadeStart)/LOD_FADE_MS);
+  this.groundFade.value=t;
+  if(t>=1)this.finishFade();
+ }
+ finishFade(){
+  this.groundFade.value=1;
+  for(const key of this.replaced||[]){
+   if(this.displayed.has(key))continue;
+   const entry=this.cache.get(key);
+   if(entry)entry.mesh.visible=false;
+  }
+  for(const key of this.fadeKeys||[]){
+   const entry=this.cache.get(key);
+   if(entry)entry.mesh.material=this.material;
+  }
+  this.fading=false;this.fadeKeys=null;this.replaced=null;
  }
  // A chunk address change only alters the target set; mesh work is streamed.
  update(position,force=false,maxDetail=MAX_LOD,zFar=this.zFar){
@@ -359,19 +409,14 @@ export class WorldTerrain {
     mesh.visible=false;
    }
   }
-  // One atomic visibility swap after the entire requested generation exists.
-  // In-flight changes replace the staging target but never punch holes in it.
-  if(this.staging&&[...this.requested].every(key=>this.cache.has(key))){
-   for(const key of this.displayed){const old=this.cache.get(key);if(old)old.mesh.visible=false;}
-   for(const key of this.requested){this.cache.get(key).mesh.visible=this.renderEnabled;}
-   this.displayed=new Set(this.requested);
-   this.staging=false;
-  }
+  // Expose a finished generation by dissolving it in over the one it replaces.
+  if(this.staging&&[...this.requested].every(key=>this.cache.has(key)))this.beginSwap();
+  this.advanceFade();
   // Evict inactive geometry, never evict chunks required by the current view.
   if(this.cache.size>2200){
    for(const [key,entry] of this.cache){
     if(this.cache.size<=1800)break;
-    if(this.requested.has(key)||this.displayed.has(key)||entry.fallback)continue;
+    if(this.requested.has(key)||this.isShown(key)||entry.fallback)continue;
     this.scene.remove(entry.mesh);entry.mesh.geometry.dispose();
     this.cache.delete(key);
    }
@@ -392,11 +437,6 @@ export class WorldTerrain {
    this.scene.add(mesh);
   }
   this.pending=remaining;
-  if(this.staging&&[...this.requested].every(key=>this.cache.has(key))){
-   for(const key of this.displayed){const old=this.cache.get(key);if(old)old.mesh.visible=false;}
-   for(const key of this.requested)this.cache.get(key).mesh.visible=this.renderEnabled;
-   this.displayed=new Set(this.requested);
-   this.staging=false;
-  }
+  if(this.staging&&[...this.requested].every(key=>this.cache.has(key)))this.beginSwap();
  }
 }
