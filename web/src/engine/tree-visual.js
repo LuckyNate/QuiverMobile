@@ -113,6 +113,7 @@ export class TreeVisual {
  }
  remove(entry){
   this.clearImposter(entry);
+  this.releaseCard(entry);
   for(const record of entry.renderInstances||[]){
    const batch=record.batch,last=batch.entries.pop();
    if(last!==record){batch.entries[record.index]=last;last.index=record.index;this.setInstanceTransform(last);}
@@ -153,23 +154,99 @@ export class TreeVisual {
   entry.imposterIndex=null;
   batch.mesh.count=batch.entries.length;
  }
+ // A card always stands on the tree's own up and turns only around it. Copying
+ // the camera's whole rotation tips it back whenever the view looks down, which
+ // lifts its base off the ground.
+ placeCard(object,entry,camera){
+  object.position.copy(entry.tree.position);
+  if(camera){
+   this.billboardUp.set(0,1,0).applyQuaternion(entry.tree.quaternion);
+   this.billboardMatrix.lookAt(camera.position,entry.tree.position,this.billboardUp);
+   object.quaternion.setFromRotationMatrix(this.billboardMatrix);
+  }else object.quaternion.copy(entry.tree.quaternion);
+  object.scale.setScalar(1);
+ }
  writeImposter(entry,camera){
   const batch=this.imposters;
   if(!batch||entry.imposterIndex==null)return;
-  this.dummy.position.copy(entry.tree.position);
-  if(camera){
-   // Yaw only. Copying the camera's whole rotation tips the card back whenever
-   // the view looks down, which lifts its base off the ground.
-   // The trunk's own up at that spot on the planet, so a card leans exactly
-   // where the tree it replaces stands.
-   this.billboardUp.set(0,1,0).applyQuaternion(entry.tree.quaternion);
-   this.billboardMatrix.lookAt(camera.position,entry.tree.position,this.billboardUp);
-   this.dummy.quaternion.setFromRotationMatrix(this.billboardMatrix);
-  }else this.dummy.quaternion.copy(entry.tree.quaternion);
-  this.dummy.scale.setScalar(1);
+  this.placeCard(this.dummy,entry,camera);
   this.dummy.updateMatrix();
   batch.mesh.setMatrixAt(entry.imposterIndex,this.dummy.matrix);
   batch.mesh.instanceMatrix.needsUpdate=true;
+ }
+ // Hand over between the two forms across a band rather than at one distance:
+ // the meshes fade out as a tree leaves the near range while its card fades in.
+ setTreeFade(entry,meshAlpha,cardAlpha,camera){
+  this.fadeMesh(entry,meshAlpha);
+  this.fadeCard(entry,cardAlpha,camera);
+ }
+ fadeMesh(entry,alpha){
+  if(alpha>=.999){
+   this.setVisible(entry,true);
+   if(entry.fading){
+    entry.fading=false;
+    entry.tree.visible=false;
+    this.restoreMeshOpacity(entry);
+   }
+   return;
+  }
+  this.setVisible(entry,false);
+  if(!entry.fading){
+   entry.fading=true;
+   // The shared trunk material is fading for one tree only, so it gets a copy.
+   if(entry.trunk.material===this.trunkMaterial)entry.trunk.material=this.trunkMaterial.clone();
+   entry.trunk.material.transparent=true;
+   entry.foliage.material.transparent=true;
+  }
+  entry.tree.visible=alpha>.01;
+  entry.trunk.material.opacity=alpha;
+  entry.foliage.material.opacity=alpha;
+ }
+ restoreMeshOpacity(entry){
+  if(entry.trunk.material!==this.trunkMaterial){
+   entry.trunk.material.opacity=1;
+   entry.trunk.material.transparent=false;
+  }
+  entry.foliage.material.opacity=1;
+ }
+ // Cards in the band carry their own material so each can hold its own alpha.
+ fadeCard(entry,alpha,camera){
+  if(alpha>=.999){
+   this.releaseCard(entry);
+   this.setImposter(entry,true,camera);
+   return;
+  }
+  this.clearImposter(entry);
+  if(alpha<=.01){
+   if(entry.card)entry.card.visible=false;
+   return;
+  }
+  if(!entry.card){
+   entry.card=new THREE.Mesh(this.imposterGeometry,this.imposterMaterial.clone());
+   entry.card.material.transparent=true;
+   entry.card.material.depthWrite=false;
+   entry.card.frustumCulled=false;
+   this.root.add(entry.card);
+  }
+  entry.card.visible=true;
+  entry.card.material.opacity=alpha;
+  this.placeCard(entry.card,entry,camera);
+ }
+ releaseCard(entry){
+  if(!entry.card)return;
+  this.root.remove(entry.card);
+  entry.card.material.dispose();
+  entry.card=null;
+ }
+ hide(entry){
+  this.setVisible(entry,false);
+  this.clearImposter(entry);
+  this.releaseCard(entry);
+  if(entry.fading){
+   entry.fading=false;
+   this.restoreMeshOpacity(entry);
+  }
+  entry.tree.visible=false;
  }
  // Cards only need turning when the view turns; a few degrees of lag is invisible
  // at the distance they are shown from.
@@ -186,6 +263,11 @@ export class TreeVisual {
  }
  activate(entry){
   this.clearImposter(entry);
+  this.releaseCard(entry);
+  if(entry.fading){
+   entry.fading=false;
+   this.restoreMeshOpacity(entry);
+  }
   this.remove(entry);
   entry.tree.visible=true;
  }
