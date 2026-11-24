@@ -1,24 +1,27 @@
 import {Combat} from '../combat/combat.js';
-import {Boar,BOAR_BEHAVIOUR} from './boar.js';
+import {Boar,BOAR,BOAR_BEHAVIOUR} from './boar.js';
 import {BoarVisual} from './boar-visual.js';
+import {HealthPips} from './health-pip.js';
 import {seededUnit} from '../world/seeded-hash.js';
 import {surfaceFrame,yawFor} from './behaviour.js';
 
 // One species module per enemy. The population system only hands over an id and a
-// seeded slot; the module owns the stats, the behaviour, and which visual draws it.
+// seeded slot; the module owns the stats, the behaviour, the loot and the art.
 export const SPECIES=Object.freeze({
- boar:{create:options=>new Boar(options),behaviour:BOAR_BEHAVIOUR}
+ boar:{create:options=>new Boar(options),behaviour:BOAR_BEHAVIOUR,loot:BOAR.loot}
 });
 
 export class CreatureSystem {
  constructor({root,shared,player,playerId,height,radius,combat=new Combat(),species=SPECIES,
-  onPlayerDamage=null}={}){
-  Object.assign(this,{root,shared,player,playerId,height,radius,combat,species,onPlayerDamage});
+  camera=null,onPlayerDamage=null}={}){
+  Object.assign(this,{root,shared,player,playerId,height,radius,combat,species,camera,onPlayerDamage});
   this.live=new Map();
   this.visuals={boar:new BoarVisual({root,shared,player,playerId})};
+  this.pips=new HealthPips({root,camera});
  }
  get size(){return this.live.size;}
  has(id){return this.live.has(id);}
+ get(id){return this.live.get(id)||null;}
  creatures(){return this.live.values();}
  spawn(type,id,position){
   if(this.live.has(id))return false;
@@ -40,47 +43,63 @@ export class CreatureSystem {
   const creature=this.live.get(id);
   if(!creature)return false;
   this.visuals[creature.type].unload(id);
+  this.pips.remove(id);
   this.live.delete(id);
   return true;
  }
  update(dt,{tool=null,now=Date.now()}={}){
   for(const visual of Object.values(this.visuals))visual.update?.();
+  this.pips.update();
+  const weapon=this.combat.weapon(tool);
   const context={player:this.player.position,height:this.height,radius:this.radius,
    hitPlayer:amount=>this.onPlayerDamage?.(amount),
    retire:creature=>this.unload(creature.id)};
   for(const creature of this.live.values()){
    this.species[creature.type].behaviour.think(creature,dt,context);
    this.draw(creature);
+   this.pip(creature,weapon);
   }
-  this.swing(tool,now);
+  return now;
  }
  draw(creature){
   const visual=this.visuals[creature.type];
   visual.place(creature.id,creature.at,yawFor(creature.at,creature.heading));
   visual.setFade(creature.id,creature.fade);
+  visual.setTip?.(creature.id,creature.tip);
  }
- // The equipped weapon swings on contact, the same way an axe meets a trunk.
- // One target per swing: the nearest living creature inside the weapon's reach.
- swing(tool,now){
-  const weapon=this.combat.weapon(tool);
-  if(!weapon)return null;
-  const at=this.player.position;
-  let target=null,distance=Infinity;
-  for(const creature of this.live.values()){
-   if(creature.dead)continue;
-   const metres=creature.at.distanceTo(at);
-   if(metres<=weapon.reach&&metres<distance){target=creature;distance=metres;}
-  }
-  if(!target)return null;
-  const result=this.combat.strike({actorId:this.playerId,weapon:tool,target,now});
-  if(result.killed)this.kill(target);
+ // The pip only exists while a weapon is in hand, and never on a carcass.
+ pip(creature,weapon){
+  if(!weapon||creature.dead){this.pips.hide(creature.id);return;}
+  this.pips.show(creature.id,creature.at,creature.health/creature.maxHealth);
+ }
+ // A tapped creature takes one hit from whatever is in hand, if it is in reach.
+ // Contact alone never swings: the player has to ask for each hit.
+ strike(id,weapon,now=Date.now()){
+  const creature=this.live.get(id);
+  if(!creature||creature.dead)return null;
+  const result=this.combat.strike({actorId:this.playerId,weapon,target:creature,now});
+  if(result.killed)this.kill(creature);
   return result;
  }
- // Death is a short beat: the species plays its dying state, then the creature is
- // removed, which is what tells the population system to schedule its return.
+ // Death is not removal: the animal falls where it stands and waits, a carcass,
+ // until a knife is used on it. Only then does the population see it gone and
+ // schedule its return.
  kill(creature){
-  this.species[creature.type].behaviour.enter(creature,'dying');
   creature.dead=true;
+  creature.health=0;
+  creature.tip=0;
+  this.species[creature.type].behaviour.enter(creature,'dead');
+  this.pips.hide(creature.id);
   this.shared?.setEntity(creature.id,{state:'dead',position:creature.at.toArray()});
+ }
+ // A knife on the carcass hands over what it carried, then the slot is free.
+ harvest(id,playerId=this.playerId){
+  const creature=this.live.get(id);
+  if(!creature||!creature.dead||creature.harvested)return null;
+  const loot=this.species[creature.type].loot||{};
+  creature.harvested=true;
+  for(const [resource,count] of Object.entries(loot))this.shared?.awardResource(playerId,resource,count);
+  this.unload(id);
+  return {...loot};
  }
 }

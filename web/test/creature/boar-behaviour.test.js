@@ -25,29 +25,36 @@ function fixture(){
  return {boar,nose,events,ctx,playerAt,moveAlong};
 }
 
-test('a boar notices what it can hear and what it can see',()=>{
+test('a boar goes for you at five metres, whichever way it is facing',()=>{
  const f=fixture();
- assert.equal(BOAR_BEHAVIOUR.spotted(f.boar,f.playerAt(30)),null);            // out of range
- const inCone=BOAR_BEHAVIOUR.spotted(f.boar,f.playerAt(13));
- assert.ok(inCone>12&&inCone<14);
- assert.equal(BOAR_BEHAVIOUR.spotted(f.boar,f.playerAt(13,{behind:true})),null); // behind, too far to hear
- assert.ok(BOAR_BEHAVIOUR.spotted(f.boar,f.playerAt(8,{behind:true}))>0);        // close enough to hear
+ assert.equal(BOAR.aggro,5);
+ assert.equal(BOAR.maxHealth,3);
+ assert.equal(BOAR_BEHAVIOUR.spotted(f.boar,f.playerAt(8)),null);              // too far
+ const seen=BOAR_BEHAVIOUR.spotted(f.boar,f.playerAt(4.5));
+ assert.ok(seen>4&&seen<5);
+ assert.ok(BOAR_BEHAVIOUR.spotted(f.boar,f.playerAt(4,{behind:true}))>0);      // no cone, it just charges
 });
 
-test('it alerts, closes in and swings on a clock',()=>{
+test('it alerts, closes in and bumps its snout to bite',()=>{
  const f=fixture();
- const player=f.playerAt(1.2);
+ const player=f.playerAt(3);
  BOAR_BEHAVIOUR.think(f.boar,1/60,f.ctx(player));
  assert.equal(f.boar.state,'alerted');
  BOAR_BEHAVIOUR.think(f.boar,BOAR.alertSeconds,f.ctx(player));
  assert.equal(f.boar.state,'attacking');
- BOAR_BEHAVIOUR.think(f.boar,1/60,f.ctx(player));
+ const before=f.boar.at.distanceTo(player);
+ let guard=0;
+ while(f.events.hits===0&&guard++<400)BOAR_BEHAVIOUR.think(f.boar,1/60,f.ctx(player));
  assert.equal(f.events.hits,1);
  assert.equal(f.events.damage,BOAR.damage);
- BOAR_BEHAVIOUR.think(f.boar,1/60,f.ctx(player));
- assert.equal(f.events.hits,1);                       // still cooling down
- BOAR_BEHAVIOUR.think(f.boar,BOAR.swingSeconds,f.ctx(player));
- assert.equal(f.events.hits,2);
+ assert.equal(BOAR.damage,1);
+ assert.ok(f.boar.at.distanceTo(player)<before);   // it walked into you to do it
+ // The bite is on a clock, not on contact: nothing lands during the wait.
+ const landed=f.events.hits;
+ for(let i=0;i<60;i++)BOAR_BEHAVIOUR.think(f.boar,1/60,f.ctx(player));
+ assert.equal(f.events.hits,landed);
+ for(let i=0;i<Math.ceil(BOAR.swingSeconds*60);i++)BOAR_BEHAVIOUR.think(f.boar,1/60,f.ctx(player));
+ assert.equal(f.events.hits,landed+1);
 });
 
 test('being hit provokes it and losing the player walks it home',()=>{
@@ -64,12 +71,14 @@ test('being hit provokes it and losing the player walks it home',()=>{
  assert.ok(f.boar.at.distanceTo(f.boar.home)<before);
 });
 
-test('death fades the boar and then retires it',()=>{
+test('death lays it over and leaves the carcass in place',()=>{
  const f=fixture();
- BOAR_BEHAVIOUR.enter(f.boar,'dying');
- BOAR_BEHAVIOUR.think(f.boar,BOAR.dyingSeconds/2,f.ctx(f.playerAt(1)));
- assert.ok(f.boar.fade>0&&f.boar.fade<1);
- assert.equal(f.events.retired,null);
- BOAR_BEHAVIOUR.think(f.boar,BOAR.dyingSeconds,f.ctx(f.playerAt(1)));
- assert.equal(f.events.retired,f.boar.id);
+ f.boar.dead=true;
+ BOAR_BEHAVIOUR.enter(f.boar,'dead');
+ BOAR_BEHAVIOUR.think(f.boar,BOAR.fallSeconds/2,f.ctx(f.playerAt(1)));
+ assert.ok(f.boar.tip>0&&f.boar.tip<1);
+ assert.equal(f.events.hits,0);                  // a carcass never bites
+ BOAR_BEHAVIOUR.think(f.boar,BOAR.fallSeconds,f.ctx(f.playerAt(1)));
+ assert.equal(f.boar.tip,1);
+ assert.equal(f.events.retired,null);            // it stays until a knife takes it
 });

@@ -71,6 +71,8 @@ export class BoarVisual {
   this.axis=new THREE.Vector3(0,1,0);
   this.upright=new THREE.Quaternion();
   this.spin=new THREE.Quaternion();
+  this.tipAxis=new THREE.Vector3(0,0,1);
+  this.tip=new THREE.Quaternion();
  }
  batch(){
   const open=this.batches.find(entry=>entry.entries.length<entry.capacity);
@@ -88,7 +90,7 @@ export class BoarVisual {
   if(this.items.has(id))return false;
   const batch=this.batch();
   const item={id,position:position.clone(),batch,index:batch.entries.length,
-   yaw:seededUnit(id,'yaw')*Math.PI*2,size:.85+seededUnit(id,'size')*.3,fade:1,visible:true};
+   yaw:seededUnit(id,'yaw')*Math.PI*2,size:.85+seededUnit(id,'size')*.3,fade:1,tip:0,visible:true};
   batch.entries.push(item);
   batch.mesh.count=batch.entries.length;
   this.transform(item);
@@ -99,7 +101,9 @@ export class BoarVisual {
   const up=item.position.clone().normalize();
   this.upright.setFromUnitVectors(this.axis,up);
   this.spin.setFromAxisAngle(this.axis,item.yaw);
-  this.dummy.quaternion.copy(this.upright).multiply(this.spin);
+  // Tip in the boar's own frame after the spin, so it always falls sideways.
+  this.tip.setFromAxisAngle(this.tipAxis,-item.tip*Math.PI/2);
+  this.dummy.quaternion.copy(this.upright).multiply(this.spin).multiply(this.tip);
   this.dummy.position.copy(item.position);
   this.dummy.scale.setScalar(item.visible?item.size*item.fade:0);
   this.dummy.updateMatrix();
@@ -121,6 +125,15 @@ export class BoarVisual {
   const next=Math.max(0,Math.min(1,fade));
   if(item.fade===next)return;
   item.fade=next;
+  this.transform(item);
+ }
+ // Death lays the pig over onto its side and leaves it there as a carcass.
+ setTip(id,tip){
+  const item=this.items.get(id);
+  if(!item)return;
+  const next=Math.max(0,Math.min(1,tip));
+  if(item.tip===next)return;
+  item.tip=next;
   this.transform(item);
  }
  unload(id){

@@ -23,6 +23,8 @@ export class Creature extends WorldObject {
   this.swingClock=0;
   this.fade=1;
   this.dead=false;
+  this.tip=0;       // 0 upright, 1 flat on its side: the death fall
+  this.harvested=false;
  }
  get alive(){return !this.dead;}
  snapshot(){

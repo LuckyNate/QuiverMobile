@@ -2,13 +2,18 @@ import {Creature} from './creature.js';
 import {CreatureBehaviour,tangentAt} from './behaviour.js';
 import {seededUnit} from '../world/seeded-hash.js';
 
-// The Meadows boar: the tutorial biome's one enemy, so it is slow to notice,
-// easy to outrun and dies to three club hits. Every number a designer would
-// touch lives here, next to the transitions that use it.
+// The Meadows boar: three hit points, so three level 1 hits put it down. It goes
+// for anything that steps inside five metres and hurts you only by shouldering its
+// snout into you. It falls over where it dies and stays there, a carcass, until a
+// knife takes it apart.
 export const BOAR=Object.freeze({
- maxHealth:24,walk:1.2,charge:3.4,territory:10,
- senses:{earshot:12,eyeshot:14,halfAngle:Math.PI/3,lose:22},
- reach:1.7,damage:6,swingSeconds:1.8,alertSeconds:.35,dyingSeconds:.45
+ maxHealth:3,walk:1.2,charge:3.4,territory:10,
+ // Aggro is a radius, not a cone: the boar does not care which way it was facing.
+ aggro:5,lose:12,
+ // The snout, not the body, has to reach you: it walks up and bumps to bite.
+ reach:1.15,bump:.2,damage:1,swingSeconds:1.8,alertSeconds:.25,fallSeconds:.5,
+ // What a knife takes off the carcass, in inventory units.
+ loot:{bacon:1,hide:1,tusks:2}
 });
 
 export class Boar extends Creature {
@@ -17,18 +22,21 @@ export class Boar extends Creature {
  }
 }
 
-// idle → patrol → alerted → attacking → returning, plus a dying beat.
+// idle → patrol → alerted → attacking → returning, then dead where it fell.
 // A boar leaves its territory only to chase, and walks back to its slot after.
 export class BoarBehaviour extends CreatureBehaviour {
- constructor(tuning=BOAR){super({senses:tuning.senses});this.tuning=tuning;}
+ constructor(tuning=BOAR){
+  super({senses:{earshot:tuning.aggro,eyeshot:tuning.aggro,halfAngle:Math.PI,lose:tuning.lose}});
+  this.tuning=tuning;
+ }
  think(boar,dt,context){
   boar.stateTime+=dt;
-  boar.swingClock=Math.max(0,boar.swingClock-dt);
-  if(boar.state==='dying'){
-   boar.fade=Math.max(0,1-boar.stateTime/this.tuning.dyingSeconds);
-   if(boar.stateTime>=this.tuning.dyingSeconds)context.retire(boar);
+  // A dead boar stops thinking: it only tips over onto its side and lies still.
+  if(boar.dead||boar.state==='dead'){
+   boar.tip=Math.min(1,boar.tip+dt/Math.max(.01,this.tuning.fallSeconds));
    return;
   }
+  boar.swingClock=Math.max(0,boar.swingClock-dt);
   const {player}=context,seen=this.spotted(boar,player);
   switch(boar.state){
    case 'idle':
@@ -44,16 +52,20 @@ export class BoarBehaviour extends CreatureBehaviour {
     if(player)this.face(boar,player);
     if(boar.stateTime>=this.tuning.alertSeconds)this.enter(boar,'attacking');
     break;
-   case 'attacking':
+   case 'attacking':{
     if(this.lost(boar,player)){boar.target=null;this.enter(boar,'returning');break;}
     this.face(boar,player);
-    if(boar.at.distanceTo(player)>this.tuning.reach){
+    const gap=boar.at.distanceTo(player);
+    if(gap>this.tuning.reach){
      this.step(boar,player.clone().sub(boar.at),this.tuning.charge*dt,context);
     }else if(boar.swingClock<=0){
      boar.swingClock=this.tuning.swingSeconds;
+     // The bite is the bump: the snout is driven into the player, then it backs off.
+     this.step(boar,player.clone().sub(boar.at),this.tuning.bump,context);
      context.hitPlayer(this.tuning.damage);
     }
     break;
+   }
    case 'returning':
     if(seen!==null){this.enter(boar,'attacking');break;}
     if(this.arrived(boar,boar.home,1)){this.rest(boar);break;}
@@ -63,7 +75,7 @@ export class BoarBehaviour extends CreatureBehaviour {
   }
  }
  // Being hit is reason enough to fight, whatever the senses missed.
- provoked(boar){if(!boar.dead&&boar.state!=='dying')this.enter(boar,'alerted');}
+ provoked(boar){if(!boar.dead&&boar.state!=='dead')this.enter(boar,'alerted');}
  rest(boar){
   boar.waits=(boar.waits||0)+1;
   boar.patrolWait=2+seededUnit(boar.id,'wait',boar.waits)*3;
