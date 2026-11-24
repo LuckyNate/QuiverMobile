@@ -19,7 +19,16 @@ test('Meadows alone populated, others colored and empty',()=>{
  for(const b of empty)assert.deepEqual(b.resourceDensity,{});
 });
 
-test('20m horizontal rings select each LOD from 8 to 0',()=>{
- for(const [distance,level] of [[0,8],[19.99,8],[20,7],[39.99,7],[40,6],[60,5],[80,4],[100,3],[120,2],[140,1],[159.99,1],[160,0],[300,0]])
+test('20m horizontal rings select each LOD down to 0',()=>{
+ for(const [distance,level] of [[0,8],[19.99,8],[20,7],[39.99,7],[40,6],[60,6],[80,6],[100,6],[120,6],[128,6],[140,1],[159.99,1],[160,0],[300,0]])
   assert.equal(terrainLodAtHorizontalDistance(distance),level,`${distance}m`);
+});
+// Resources are placed on the analytic surface, so inside their ring the ground
+// must not coarsen past 4 m or the pines hang over their own facets.
+test('the ground holds 4m triangles under the whole resource ring',()=>{
+ for(let metres=0;metres<=WORLD_SCALE.resourceStreamMeters;metres+=1){
+  const level=terrainLodAtHorizontalDistance(metres);
+  assert.ok(level>=WORLD_SCALE.maxTerrainLod-2,`${metres}m gives LOD ${level}`);
+ }
+ assert.ok(terrainLodAtHorizontalDistance(WORLD_SCALE.resourceStreamMeters+20)<WORLD_SCALE.maxTerrainLod-2);
 });

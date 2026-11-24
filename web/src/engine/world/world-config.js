@@ -28,9 +28,15 @@ export const WORLD_SCALE=Object.freeze({
 });
 // Fixed 20 m horizontal bands: LOD 8 within 20 m, then one level lower
 // for each successive ring, down to LOD 0 beyond 160 m.
+// Resources stand on the analytic surface, not on the mesh, so the ground under
+// them has to be nearly as fine as the surface itself. Inside the resource ring
+// the bands stop at LOD 6, a 4 m triangle: without that floor the mesh is 64 m
+// facets out there and a 6 m pine hangs over the flat it is standing on.
 export function terrainLodAtHorizontalDistance(meters,maxLod=WORLD_SCALE.maxTerrainLod){
  const band=Math.floor(Math.max(0,meters)/WORLD_SETUP.terrainLodBandMeters);
- return Math.max(0,maxLod-band);
+ const byDistance=Math.max(0,maxLod-band);
+ if(meters>WORLD_SCALE.resourceStreamMeters)return byDistance;
+ return Math.max(byDistance,Math.max(0,maxLod-2));
 }
 // Edit each face's name, ground color, densities, and optional grass style here.
 // null groundColor uses the original altitude-driven sand/green/rock palette.
