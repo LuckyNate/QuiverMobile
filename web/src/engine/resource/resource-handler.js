@@ -10,8 +10,8 @@ import {GroundResources} from './ground-resources.js';
 import {CreatureSystem} from '../creature/creature-system.js';
 import {WORLD_SETUP,BIOME_SETUP} from '../world/world-config.js';
 
-// How close the avatar has to stand to work a carcass with a knife.
-const CARCASS_REACH=1.6;
+// How close the avatar has to stand for a tap to reach what it landed on.
+const TREE_REACH=2.4,GRASS_REACH=1.8,CARCASS_REACH=1.6;
 
 // One density profile per face. The biome table is the only place that says how
 // many of a type a cell holds, resources and creatures alike.
@@ -29,7 +29,6 @@ export class ResourceHandler extends TreeHarvestSystem {
   if(!terrain?.roots?.length)throw new Error('ResourceHandler requires read-only D20 biome roots');
   this.chunks=[]; // Disable the old four-cell Meadows-only population loop.
   this.entryById=new Map();
-  this.tapTarget=null; // {type,id} of a tapped tree or clump, gathered on arrival.
   this.typeById=new Map();
   this.spawns=new SpawnRegistry();
   this.grass=new TallGrassField({root:this.root,shared,player,playerId});
@@ -214,58 +213,47 @@ export class ResourceHandler extends TreeHarvestSystem {
   this.treeVisual.release(entry.trunk,entry.foliage);
   entry.foliage.material.dispose();
  }
- // Screen taps mark a tree or grass clump to gather once the avatar walks up to
- // it; sticks and stones use ground.select() and collect themselves instead.
- tapGather(type,id){this.tapTarget=type&&id?{type,id}:null;}
- clearTapGather(){this.tapTarget=null;}
- // A carcass is opened by the tap that lands on it, and only with the knife
- // already in hand: nothing is remembered, so drawing a knife later can never
- // loot a pig you tapped some other time.
- tapCarcass(id){
-  const creature=this.creatures.get(id);
-  if(!creature?.dead)return false;
-  if((this.shared?.getEquippedTool(this.playerId)||null)!=='knife')return false;
-  if(creature.at.distanceTo(this.player.position)>CARCASS_REACH)return false;
-  this.creatures.harvest(creature.id,this.playerId);
-  return true;
- }
- gatherTapTarget(body){
-  const target=this.tapTarget;
-  if(!target)return;
-  const avatar=body?.getPosition();
-  if(!avatar)return;
-  const at=new THREE.Vector3(avatar.x,avatar.y,avatar.z);
+ // A touch acts on the spot. This is the whole of touch interaction: the tap does
+ // its work right now, with the tool in hand, if the avatar is already close
+ // enough; otherwise it does nothing and the tap only walks you toward it.
+ // Nothing is stored between taps, so no later walk or tool swap can set off an
+ // action the player did not just ask for. It returns whether it acted.
+ tapNow(type,id){
+  const at=this.player.position;
   const tool=this.shared?.getEquippedTool(this.playerId)||null;
-  if(target.type==='tree'){
-   const t=this.findTree(target.id);
-   if(!t||t.state!=='standing'){this.clearTapGather();return;}
-   if(t.at.distanceTo(at)>2.4)return;
-   if(tool==='axe')this.fell(t,this.playerId);
-   this.clearTapGather();
-  }else if(target.type==='grass'){
-   const c=this.grass.clumps.get(target.id);
-   if(!c||c.state!=='standing'){this.clearTapGather();return;}
-   if(c.position.distanceTo(at)>1.8)return;
-   if(tool==='scythe')this.grass.cut(c,this.playerId);
-   this.clearTapGather();
-  }else if(target.type==='boar'){
-   const creature=this.creatures.get(target.id);
-   // A carcass is never worked from a remembered target: tapCarcass() loots it
-   // on the tap itself, so anything still holding one drops it here.
-   if(!creature||creature.dead){this.clearTapGather();return;}
-   // One tap, one hit, and only with a weapon that actually reaches it.
-   const weapon=this.creatures.combat.weapon(tool);
-   if(!weapon){this.clearTapGather();return;}
-   if(creature.at.distanceTo(at)>weapon.reach)return;
-   this.creatures.strike(creature.id,tool);
-   this.clearTapGather();
-  }else this.clearTapGather();
+  if(type==='tree'){
+   const tree=this.findTree(id);
+   if(!tree||tree.state!=='standing'||tool!=='axe')return false;
+   if(tree.at.distanceTo(at)>TREE_REACH)return false;
+   this.fell(tree,this.playerId);
+   return true;
+  }
+  if(type==='grass'){
+   const clump=this.grass.clumps.get(id);
+   if(!clump||clump.state!=='standing'||tool!=='scythe')return false;
+   if(clump.position.distanceTo(at)>GRASS_REACH)return false;
+   this.grass.cut(clump,this.playerId);
+   return true;
+  }
+  if(type!=='boar')return false;
+  const creature=this.creatures.get(id);
+  if(!creature)return false;
+  if(creature.dead){
+   // A carcass needs the knife already in hand and the avatar standing at it.
+   if(tool!=='knife'||creature.at.distanceTo(at)>CARCASS_REACH)return false;
+   this.creatures.harvest(creature.id,this.playerId);
+   return true;
+  }
+  // A living boar takes one hit from whatever weapon is in hand and in reach.
+  const weapon=this.creatures.combat.weapon(tool);
+  if(!weapon||creature.at.distanceTo(at)>weapon.reach)return false;
+  this.creatures.strike(creature.id,tool);
+  return true;
  }
  update(dt,body=null){
   const streamRadius=this.terrain.resourceStreamRadius();
   for(const zone of this.zones)zone.update(this.player.position,streamRadius);
   super.update(dt,body);
-  this.gatherTapTarget(body);
   // The equipped tool is drawn in the hand; swapping is a no-op unless it changed.
   this.player.setTool(this.shared?.getEquippedTool(this.playerId)||null);
   this.grass.update(dt,body,this.shared?.getEquippedTool(this.playerId));
