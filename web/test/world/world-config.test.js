@@ -12,11 +12,13 @@ test('tiny world scale retains 1m terrain',()=>{
 test('Meadows alone populated, others colored and empty',()=>{
  assert.equal(BIOME_SETUP.length,20);
  assert.equal(BIOME_SETUP[STARTER_BIOME_FACE].name,'Meadows');
- assert.ok(BIOME_SETUP[STARTER_BIOME_FACE].resourceDensity.tree>0);
+ assert.ok(BIOME_SETUP[STARTER_BIOME_FACE].resources.tree>0);
+ assert.ok(BIOME_SETUP[STARTER_BIOME_FACE].creatures.boar>0);
  const empty=BIOME_SETUP.filter(b=>b.id!==STARTER_BIOME_FACE);
  assert.equal(empty.length,19);
  assert.equal(new Set(empty.map(b=>b.groundColor)).size,19);
- for(const b of empty)assert.deepEqual(b.resourceDensity,{});
+ for(const b of empty)assert.deepEqual(b.resources,{});
+ for(const b of empty)assert.deepEqual(b.creatures,{});
 });
 
 test('20m horizontal rings select each LOD down to 0',()=>{
