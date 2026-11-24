@@ -4,6 +4,7 @@ import {BuildGrid,CELL_METERS,POST_HEIGHT,LOG_HEIGHT,FLOOR_LOGS} from './build-g
 const LOG_RADIUS=.14;
 const POST_REACH=.7;
 const GAP_REACH=.5;
+const DEREZZ_MS=260;
 const PREFIX='build:';
 
 // Camp construction on the bonfire's tangent plane: upright corner posts on a 4 m
@@ -26,6 +27,9 @@ export class Building {
   this.anchorId='camp:bonfire:'+playerId;
   this.east=null;this.north=null;
   this.ghost=null;
+  // Removed pieces derezz rather than dropping as items: construction leaves no
+  // trash, and a cut-out is gone instead of refunded.
+  this.fade=[];
   this.restore();
  }
  // The camp anchors building to the fire that permits it. Nothing here follows the
@@ -133,7 +137,7 @@ export class Building {
   const t=THREE.MathUtils.clamp(point.clone().sub(from).dot(segment)/Math.max(segment.lengthSq(),1e-6),0,1);
   return point.distanceTo(from.clone().addScaledVector(segment,t));
  }
- // One tap, one decision: a corner raises a post, a gap takes a log or gives it back,
+ // One tap, one decision: a corner raises a post, a gap takes a log or derezzes it,
  // and the middle of a frame lays the floor.
  tapAt(point){
   if(!this.mode||!this.anchor)return;
@@ -151,10 +155,10 @@ export class Building {
   const gap=this.gapNear(i,j,point);
   if(gap){
    if(this.grid.wallBuilt(gap)){
+    this.derezz(this.gapMesh(gap));
     this.grid.openWall(gap);
-    this.shared.awardLog(this.playerId,1,1);
     this.saveWall(gap,'open');
-    this.message?.('Gap opened, log returned');
+    this.message?.('Gap opened');
    }else if(this.shared.spendLogs(this.playerId,1)){
     this.grid.raiseWall(gap);
     this.saveWall(gap,'standing');
@@ -191,8 +195,30 @@ export class Building {
   const facing=north.multiplyScalar(Math.cos(this.player.heading)).addScaledVector(east,Math.sin(this.player.heading));
   return this.cellAt(this.player.position.clone().addScaledVector(facing,CELL_METERS*.6));
  }
+ // The piece shrinks away where it stood. Nothing is left behind to pick up.
+ derezz(mesh){
+  const ghost=mesh.clone();
+  ghost.material=this.wood.clone();
+  ghost.material.transparent=true;
+  this.scene.add(ghost);
+  this.fade.push({ghost,start:performance.now()});
+ }
+ stepDerez(){
+  if(!this.fade.length)return;
+  const now=performance.now();
+  this.fade=this.fade.filter(item=>{
+   const t=Math.min(1,(now-item.start)/DEREZZ_MS);
+   item.ghost.scale.setScalar(Math.max(.001,1-t));
+   item.ghost.material.opacity=1-t;
+   if(t<1)return true;
+   this.scene.remove(item.ghost);
+   item.ghost.material.dispose();
+   return false;
+  });
+ }
  // A lit square in front of the player showing the cell the next tap works in.
  update(){
+  this.stepDerez();
   if(!this.mode||!this.anchor){if(this.ghost)this.ghost.visible=false;return;}
   const {i,j}=this.targetCell();
   const u=i*CELL_METERS,v=j*CELL_METERS,lift=LOG_HEIGHT/2;
