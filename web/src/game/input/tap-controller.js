@@ -13,7 +13,7 @@ export class TapController {
  constructor({canvas,camera,height,radius,harvesting,sharedWorld,playerSystem,bonfire,building,message,isActive,setBonfireCandidate}){
   Object.assign(this,{canvas,camera,height,radius,harvesting,sharedWorld,playerSystem,bonfire,building,message,isActive,setBonfireCandidate});
   this.hammerPress=null;
-  this.lastTap=null;
+  this.pendingTap=null;
   this.raycaster=new THREE.Raycaster();
   this.ndc=new THREE.Vector2();
   playerSystem.controls.onManualMove=()=>{
@@ -85,11 +85,10 @@ export class TapController {
   if(this.building?.mode){
    const ground=this.groundAt(screenX,screenY);
    if(!ground)return;
-   if(this.doubleTap(screenX,screenY))this.building.recoverAt(ground);
-   else this.building.tapAt(ground);
+   this.buildTap(ground,screenX,screenY);
    return;
   }
-  this.lastTap=null;
+  this.flushBuildTap();
   const {height,radius,harvesting,sharedWorld,bonfire}=this;
   const picked=this.pick(screenX,screenY);
   const targetId=picked?.id??null,targetType=picked?.type??null;
@@ -110,14 +109,30 @@ export class TapController {
   }else this.setBonfireCandidate(null);
   this.playerSystem.setDestination(destination);
  }
- // The second tap of a pair is reported once and clears the record, so a third tap
- // starts again and only ever one log comes back per double tap.
- doubleTap(screenX,screenY){
-  const previous=this.lastTap,now=performance.now();
-  const paired=Boolean(previous)&&now-previous.at<=DOUBLE_TAP_MS&&
-   Math.hypot(screenX-previous.x,screenY-previous.y)<=DOUBLE_TAP_PX;
-  this.lastTap=paired?null:{x:screenX,y:screenY,at:now};
-  return paired;
+ // A build tap waits out the double-tap window before it acts, so the first tap of a
+ // pair never lays a log that the second tap then has to take back. Only the second
+ // tap of a pair acts at once, and it takes a log back instead of laying one.
+ buildTap(ground,screenX,screenY){
+  const pending=this.pendingTap,now=performance.now();
+  const paired=Boolean(pending)&&now-pending.at<=DOUBLE_TAP_MS&&
+   Math.hypot(screenX-pending.x,screenY-pending.y)<=DOUBLE_TAP_PX;
+  if(pending){
+   clearTimeout(pending.timer);
+   this.pendingTap=null;
+   if(paired){this.building.recoverAt(pending.ground);return;}
+   // A tap somewhere else is its own action, so the waiting one lands first.
+   this.building.tapAt(pending.ground);
+  }
+  this.pendingTap={x:screenX,y:screenY,at:now,ground,
+   timer:setTimeout(()=>this.flushBuildTap(),DOUBLE_TAP_MS)};
+ }
+ // The waiting tap lands now, once it is clear no second tap is coming.
+ flushBuildTap(){
+  const pending=this.pendingTap;
+  if(!pending)return;
+  clearTimeout(pending.timer);
+  this.pendingTap=null;
+  this.building?.tapAt(pending.ground);
  }
  // The terrain point under a touch: intersect a conservative shell, then refine
  // against the analytic surface until the ray meets the ground.
@@ -148,7 +163,10 @@ export class TapController {
  // same press opens the build menu.
  hold(){
   const {bonfire,sharedWorld,playerSystem,height,radius}=this;
-  if(bonfire.exists)return this.building?.toggle();
+  if(bonfire.exists){
+   this.flushBuildTap();
+   return this.building?.toggle();
+  }
   const direction=playerSystem.position.clone().normalize();
   const ground=direction.clone().multiplyScalar(height.radius(direction,radius)+.02);
   if(bonfire.build(ground))return;
