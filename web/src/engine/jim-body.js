@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {solveTwoBone} from './two-bone-ik.js';
+import {toolModel} from './toolmodels/index.js';
 
 // Jim's articulated-body layout and procedural two-bone limb solver.
 // The original Box3D capsule remains authoritative for position and contacts;
@@ -99,8 +100,20 @@ export class JimBody {
   for(const foot of this.parts.foot)foot.scale.set(.17,.09,.29);
   for(const hand of this.parts.hand)hand.scale.set(.13,.095,.16);
   this.parts.nose.scale.set(.058,.055,.055);
+  // The held tool rides this anchor, which is driven by the right fist each frame.
+  this.handAnchor=new THREE.Object3D();
+  this.visual.add(this.handAnchor);
+  this.toolKind=null;this.tool=null;
  }
  setTerrain(height,radius){this.height=height;this.radius=radius;}
+ // The equipped tool is drawn in the right hand; null hides it.
+ setTool(kind){
+  if(this.toolKind===kind)return;
+  this.toolKind=kind;
+  if(this.tool)this.handAnchor.remove(this.tool);
+  this.tool=toolModel(kind);
+  if(this.tool)this.handAnchor.add(this.tool);
+ }
  // Sitting is a visual pose only; the Box3D capsule stays authoritative.
  setResting(enabled){this.restTarget=enabled?1:0;}
  // Use the same procedural surface as rendering and collision. World radial
@@ -344,6 +357,13 @@ export class JimBody {
    segment(p.forearm[i],elbow,wrist,.052);
    p.elbow[i].position.copy(elbow);
    p.hand[i].position.copy(wrist);
+   if(i===1){
+    // The tool follows the fist, mostly along the forearm but canted forward and
+    // up so the working end sits clear of the legs instead of hanging blade-down.
+    const dir=wrist.clone().sub(elbow).multiplyScalar(.4).add(new THREE.Vector3(.14,.75,.35));
+    if(dir.lengthSq()>1e-6)this.handAnchor.quaternion.setFromUnitVectors(UP,dir.normalize());
+    this.handAnchor.position.copy(wrist);
+   }
   }
  }
  update(position,up,dt=1/60,commanded=0){
