@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {createDyePaletteTexture,dyeUV} from '../avatar/dye-palette.js';
-import {WORLD_SCALE} from '../world/world-config.js';
+import {WORLD_SCALE,WORLD_SETUP} from '../world/world-config.js';
 
 // Renderer, scene, lighting and camera for the single WebGL viewport.
 export class GameView {
@@ -18,12 +18,13 @@ export class GameView {
   // Shared tint lookup: dyes inventory and renderer sample the same fixed 8x8 RGB palette.
   this.scene.userData.dyePaletteTexture=createDyePaletteTexture();
   this.scene.userData.dyeUV=dyeUV;
-  // Aerial haze: distant ground fades into the sky colour so ridges read as
-  // depth instead of hard silhouettes. The band is scaled to the planet, not to
-  // the camera far plane: it starts past the near field and is complete around
-  // the far side, which is as far as anything can ever be seen from up here.
+  // Aerial haze as an always-on depth cue rather than a distant wall: it starts
+  // at the camera, so it reads indoors and in the open, and it is complete at one
+  // biome edge, so how far away something is can be judged at any range. Both
+  // values derive from rootEdgeMeters, the edge of a D20 face, so the band stays
+  // the same fraction of a biome if the planet is resized.
   this.scene.background=new THREE.Color(0x87ceeb);
-  this.scene.fog=new THREE.Fog(0x87ceeb,WORLD_SCALE.radius*.35,WORLD_SCALE.radius*2.1);
+  this.scene.fog=new THREE.Fog(0x87ceeb,0,WORLD_SETUP.rootEdgeMeters);
   this.scene.add(new THREE.HemisphereLight(0xeeeeff,0x263b55,2.1));
   const sun=new THREE.DirectionalLight(0xffffff,2.0);
   sun.position.set(90,180,70);
