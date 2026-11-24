@@ -60,11 +60,12 @@ export class TreeVisual {
    return model;
   });
   if(!sprite)return;
-  const {texture,size}=sprite;
-  // The plane's bottom edge sits a few centimetres below the trunk's base so no
-  // hairline of ground shows through where the terrain wobbles under it.
-  const geometry=new THREE.PlaneGeometry(size.x*1.04,size.y*1.04);
-  geometry.translate(0,size.y*.52-.06,0);
+  const {texture,width:cardWidth,height:cardHeight}=sprite;
+  // The card is laid out on the model's own frame, so a fading model grows in over
+  // the sprite and swallows it rather than sitting beside it. The bottom edge is a
+  // few centimetres low so no hairline of ground shows under the trunk.
+  const geometry=new THREE.PlaneGeometry(cardWidth,cardHeight);
+  geometry.translate(0,cardHeight*.5-.06,0);
   this.imposterGeometry=geometry;
   // An opaque cutout, not a blended overlay: sprites drawn this way sit in the
   // depth-sorted world like any other surface instead of ghosting over it.

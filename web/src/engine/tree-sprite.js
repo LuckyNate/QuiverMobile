@@ -3,8 +3,8 @@ import * as THREE from 'three';
 // Draws one tree model into a texture once, so distant trees can be a single flat
 // card instead of three instanced meshes. Straight on and orthographic: an angled
 // view shows the underside of the canopy and reads as a solid object, while this
-// gives the flat silhouette a billboard wants. Returns the texture and the
-// model's real size in metres, which sizes the card.
+// gives the flat silhouette a billboard wants. Returns the texture and the card's
+// size in metres, framed on the model's own bounds.
 export function renderTreeSprite(build,{width=192,height=288}={}){
  let renderer=null;
  try{
@@ -24,7 +24,9 @@ export function renderTreeSprite(build,{width=192,height=288}={}){
   const size=box.getSize(new THREE.Vector3());
   const centre=box.getCenter(new THREE.Vector3());
   const aspect=width/height;
-  const halfHeight=Math.max(size.y*.52,size.x*.52/aspect)*1.02;
+  // Framed on the model's own bounds, so the returned card size lines up with the
+  // model exactly: same centre, same height, same footprint.
+  const halfHeight=Math.max(size.y*.5,size.x*.5/aspect)*1.005;
   const halfWidth=halfHeight*aspect;
   const camera=new THREE.OrthographicCamera(-halfWidth,halfWidth,halfHeight,-halfHeight,.1,size.y*8+40);
   camera.position.set(centre.x,centre.y,centre.z+size.y*4);
@@ -32,7 +34,7 @@ export function renderTreeSprite(build,{width=192,height=288}={}){
   renderer.render(scene,camera);
   const texture=new THREE.CanvasTexture(canvas);
   texture.colorSpace=THREE.SRGBColorSpace;
-  return {texture,size};
+  return {texture,size,width:halfWidth*2,height:halfHeight*2};
  }catch(error){
   console.warn('Tree sprite unavailable',error);
   return null;
