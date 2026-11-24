@@ -10,11 +10,12 @@ import {TreeContact} from './engine/tree-contact.js';
 import {TreeLifecycle} from './engine/tree-lifecycle.js';
 import {TreePopulation} from './engine/tree-population.js';
 
-// Meshes fade out as a tree crosses the 20 m border, and its card fades in from
-// just before the border to just past it. The two ramps overlap by a metre so
-// there is no distance at which neither form is drawn.
+// Meshes fade out over 17-20 m while the card arrives over the first half of that
+// band and is at full strength from 19 m, before the model is gone. The card is
+// present for the whole fade, so no tree ever looks washed out or vanishes on a
+// frame where both forms are faint.
 const MESH_FADE_FROM=17,MESH_FADE_TO=20;
-const CARD_FADE_FROM=18,CARD_FADE_TO=20.5;
+const CARD_FADE_FROM=17,CARD_FADE_TO=19;
 
 // All player/world mutations use stable IDs. Only Meadows is populated now.
 export class TreeHarvestSystem {
