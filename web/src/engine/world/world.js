@@ -29,17 +29,19 @@ const MORPH_FRACTION=.5;
 // own edges: those vertices are shared with a neighbour that is not bending, so
 // moving them would fold the surface over itself into a ridge along the seam.
 const MORPH_STRENGTH=1;
-// The ground is tinted flat. The surface comes from the fragment shader, which
-// cuts each triangle into smaller triangles as it gets closer: no extra geometry,
-// just barycentric cells inside the triangle that is already there. Each depth of
-// cut fades in over one octave of distance, so there is a continuous detail
-// gradient around the player rather than rings that pop: at the near end the 1 m
-// triangles are cut 64 ways and the ground reads as grass, and by
-// GROUND_CUT_METERS out there is one flat facet per triangle.
-const GROUND_CUT_METERS=8;
-const GROUND_MAX_CUTS=6;
-// How far either side of the tint a facet may shade: 0 leaves the ground flat.
-const GROUND_SHADE=.08;
+// Each ground triangle is shaded its own version of the colour beneath it: near
+// the player the grid is 1 m, so that reads as a dapple of similar triangles, and
+// far away a chunk is a handful of big triangles, each one flat, so the ground
+// goes flat with distance on its own.
+// .06 is the reach either side; 0 leaves the ground one flat colour.
+const TRIANGLE_SHADE=.06;
+// Stable multiplier for one triangle, keyed on its centroid: neighbours share
+// corners, so keying on a corner would shade several triangles the same.
+function shadeOf(key){
+ let h=2166136261;
+ for(let i=0;i<key.length;i++)h=Math.imul(h^key.charCodeAt(i),16777619);
+ return 1+TRIANGLE_SHADE*((h>>>0)/4294967295*2-1);
+}
 function columnDistance(up,node){
  const dot=THREE.MathUtils.clamp(up.dot(node.center),-1,1);
  return dot<=0?Math.PI*RADIUS:Math.max(0,RADIUS*Math.sqrt(1-dot*dot)-node.reach);
@@ -192,8 +194,6 @@ export class WorldTerrain {
 attribute vec3 aParent;
 attribute vec2 aBand;
 attribute float aTaper;
-attribute vec3 aBary;
-varying vec3 vBary;
 uniform vec3 uLodOrigin;
 const float CDLOD_RADIUS=${radiusLiteral};`)
     .replace('#include <begin_vertex>',`#include <begin_vertex>
@@ -201,27 +201,7 @@ vec3 cdlodUp=normalize(uLodOrigin);
 float cdlodDot=clamp(dot(cdlodUp,normalize(position)),-1.0,1.0);
 float cdlodDistance=CDLOD_RADIUS*sqrt(max(0.0,1.0-cdlodDot*cdlodDot));
 float cdlodMorph=clamp((cdlodDistance-aBand.x)/max(aBand.y-aBand.x,0.001),0.0,1.0)*aTaper;
-transformed=mix(position,aParent,cdlodMorph);
-vBary=aBary;`);
-   // The fragment half of the same shader: the triangle's own colour stays, and
-   // the facet it falls in just shades it a little. The cut depth is continuous
-   // in distance, and the two neighbouring depths crossfade, so every level of
-   // facets fades in as the ground comes nearer and nothing pops.
-   shader.fragmentShader=shader.fragmentShader
-    .replace('#include <common>',`#include <common>
-varying vec3 vBary;
-float groundFacet(vec3 bary,float cuts){
- vec2 cell=floor(bary.xy*max(cuts,1.0));
- return fract(sin(dot(cell+vec2(cuts),vec2(12.9898,78.233)))*43758.5453);
-}`)
-    .replace('#include <color_fragment>',`#include <color_fragment>
-{
- float cuts=clamp(log2(${GROUND_CUT_METERS.toFixed(1)}/max(length(vViewPosition),.25)),0.0,${GROUND_MAX_CUTS}.0);
- float low=floor(cuts),blend=cuts-low;
- float here=1.0+${GROUND_SHADE.toFixed(3)}*(groundFacet(vBary,low)*2.0-1.0);
- float next=1.0+${GROUND_SHADE.toFixed(3)}*(groundFacet(vBary,low+1.0)*2.0-1.0);
- diffuseColor.rgb*=mix(here,next,blend);
-}`);
+transformed=mix(position,aParent,cdlodMorph);`);
   };
   this.scene=scene;
   this.cache=new Map();
@@ -258,7 +238,7 @@ float groundFacet(vec3 bary,float cuts){
   return n;
  }
  geometry(n,detail,seam=null){
-  const positions=[],colors=[],parents=[],bands=[],tapers=[],barys=[];
+  const positions=[],colors=[],parents=[],bands=[],tapers=[];
   const nodes=[n.a,n.b,n.c];
   const groundColor=BIOME_SETUP[Number(n.address.slice(1,3))].groundColor;
   const tint=groundColor===null?null:new THREE.Color(groundColor);
@@ -301,10 +281,7 @@ float groundFacet(vec3 bary,float cuts){
    for(const normal of sidePlanes)edge=Math.min(edge,Math.abs(dir.dot(normal))*RADIUS);
    return THREE.MathUtils.smoothstep(edge,0,ramp);
   };
-  // Which corner of its triangle a vertex is. The fragment shader interpolates it
-  // into a coordinate inside the triangle, which is what it subdivides.
-  const BARY=[[1,0,0],[0,1,0],[0,0,1]];
-  const push=(dir,p,parent,color,bary)=>{
+  const push=(dir,p,parent,color)=>{
    // Only a split vertex pulled onto the coarser neighbour's boundary moves;
    // every other vertex is the plain normalized midpoint.
    const at=snapped.get(directionKey(dir))||p;
@@ -314,7 +291,6 @@ float groundFacet(vec3 bary,float cuts){
    const target=onSeam(dir)||!parent?at:parent;
    parents.push(target.x,target.y,target.z);
    colors.push(color.r,color.g,color.b);
-   barys.push(bary[0],bary[1],bary[2]);
    bands.push(range.start,range.end);
    tapers.push(taperAt(dir));
   };
@@ -322,9 +298,11 @@ float groundFacet(vec3 bary,float cuts){
    const A=pointAt(a),B=pointAt(b),C=pointAt(c);
    const outward=new THREE.Vector3().subVectors(B,A).cross(new THREE.Vector3().subVectors(C,A)).dot(A)>0;
    const verts=outward?[[a,A,ca],[b,B,cb],[c,C,cc]]:[[a,A,ca],[c,C,cc],[b,B,cb]];
-   for(let i=0;i<3;i++){
-    const [dir,p,parent]=verts[i];
-    push(dir,p,parent,tint||terrainColor(p.length()-(RADIUS+WORLD_SETUP.seaLevelOffsetMeters)),BARY[i]);
+   // One shade for all three corners, so the triangle reads as one facet.
+   const shade=shadeOf(directionKey(a.clone().add(b).add(c).normalize()));
+   for(const [dir,p,parent] of verts){
+    const color=(tint||terrainColor(p.length()-(RADIUS+WORLD_SETUP.seaLevelOffsetMeters))).clone().multiplyScalar(shade);
+    push(dir,p,parent,color);
    }
   };
   // Every leaf is one plain triangle: four congruent children all the way down,
@@ -364,7 +342,6 @@ float groundFacet(vec3 bary,float cuts){
   g.setAttribute('aBand',new THREE.Float32BufferAttribute(bands,2));
   g.setAttribute('aTaper',new THREE.Float32BufferAttribute(tapers,1));
   g.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
-  g.setAttribute('aBary',new THREE.Float32BufferAttribute(barys,3));
   g.computeVertexNormals();
   return g;
  }
