@@ -5,6 +5,9 @@ import {Resource} from './resource.js';
 export class Tree extends Resource {
  constructor({id,position,state='standing',woodYield=1}={}){
   super({id,type:'tree',position,state,requiredTool:'axe',yieldType:'logs',yieldCount:woodYield});
+  // Species that bleed or shed something beyond logs set {resource,count} here;
+  // collection awards it alongside the log.
+  this.secondary=null;
  }
  // All rendered tree parts may participate in axe contact.
  // The collision adapter decides how to represent those parts in Box3D.
