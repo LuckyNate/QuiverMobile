@@ -10,6 +10,12 @@ export const LOG_HEIGHT=.5;
 // half-metre logs that reach the four metre post line.
 export const COURSES=Math.round(POST_HEIGHT/LOG_HEIGHT)-1;
 export const CROSS_LOGS=2;
+// Three slots across a wall. An opening only ever grows: a window can become a door,
+// a door can be paired into a double door, and nothing is ever filled back in.
+export const WALL_SLOTS=3;
+export const SOLID=0;
+export const WINDOW=1;
+export const DOOR=2;
 
 const SIDES=['south','east','north','west'];
 
@@ -20,6 +26,8 @@ export class BuildGrid {
   this.courses=new Map();
   this.cross=new Map();
   this.floored=new Set();
+  this.openings=new Map();
+  this.blown=new Set();
  }
  static post(i,j){return 'p:'+i+':'+j;}
  // A gap key names the two posts it spans, so the cells either side share the ground
@@ -92,6 +100,56 @@ export class BuildGrid {
    return {kind:'post',i:x,j:y,logs:1};
   }
   return null;
+ }
+ // A wall with rooms on both sides is an inside wall, and it is the only one that
+ // can be blown wide open.
+ isInterior(key){return BuildGrid.cellsOf(key).every(([i,j])=>this.isFloored(i,j));}
+ openingsAt(key){return this.openings.get(key)||new Array(WALL_SLOTS).fill(SOLID);}
+ // Up to three windows, or one door and two windows, or a double door and one window.
+ patternAllowed(slots){
+  const doors=[],windows=slots.filter(state=>state===WINDOW).length;
+  slots.forEach((state,index)=>{if(state===DOOR)doors.push(index);});
+  if(doors.length===0)return windows<=WALL_SLOTS;
+  if(doors.length===1)return windows<=2;
+  if(doors.length===2)return doors[1]-doors[0]===1&&windows<=1;
+  return false;
+ }
+ // Cutting is one way. A narrower opening than the one standing is always refused,
+ // which is why a double door can only be cut out further.
+ canCut(key,slot,to){
+  if(slot<0||slot>=WALL_SLOTS||to<=SOLID||to>DOOR)return false;
+  const slots=this.openingsAt(key);
+  if(to<=slots[slot])return false;
+  const next=slots.slice();
+  next[slot]=to;
+  return this.patternAllowed(next);
+ }
+ cut(key,slot,to){
+  if(!this.canCut(key,slot,to))return false;
+  const slots=this.openingsAt(key);
+  slots[slot]=to;
+  this.openings.set(key,slots);
+  return true;
+ }
+ // Two doors side by side are one double door, and they stay that way.
+ doubleDoor(key){
+  const slots=this.openingsAt(key);
+  for(let k=0;k<WALL_SLOTS-1;k++)if(slots[k]===DOOR&&slots[k+1]===DOOR)return k;
+  return -1;
+ }
+ // An inside wall can be blown wide open, leaving the beam and the braces; after
+ // that it is only more open, never less.
+ blowOpen(key){
+  if(!this.isInterior(key)||this.blown.has(key))return false;
+  this.openings.set(key,new Array(WALL_SLOTS).fill(DOOR));
+  this.blown.add(key);
+  return true;
+ }
+ isBlown(key){return this.blown.has(key);}
+ restoreOpenings(key,slots){this.openings.set(key,slots.slice());}
+ restoreBlown(key){
+  this.blown.add(key);
+  this.openings.set(key,new Array(WALL_SLOTS).fill(DOOR));
  }
  restorePost(i,j){this.posts.add(BuildGrid.post(i,j));}
  restoreGround(key){this.ground.add(key);}
