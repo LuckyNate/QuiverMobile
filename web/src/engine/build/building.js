@@ -247,8 +247,8 @@ export class Building {
  // then a door in that same slot, then a second door beside it. A wall between two
  // rooms that is all doors can be blown wide open instead.
  cutAt(key,point){
-  const tool=this.shared.getEquippedTool(this.playerId);
-  if(tool!=='hammer'&&tool!=='axe'){this.message?.('Hold the hammer to cut this wall');return;}
+  // The build hammer is the hatchet: cutting never asks for a different tool.
+  if(this.shared.getEquippedTool(this.playerId)!=='hammer'){this.message?.('Hold the build hammer to cut this wall');return;}
   const slots=this.grid.openingsAt(key);
   if(slots.every(state=>state===DOOR)&&this.grid.isInterior(key)){this.blowAt(key);return;}
   const slot=this.slotAt(key,point),state=slots[slot];
