@@ -115,6 +115,7 @@ export class PlayerSystem {
   this.camera.lookAt(focus);
   this.visual.update(this.position,up,facing,dt,this.commandedSpeed);
  }
+ setTool(tool){this.visual.setTool(tool);}
  showAnimation(name){this.visual.show(name);}
  setResting(enabled){this.visual.setResting(enabled);}
  playIdle(){this.showAnimation('Idle');}

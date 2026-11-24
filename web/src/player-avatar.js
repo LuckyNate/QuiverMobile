@@ -42,6 +42,7 @@ export class PlayerAvatar {
   });
  }
  setTerrain(height,radius){if(this.jim)this.jim.setTerrain(height,radius);}
+ setTool(tool){if(this.jim)this.jim.setTool(tool);}
  setResting(enabled){if(this.jim)this.jim.setResting(enabled);}
  flashResourceContact(){this.contactFlash=.22;this.capsuleMaterial.color.setHex(0x22ff55);}
  show(state){
