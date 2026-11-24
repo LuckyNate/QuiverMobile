@@ -26,7 +26,9 @@ function texture(bytes,size){
  return tex;
 }
 
-export function createGroundNoise(size=128,seed=0x5eed){
+// Size is texels per side. The caller decides how many metres a texel covers, so
+// the tile has to be big enough that the texture coordinate stays small.
+export function createGroundNoise(size=256,seed=0x5eed){
  const values=noiseField(size,seed);
  // Tint: a multiplier near 1, dark enough to read as grain but never as dirt.
  // The colour underneath still decides what the ground looks like.
