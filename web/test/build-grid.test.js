@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {BuildGrid,CELL_METERS,POST_HEIGHT,LOG_HEIGHT,COURSES,CROSS_LOGS,WINDOW,DOOR} from '../src/engine/build/build-grid.js';
+import {BuildGrid,CELL_METERS,POST_HEIGHT,LOG_HEIGHT,COURSES,CROSS_LOGS,SOLID,WINDOW,DOOR} from '../src/engine/build/build-grid.js';
 
 test('a cell is four metres across',()=>{
  assert.equal(CELL_METERS,4);
@@ -142,6 +142,53 @@ test('only a wall with rooms on both sides can be blown open',()=>{
  assert.ok(grid.blowOpen(gap));
  assert.ok(grid.isBlown(gap));
  assert.equal(grid.blowOpen(gap),false);
+});
+
+test('a stacked course comes back one log at a time',()=>{
+ const grid=new BuildGrid();
+ const gap=grid.sidesOf(0,0)[0].key;
+ const [[x0,y0],[x1,y1]]=BuildGrid.endsOf(gap);
+ grid.restorePost(x0,y0);grid.restorePost(x1,y1);
+ grid.addCourse(gap);grid.addCourse(gap);
+ assert.ok(grid.takeCourse(gap));
+ assert.equal(grid.coursesAt(gap),1);
+ assert.ok(grid.takeCourse(gap));
+ assert.equal(grid.coursesAt(gap),0);
+ assert.equal(grid.takeCourse(gap),false);
+});
+
+test('taking the material back opens a finished floor again',()=>{
+ const grid=new BuildGrid();
+ flooredCell(grid,0,0);
+ assert.ok(grid.isFloored(0,0));
+ assert.ok(grid.takeCross(0,0));
+ assert.ok(grid.unfloor(0,0));
+ assert.equal(grid.isFloored(0,0),false);
+});
+
+test('a floor that still has its material stays a floor',()=>{
+ const grid=new BuildGrid();
+ flooredCell(grid,0,0);
+ assert.equal(grid.unfloor(0,0),false);
+ assert.ok(grid.isFloored(0,0));
+});
+
+test('a post and a ground log can be lifted back out',()=>{
+ const grid=new BuildGrid();
+ const gap=grid.sidesOf(0,0)[0].key;
+ grid.restorePost(0,0);
+ grid.layGround(gap);
+ assert.ok(grid.removePost(0,0));
+ assert.equal(grid.hasPost(0,0),false);
+ assert.ok(grid.removeGround(gap));
+ assert.equal(grid.groundLaid(gap),false);
+});
+
+test('a gap that has been cut has no whole logs left to take',()=>{
+ const grid=new BuildGrid();
+ const gap=grid.sidesOf(0,0)[0].key;
+ grid.cut(gap,1,WINDOW);
+ assert.notEqual(grid.openingsAt(gap)[1],SOLID);
 });
 
 test('the middle of a cell asks for ground, then cross, then posts',()=>{
