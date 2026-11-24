@@ -75,7 +75,7 @@ export class Game {
   this.tap=new TapController({
    canvas:this.canvas,camera:this.camera,height:this.height,radius:RADIUS,
    harvesting:this.harvesting,sharedWorld:this.sharedWorld,playerSystem:this.playerSystem,
-   bonfire:this.bonfire,isActive:()=>this.started&&this.simulationReady,
+   bonfire:this.bonfire,message:text=>this.panels.print(text),isActive:()=>this.started&&this.simulationReady,
    setBonfireCandidate:point=>{this.pendingBonfire=point;}
   });
   setInterval(()=>{if(this.panels.openPanel==='inventory')this.panels.refreshInventory();},500);

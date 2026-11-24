@@ -1,10 +1,14 @@
 import * as THREE from 'three';
 
+// A press shorter than this is still a tap; at or beyond it, the hammer holds.
+const HOLD_MS=450;
+
 // Tap resources or terrain to walk using the normal player physics path, and
 // remember a spot to build a camp bonfire when the player arrives.
 export class TapController {
- constructor({canvas,camera,height,radius,harvesting,sharedWorld,playerSystem,bonfire,isActive,setBonfireCandidate}){
-  Object.assign(this,{canvas,camera,height,radius,harvesting,sharedWorld,playerSystem,bonfire,isActive,setBonfireCandidate});
+ constructor({canvas,camera,height,radius,harvesting,sharedWorld,playerSystem,bonfire,message,isActive,setBonfireCandidate}){
+  Object.assign(this,{canvas,camera,height,radius,harvesting,sharedWorld,playerSystem,bonfire,message,isActive,setBonfireCandidate});
+  this.hammerPress=null;
   this.raycaster=new THREE.Raycaster();
   this.ndc=new THREE.Vector2();
   playerSystem.controls.onManualMove=()=>{
@@ -15,10 +19,26 @@ export class TapController {
   playerSystem.controls.onTap=(screenX,screenY)=>this.tap(screenX,screenY);
   // Holding on an animal with the bow draws the string; letting go looses the
   // arrow. Out of range the press is not claimed, so nothing is drawn and
-  // nothing is loosed.
-  playerSystem.controls.onPress=(screenX,screenY)=>this.press(screenX,screenY);
-  playerSystem.controls.onHoldEnd=()=>this.harvesting.releaseBow();
-  playerSystem.controls.onHoldCancel=()=>this.harvesting.cancelDraw();
+  // nothing is loosed. The hammer claims every press instead, so the release can
+  // tell a short tap from a long hold; a claimed press never also becomes a tap.
+  playerSystem.controls.onPress=(screenX,screenY)=>{
+   if(this.isActive()&&sharedWorld.getEquippedTool('local-owner')==='hammer'){
+    this.hammerPress={x:screenX,y:screenY,at:performance.now()};
+    return true;
+   }
+   this.hammerPress=null;
+   return this.press(screenX,screenY);
+  };
+  playerSystem.controls.onHoldEnd=(screenX,screenY,moved)=>{
+   const press=this.hammerPress;
+   this.hammerPress=null;
+   if(!press)return this.harvesting.releaseBow();
+   // A drag across the world is the camera being turned, not the hammer.
+   if(moved)return;
+   if(performance.now()-press.at>=HOLD_MS)return this.hold();
+   this.tap(screenX??press.x,screenY??press.y);
+  };
+  playerSystem.controls.onHoldCancel=()=>{this.hammerPress=null;this.harvesting.cancelDraw();};
  }
  // What the finger is on: the nearest of the things a touch can mean, else null.
  pick(screenX,screenY){
@@ -90,5 +110,17 @@ export class TapController {
    this.setBonfireCandidate(destination.clone());
   }else this.setBonfireCandidate(null);
   this.playerSystem.setDestination(destination);
+ }
+ // Long press with the hammer: a campfire is planted where the player stands, on
+ // the analytic surface rather than at the capsule centre. Once a fire exists the
+ // same press opens the build menu.
+ hold(){
+  const {bonfire,sharedWorld,playerSystem,height,radius}=this;
+  if(bonfire.exists)return this.onBuildMenu?.();
+  const direction=playerSystem.position.clone().normalize();
+  const ground=direction.clone().multiplyScalar(height.radius(direction,radius)+.02);
+  if(bonfire.build(ground))return;
+  this.message?.((sharedWorld.getInventory('local-owner').logs||0)<12
+   ?'A campfire needs 12 logs':'Campfire cannot be placed here');
  }
 }
