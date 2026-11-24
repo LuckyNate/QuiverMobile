@@ -4,6 +4,7 @@ import {BuildGrid,CELL_METERS,POST_HEIGHT,LOG_HEIGHT,COURSES,CROSS_LOGS,WALL_SLO
 const LOG_RADIUS=LOG_HEIGHT/2;
 const POST_REACH=.7;
 const GAP_REACH=.5;
+const TOP_REACH=.55;
 const DEREZZ_MS=260;
 const PREFIX='build:';
 
@@ -164,6 +165,15 @@ export class Building {
   }
   return best;
  }
+ // A course goes on top of the stack, so the top log is what a tap has to land on.
+ // With nothing stacked yet the ground log is the top.
+ stackLift(key){
+  const courses=this.grid.coursesAt(key);
+  return courses>0?LOG_HEIGHT*(courses+.5):LOG_HEIGHT/2;
+ }
+ onTopLog(key,point){
+  return this.distanceToSegment(point,...this.gapSpan(key,this.stackLift(key)))<=TOP_REACH;
+ }
  gapNear(i,j,point){
   let best=null,bestDistance=GAP_REACH;
   for(const {key} of this.grid.sidesOf(i,j)){
@@ -219,6 +229,7 @@ export class Building {
    }
    if(!this.grid.wallsReady(gap)){this.message?.('Stand a post at both ends first');return;}
    if(this.grid.coursesAt(gap)>=COURSES){this.cutAt(gap,point);return;}
+   if(!this.onTopLog(gap,point)){this.message?.('Lay a course by tapping the top log');return;}
    if(!this.spend(1))return;
    this.grid.addCourse(gap);
    this.shared.setEntity(PREFIX+'course:'+gap,{state:'standing',kind:'course',anchor:this.anchorId,key:gap,count:this.grid.coursesAt(gap),ownerId:this.playerId});
