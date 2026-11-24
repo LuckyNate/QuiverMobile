@@ -37,7 +37,9 @@ export class TreeHarvestSystem {
    onHit:t=>{
     if(this.attackClock>0)return;
     this.attackClock=.6;this.player.showAnimation('Axe Attack');
-    if(++t.hits>=2)this.fell(t,this.playerId);
+    // One chop fells a tree, whether it came from a bump or a screen tap.
+    t.hits++;
+    this.fell(t,this.playerId);
    }
   });
   if(autoPopulate)this.populate();
