@@ -73,18 +73,72 @@ export class ResourceHandler extends TreeHarvestSystem {
   if(this.entryById.has(id))return false;
   const record=this.shared?.getEntity(id);
   if(record&&record.state!=='standing')return false;
-  // Pines respect each other: two crowns may meet, but a trunk never grows into
-  // another tree's canopy, so a seeded candidate too close to one already standing
-  // is dropped rather than planted inside it.
-  const crown=TREE_CROWN_METERS*this.sizeOf(id).scale;
+  const entry=this.makeTree(chunk,0,this.spacedPosition(id,position),id);
+  this.entryById.set(id,entry);
+  return true;
+ }
+ // Does a trunk at this spot clear every pine already standing? One crown's radius
+ // plus the other's is the closest the two may come; the shave keeps exact contact
+ // from reading as an overlap through rounding.
+ clearOf(crown,at){
   for(const other of this.trees){
    if(other.state==='collected')continue;
    const gap=crown+TREE_CROWN_METERS*other.scale;
-   if(other.at.distanceToSquared(position)<gap*gap)return false;
+   if(other.at.distanceToSquared(at)<gap*gap*.999)return false;
   }
-  const entry=this.makeTree(chunk,0,position,id);
-  this.entryById.set(id,entry);
   return true;
+ }
+ // Pines respect each other by moving, not by vanishing: a candidate that lands
+ // inside another tree's crown is pushed along the gap between the two until both
+ // fit, then dropped back onto the ground at its new spot. Eight passes settle
+ // almost every tree; the rest step onto the nearest clear ground on a ring around
+ // the spot they could not hold, so the wood keeps every tree it was seeded with.
+ // All of this happens once, while the tree is being generated.
+ spacedPosition(id,position){
+  const at=position.clone();
+  const crown=TREE_CROWN_METERS*this.sizeOf(id).scale;
+  for(let pass=0;pass<8;pass++){
+   let moved=false;
+   for(const other of this.trees){
+    if(other.state==='collected')continue;
+    const gap=crown+TREE_CROWN_METERS*other.scale;
+    const dx=at.x-other.at.x,dy=at.y-other.at.y,dz=at.z-other.at.z;
+    const distanceSq=dx*dx+dy*dy+dz*dz;
+    if(distanceSq>=gap*gap)continue;
+    const distance=Math.sqrt(distanceSq);
+    if(distance<1e-3){
+     // Exactly on top of the other trunk: step off along the surface tangent.
+     const axis=Math.abs(at.y)<.9?new THREE.Vector3(0,1,0):new THREE.Vector3(1,0,0);
+     at.addScaledVector(new THREE.Vector3().crossVectors(at,axis).normalize(),gap);
+    }else{
+     const push=(gap-distance)/distance;
+     at.x+=dx*push;at.y+=dy*push;at.z+=dz*push;
+    }
+    moved=true;
+   }
+   if(!moved)break;
+  }
+  const ground=point=>{
+   const direction=point.normalize();
+   return point.copy(direction.multiplyScalar(this.radius+this.height.height(direction)));
+  };
+  if(!this.clearOf(crown,at)){
+   const up=at.clone().normalize();
+   const axis=Math.abs(up.y)<.9?new THREE.Vector3(0,1,0):new THREE.Vector3(1,0,0);
+   const side=new THREE.Vector3().crossVectors(up,axis).normalize();
+   const other=new THREE.Vector3().crossVectors(up,side).normalize();
+   const probe=new THREE.Vector3();
+   search:for(let ring=1;ring<=6;ring++){
+    const radius=ring*(crown+1.2);
+    for(let step=0;step<12;step++){
+     const angle=step/12*Math.PI*2;
+     probe.copy(at).addScaledVector(side,Math.cos(angle)*radius).addScaledVector(other,Math.sin(angle)*radius);
+     if(this.clearOf(crown,ground(probe))){at.copy(probe);break search;}
+    }
+   }
+  }
+  if(at.distanceToSquared(position)>1e-12)ground(at);
+  return at;
  }
  findTree(id){return this.entryById.get(id)||null;}
  unloadTree(id){
