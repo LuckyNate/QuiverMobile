@@ -23,6 +23,8 @@ export class Building {
   this.wood=new THREE.MeshStandardMaterial({color:0x745039,roughness:1});
   this.postGeometry=new THREE.CylinderGeometry(LOG_RADIUS,LOG_RADIUS,POST_HEIGHT,6);
   this.beamGeometry=new THREE.CylinderGeometry(LOG_RADIUS,LOG_RADIUS,CELL_METERS,6);
+  // The flooring that fills a finished cell, laid on top of its log frame.
+  this.deckGeometry=new THREE.BoxGeometry(CELL_METERS-LOG_HEIGHT,.08,CELL_METERS-LOG_HEIGHT);
   this.mode=false;
   this.anchor=null;
   this.anchorId='camp:bonfire:'+playerId;
@@ -110,12 +112,22 @@ export class Building {
   }
   return pieces;
  }
- // The two logs of the cross: one each way through the middle of the cell.
+ // The cross lies between the ground ring rather than through it, and the second log
+ // rests on the first, so the frame stacks instead of intersecting.
  crossMesh(i,j,index){
-  const u=i*CELL_METERS,v=j*CELL_METERS,mid=CELL_METERS/2,lift=LOG_HEIGHT/2;
+  const u=i*CELL_METERS,v=j*CELL_METERS,mid=CELL_METERS/2,inset=LOG_RADIUS;
+  const lift=index===0?LOG_HEIGHT/2:LOG_HEIGHT*1.5;
   return index===0
-   ?this.meshBetween(this.pointAt(u,v+mid,lift),this.pointAt(u+CELL_METERS,v+mid,lift))
-   :this.meshBetween(this.pointAt(u+mid,v,lift),this.pointAt(u+mid,v+CELL_METERS,lift));
+   ?this.meshBetween(this.pointAt(u+inset,v+mid,lift),this.pointAt(u+CELL_METERS-inset,v+mid,lift))
+   :this.meshBetween(this.pointAt(u+mid,v+inset,lift),this.pointAt(u+mid,v+CELL_METERS-inset,lift));
+ }
+ // The deck that fills a floored cell, sitting on the completed frame.
+ floorDeck(i,j){
+  const up=this.anchor.clone().normalize();
+  const mesh=new THREE.Mesh(this.deckGeometry,this.wood);
+  mesh.position.copy(this.pointAt(i*CELL_METERS+CELL_METERS/2,j*CELL_METERS+CELL_METERS/2,LOG_HEIGHT*2+.05));
+  mesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(this.east,up,this.north));
+  return mesh;
  }
  render(){
   this.group.clear();
@@ -128,6 +140,10 @@ export class Building {
   for(const [cell,count] of this.grid.cross){
    const [i,j]=cell.split(',').map(Number);
    for(let k=0;k<count;k++)this.group.add(this.crossMesh(i,j,k));
+  }
+  for(const cell of this.grid.floored){
+   const [i,j]=cell.split(',').map(Number);
+   this.group.add(this.floorDeck(i,j));
   }
   for(const key of this.grid.courses.keys())this.group.add(...this.wallPieces(key));
  }
