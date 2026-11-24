@@ -36,7 +36,7 @@ test('a boar goes for you at five metres, whichever way it is facing',()=>{
  assert.ok(BOAR_BEHAVIOUR.spotted(f.boar,f.playerAt(4,{behind:true}))>0);      // no cone, it just charges
 });
 
-test('it alerts, closes in and bumps its snout to bite',()=>{
+test('it alerts, closes to its ring and lunges to bite',()=>{
  const f=fixture();
  const player=f.playerAt(3);
  BOAR_BEHAVIOUR.think(f.boar,1/60,f.ctx(player));
@@ -49,7 +49,8 @@ test('it alerts, closes in and bumps its snout to bite',()=>{
  assert.equal(f.events.hits,1);
  assert.equal(f.events.damage,BOAR.damage);
  assert.equal(BOAR.damage,1);
- assert.ok(f.boar.at.distanceTo(player)<before);   // it walked into you to do it
+ assert.ok(f.boar.at.distanceTo(player)<before);   // it closed from three metres to bite
+ assert.ok(f.boar.at.distanceTo(player)>=BOAR.reach*.5,'the lunge never buries it in you');
  // The bite is on a clock, not on contact: nothing lands during the wait.
  const landed=f.events.hits;
  for(let i=0;i<60;i++)BOAR_BEHAVIOUR.think(f.boar,1/60,f.ctx(player));
@@ -58,12 +59,13 @@ test('it alerts, closes in and bumps its snout to bite',()=>{
  assert.equal(f.events.hits,landed+1);
 });
 
-test('it chases at the player\'s own speed, straight at their feet',()=>{
+test('it chases at the player\'s own speed and stops on its ring',()=>{
  const f=fixture();
  assert.equal(BOAR.chase,PLAYER_SPEED);
  const player=f.playerAt(5);
  BOAR_BEHAVIOUR.provoked(f.boar);
  BOAR_BEHAVIOUR.think(f.boar,BOAR.alertSeconds,f.ctx(player));
+ f.boar.swingClock=BOAR.swingSeconds;   // hold the bite, so the chase is what is measured
  let last=f.boar.at.distanceTo(player);
  for(let i=0;i<40;i++){
   BOAR_BEHAVIOUR.think(f.boar,1/60,f.ctx(player));
@@ -71,7 +73,7 @@ test('it chases at the player\'s own speed, straight at their feet',()=>{
   assert.ok(gap<=last+1e-9,'it never backs off or circles'); // no trailing, no circling
   last=gap;
  }
- assert.ok(last<=BOAR.reach,'it closes the gap');
+ assert.ok(Math.abs(last-BOAR.stop)<.05,'it stops on the ring, not in your feet');
  // Turn on it: the next step heads at where you are now, not where you were.
  const turned=f.playerAt(5,{behind:true});
  const before=f.boar.at.distanceTo(turned);
@@ -79,14 +81,42 @@ test('it chases at the player\'s own speed, straight at their feet',()=>{
  assert.ok(f.boar.at.distanceTo(turned)<before,'it cuts the corner immediately');
 });
 
-test('one long frame cannot carry the snout past you',()=>{
+test('one long frame cannot carry it past its ring',()=>{
  const f=fixture();
  f.boar.state='attacking';
  const player=f.playerAt(6);
  BOAR_BEHAVIOUR.think(f.boar,2,f.ctx(player));   // asks for 12 m of travel
  const gap=f.boar.at.distanceTo(player);
- assert.ok(gap>=BOAR.reach*.7,'it stops with the snout on you');
- assert.ok(gap<=BOAR.reach,'and never runs out the other side');
+ assert.ok(Math.abs(gap-BOAR.stop)<.01,'it stops on the ring');
+});
+
+test('it holds the ring instead of orbiting your feet',()=>{
+ const f=fixture();
+ const player=f.playerAt(BOAR.stop);
+ f.boar.state='attacking';
+ f.boar.swingClock=BOAR.swingSeconds;
+ const parked=f.boar.at.clone();
+ for(let i=0;i<10;i++)BOAR_BEHAVIOUR.think(f.boar,1/60,f.ctx(player));
+ assert.ok(f.boar.at.distanceTo(parked)<1e-9,'it stands still on the ring');   // no orbiting
+ assert.ok(f.boar.at.distanceTo(player)>=BOAR.reach,'and stays out of reach while it waits');
+});
+
+test('the bite is a lunge across the ring, then it backs off again',()=>{
+ const f=fixture();
+ const player=f.playerAt(BOAR.stop);
+ f.boar.state='attacking';
+ f.boar.swingClock=0;
+ BOAR_BEHAVIOUR.think(f.boar,1/60,f.ctx(player));
+ assert.equal(f.boar.state,'lunge');
+ assert.equal(f.events.hits,0,'deciding to lunge is not a bite');
+ let guard=0;
+ while(f.events.hits===0&&guard++<30)BOAR_BEHAVIOUR.think(f.boar,1/60,f.ctx(player));
+ assert.equal(f.events.hits,1,'the burst lands exactly one bite');
+ assert.ok(f.boar.at.distanceTo(player)<BOAR.reach,'it had to come in to reach you');
+ while(f.boar.state==='lunge'&&guard++<90)BOAR_BEHAVIOUR.think(f.boar,1/60,f.ctx(player));
+ const recoiled=f.boar.at.distanceTo(player);
+ for(let i=0;i<20;i++)BOAR_BEHAVIOUR.think(f.boar,1/60,f.ctx(player));
+ assert.ok(f.boar.at.distanceTo(player)>recoiled,'it gives ground out of the bite');
 });
 
 test('being hit provokes it and losing the player walks it home',()=>{

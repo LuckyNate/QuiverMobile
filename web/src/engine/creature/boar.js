@@ -4,16 +4,21 @@ import {seededUnit} from '../world/seeded-hash.js';
 import {PLAYER_SPEED} from '../world/world-config.js';
 
 // The Meadows boar: three hit points, so three level 1 hits put it down. It goes
-// for anything that steps inside five metres and hurts you only by shouldering its
-// snout into you. It falls over where it dies and lies there, a carcass, for ninety
-// seconds before it fades out of the world.
+// for anything that steps inside five metres and hurts you only by lunging its
+// snout across the ring it keeps. It falls over where it dies and lies there, a
+// carcass, for ninety seconds before it fades out of the world.
 export const BOAR=Object.freeze({
  // Chase speed is the player's own: it can never outrun you, only cut you off.
  maxHealth:3,walk:1.2,chase:PLAYER_SPEED,territory:10,
  // Aggro is a radius, not a cone: the boar does not care which way it was facing.
  aggro:5,lose:12,
- // The snout, not the body, has to reach you: it walks up and bumps to bite.
- reach:1.15,bump:.2,damage:1,swingSeconds:1.8,alertSeconds:.25,fallSeconds:.5,
+ // It keeps a ring instead of walking into you: `stop` is the body centre it
+ // holds, which leaves its snout about a metre off you. `reach` is where the snout
+ // can actually touch, so the lunge across that gap is the only bite there is, and
+ // `swingSeconds` is the short wait before it may lunge again. `spacing` is the
+ // body radius it keeps clear of the next boar, so two never stand in one spot.
+ stop:1.6,reach:1,damage:1,swingSeconds:1.2,alertSeconds:.25,fallSeconds:.5,
+ lungeSpeed:9,lungeSeconds:.18,spacing:.6,
  // Long enough to walk back to a kill and take it apart, then a short fade.
  carcassSeconds:90,carcassFadeSeconds:1.5,
  // What a knife takes off the carcass, in inventory units.
@@ -22,7 +27,8 @@ export const BOAR=Object.freeze({
 
 export class Boar extends Creature {
  constructor({id,position,home=position}){
-  super({id,type:'boar',position,home,maxHealth:BOAR.maxHealth,speed:BOAR.walk,territory:BOAR.territory});
+  super({id,type:'boar',position,home,maxHealth:BOAR.maxHealth,speed:BOAR.walk,territory:BOAR.territory,
+   spacing:BOAR.spacing});
  }
 }
 
@@ -64,21 +70,42 @@ export class BoarBehaviour extends CreatureBehaviour {
     break;
    case 'attacking':{
     if(this.lost(boar,player)){boar.target=null;this.enter(boar,'returning');break;}
+    // It works to its ring and holds it: outside the ring it closes at your own
+    // speed, inside it gives ground at a walk, and on the ring it does not move at
+    // all. Standing still there is the whole fix for the orbiting, because once it
+    // has arrived nothing is steering any more.
+    const gap=boar.at.distanceTo(player),off=gap-this.tuning.stop;
+    if(off>1e-3){
+     // Aimed at the ring, not at your feet: a long frame lands on the ring rather
+     // than carrying the snout through you.
+     this.step(boar,player.clone().sub(boar.at),Math.min(this.tuning.chase*dt,off),context);
+    }else if(off<-1e-3){
+     // You came to it: it backs off at a walk, so you can still corner it.
+     this.step(boar,boar.at.clone().sub(player),Math.min(this.tuning.walk*dt,-off),context);
+    }else if(boar.swingClock<=0){
+     boar.bit=false;
+     this.enter(boar,'lunge');
+    }
+    // Facing you last, so it watches you even while it gives ground.
+    this.face(boar,player);
+    break;
+   }
+   case 'lunge':{
+    // The bite is the lunge and nothing else: a short burst across the ring that
+    // lands only if the snout reaches you, so stepping back dodges it. It bites
+    // once per burst and the burst is what the cooldown is paid for, never contact.
     this.face(boar,player);
     const gap=boar.at.distanceTo(player);
     if(gap>this.tuning.reach){
-     // Always straight at the player's feet, never along the trail they walked: at
-     // their own speed the boar cannot outrun them, so the inside line on every
-     // turn is how it gains anything. The step aims a little inside the snout's
-     // reach, so a long frame can never carry it through you, and the boar closes
-     // on you instead of stalling exactly at the edge of its own reach.
      this.step(boar,player.clone().sub(boar.at),
-      Math.min(this.tuning.chase*dt,gap-this.tuning.reach*.75),context);
-    }else if(boar.swingClock<=0){
-     boar.swingClock=this.tuning.swingSeconds;
-     // The bite is the bump: the snout is driven into the player, then it backs off.
-     this.step(boar,player.clone().sub(boar.at),this.tuning.bump,context);
+      Math.min(this.tuning.lungeSpeed*dt,gap-this.tuning.reach*.6),context);
+    }else if(!boar.bit){
+     boar.bit=true;
      context.hitPlayer(this.tuning.damage);
+    }
+    if(boar.stateTime>=this.tuning.lungeSeconds){
+     boar.swingClock=this.tuning.swingSeconds;
+     this.enter(boar,'attacking');
     }
     break;
    }

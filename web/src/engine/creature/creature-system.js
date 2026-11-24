@@ -3,7 +3,7 @@ import {Boar,BOAR,BOAR_BEHAVIOUR} from './boar.js';
 import {BoarVisual} from './boar-visual.js';
 import {HealthPips} from './health-pip.js';
 import {seededUnit} from '../world/seeded-hash.js';
-import {surfaceFrame,yawFor} from './behaviour.js';
+import {surfaceFrame,tangentAt,yawFor} from './behaviour.js';
 
 // One species module per enemy. The population system only hands over an id and a
 // seeded slot; the module owns the stats, the behaviour, the loot and the art.
@@ -54,12 +54,42 @@ export class CreatureSystem {
   const context={player:this.player.position,height:this.height,radius:this.radius,
    hitPlayer:amount=>this.onPlayerDamage?.(amount),
    retire:creature=>this.unload(creature.id)};
+  for(const creature of this.live.values())this.species[creature.type].behaviour.think(creature,dt,context);
+  // Resolve the crowd once everything has moved, never inside a seek.
+  this.separate();
   for(const creature of this.live.values()){
-   this.species[creature.type].behaviour.think(creature,dt,context);
    this.draw(creature);
    this.pip(creature,weapon);
   }
   return now;
+ }
+ // Two creatures never share a spot. After every creature has moved, any pair
+ // closer than their combined spacing is pushed apart along the ground between
+ // them. It is a separate pass on purpose: folding the push into the seek is what
+ // turns a crowd into a carousel around the player's feet.
+ separate(){
+  const living=[...this.live.values()].filter(creature=>!creature.dead&&creature.spacing>0);
+  for(let i=0;i<living.length;i++){
+   for(let j=i+1;j<living.length;j++){
+    const a=living[i],b=living[j],need=a.spacing+b.spacing;
+    const apart=b.at.clone().sub(a.at),gap=apart.length();
+    if(gap>=need)continue;
+    // Exactly on top of each other leaves no direction to push along: take a
+    // stable tangent from the id pair instead of an arbitrary one.
+    if(gap<1e-6)apart.copy(tangentAt(a.at,seededUnit(a.id+b.id,'apart')*Math.PI*2));
+    apart.normalize();
+    // A lunging creature holds its line and gives none of the correction away.
+    const share=need-gap,aHolds=a.state==='lunge',bHolds=b.state==='lunge';
+    const aMove=aHolds?0:(bHolds?share:share/2),bMove=bHolds?0:(aHolds?share:share/2);
+    this.nudge(a,apart.clone().multiplyScalar(-aMove));
+    this.nudge(b,apart.clone().multiplyScalar(bMove));
+   }
+  }
+ }
+ // Shift a creature along the surface without turning it to face the shift.
+ nudge(creature,offset){
+  const next=creature.at.clone().add(offset).normalize();
+  creature.at.copy(next.multiplyScalar(this.radius+this.height.height(next)));
  }
  draw(creature){
   const visual=this.visuals[creature.type];
