@@ -71,6 +71,11 @@ round, with a small blast radius:
   commit/push restriction in section 5 for routine fixes.
 - **Short reports.** State what changed, whether the build passed, and what to
   look at. Nothing more.
+- **Locked behaviour.** The tree billboard/model handover is settled: within
+  30 m a tree draws as a model and beyond it as a card; the fade runs on the same
+  clock in both directions; the card is held until the model is fully opaque and
+  returns before the model fades; the trunk stays at zero opacity until the
+  foliage is fully opaque. Change any of it only on an explicit request.
 
 Standing authorization covers the fix → build → commit → push loop only. It does
 not authorize force-pushing, branch deletion, workflow or dependency changes, or
