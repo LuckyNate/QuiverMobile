@@ -1,13 +1,14 @@
 // Inventory tabs, resource and tool slots, and their refresh logic.
 import {DYE_COLORS} from '../engine/dye-palette.js';
 import {TOOL_RECIPES,WEAPON_TOOLS} from '../engine/shared-world.js';
+import {toolIcon} from './tool-icon.js';
 // Recipe ingredients read as inventory keys; species drops get a proper name.
 const RESOURCE_NAMES={logs:'4 m Logs',fibers:'Fibers',sticks:'Sticks',stones:'Stones',pineSap:'Pine Sap'};
 // Unmapped keys still read as words: birchBark -> Birch Bark.
 const resourceName=key=>RESOURCE_NAMES[key]||key.replace(/([a-z0-9])([A-Z])/g,'$1 $2').replace(/^./,c=>c.toUpperCase());
 // Inventory keys that are bookkeeping rather than something you carry in a slot.
 const NOT_A_RESOURCE=new Set(['equippedTool','craftedTools','unlockedDyes','gear','logStrength','fiberQuality','arrows']);
-const SLOT_STYLE='min-height:64px;padding:8px;border:1px solid #526477;border-radius:5px;display:flex;flex-direction:column;justify-content:center;gap:4px;background:#172430';
+const SLOT_STYLE='min-height:84px;padding:8px;border:1px solid #526477;border-radius:5px;display:flex;flex-direction:column;justify-content:center;gap:4px;background:#172430';
 const label=id=>id[0].toUpperCase()+id.slice(1);
 export const panelInventory={
  registerInventoryTab(id,label,content){
@@ -55,7 +56,7 @@ export const panelInventory={
    grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px';
    return grid;
   };
-  const makeSlot=(id,title,{interactive=false,tag=null,note='',onClick=null}={})=>{
+  const makeSlot=(id,label,{interactive=false,tag=null,note='',onClick=null}={})=>{
    const slot=document.createElement(interactive?'button':'div');
    if(interactive){
     slot.type='button';
@@ -67,7 +68,7 @@ export const panelInventory={
     }));
    }
    slot.style.cssText=SLOT_STYLE;
-   const name=document.createElement('strong');name.textContent=title;
+   const name=document.createElement('strong');name.textContent=label;
    const quantity=document.createElement('span');quantity.style.fontSize='12px';
    if(note)quantity.textContent=note;
    slot.append(name,quantity);
@@ -75,7 +76,7 @@ export const panelInventory={
    return slot;
   };
   // Craftable tools are fixed slots: they exist whether or not you have one yet.
-  // Weapons craft the same way, they just live in their own tab.
+  // The weapons craft the same way, they just live in their own tab.
   const toolsGrid=makeGrid();
   for(const id of Object.keys(TOOL_RECIPES).filter(id=>!WEAPON_TOOLS.includes(id)))toolsGrid.append(makeSlot(id,label(id),{interactive:true}));
   toolsPane.append(toolsGrid);
@@ -159,15 +160,27 @@ export const panelInventory={
    if(entry.isTool){
     const active=id===equipped,crafted=this.sharedWorld.hasTool(this.playerId,id),ready=this.sharedWorld.canCraftTool(this.playerId,id);
     entry.slot.style.borderColor=active?'#4899e8':crafted?'#4eac69':ready?'#d6b243':'#667078';
-    entry.slot.style.background=active?'#20558b':crafted?'#225937':ready?'#796420':'#34383c';
+    entry.slot.style.backgroundColor=active?'#20558b':crafted?'#225937':ready?'#796420':'#34383c';
     entry.slot.style.color=active?'#e3f2ff':crafted?'#d6ffe0':ready?'#fff0b3':'#b2b5b7';
     entry.slot.setAttribute('aria-pressed',String(active));
+    // Owned tools draw their own model; the recipe or state text stays for the
+    // ones you cannot make yet, and as a fallback where WebGL is unavailable.
+    const icon=(crafted||active)?toolIcon(id):null;
+    entry.slot.style.backgroundImage=icon?'url('+icon+')':'none';
+    entry.slot.style.backgroundSize='contain';
+    entry.slot.style.backgroundPosition='center';
+    entry.slot.style.backgroundRepeat='no-repeat';
+    entry.name.style.display=icon?'none':'block';
+    entry.quantity.style.display=icon?'none':'block';
     entry.quantity.textContent=active?'Equipped':crafted?'Tap to equip':ready?'Tap to craft':Object.entries(TOOL_RECIPES[id]).map(([item,n])=>resourceName(item)+' '+(inventory[item]||0)+'/'+n).join(' · ');
+    const title=entry.name.textContent+(active?' — equipped':crafted?' — tap to equip':'');
+    entry.slot.title=title;
+    entry.slot.setAttribute('aria-label',title);
    }
    else if(entry.tag==='arrows'){
     const ready=this.sharedWorld.canCraftArrows(this.playerId);
     entry.slot.style.borderColor=ready?'#d6b243':'#667078';
-    entry.slot.style.background=ready?'#796420':'#34383c';
+    entry.slot.style.backgroundColor=ready?'#796420':'#34383c';
     entry.slot.style.color=ready?'#fff0b3':'#b2b5b7';
     entry.quantity.textContent='Count: '+(inventory.arrows||0)+(ready?' · Tap to craft':'');
    }
