@@ -50,6 +50,7 @@ export class ResourceHandler extends TreeHarvestSystem {
   // live draw; nothing reads it.
   this.drawGauge=new HealthPips({root:this.root,camera,lift:1.6,fill:0xd9a63a});
   this.bowDraw=null;
+  this.attachPhysics=physics=>{this.creatures.physics=physics;};
   // Each kind names the adapter that owns its live objects, the category it
   // belongs to, and how long a removed one waits before its cell may put it back.
   // A creature registers beside a resource without pretending to be one.

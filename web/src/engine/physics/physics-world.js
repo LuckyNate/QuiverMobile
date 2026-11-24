@@ -6,6 +6,7 @@
 import Box3D from 'box3d-wasm';
 import {takeCampTeleport} from '../camp/camp-respawn.js';
 import {DynamicSolidBody} from './physics-body.js';
+import {CreatureBody} from './creature-body.js';
 
 export class PhysicsWorld {
  async init() {
@@ -14,6 +15,7 @@ export class PhysicsWorld {
   this.world=new b3.World({gravity:{x:0,y:-9.81,z:0},enableContinuous:true});
   this.staticBodies=new Map();
   this.dynamicObjects=[];
+  this.creatureBodies=new Map();
   this.objects=new Map();
   this.staticRegionCache=[];
   this.accumulator=0;
@@ -160,6 +162,31 @@ export class PhysicsWorld {
   this.dynamicObjects.push(object);
   object.validateStep(spawn);
   return object;
+ }
+ // Creatures are kinematic: infinite mass, so the avatar and loose props are blocked
+ // by them while the authored behaviour keeps sole control of where they stand.
+ // Bodies are created on demand, so a creature that spawned before the physics world
+ // finished loading is picked up on the next sync instead of being missed.
+ addCreatureBody(creature) {
+  if(!creature?.volume)return null;
+  const existing=this.creatureBodies.get(creature.id);
+  if(existing)return existing;
+  const body=new CreatureBody(this,creature,creature.volume);
+  this.creatureBodies.set(creature.id,body);
+  return body;
+ }
+ syncCreatureBodies(creatures,dt) {
+  for(const creature of creatures){
+   if(!creature.volume)continue;
+   (this.creatureBodies.get(creature.id)||this.addCreatureBody(creature))?.sync(dt);
+  }
+ }
+ removeCreatureBody(id) {
+  const body=this.creatureBodies.get(id);
+  if(!body)return false;
+  body.destroy();
+  this.creatureBodies.delete(id);
+  return true;
  }
  step(dt) {
   this.accumulator=Math.min(.15,this.accumulator+dt);

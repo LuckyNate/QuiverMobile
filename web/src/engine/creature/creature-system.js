@@ -12,9 +12,12 @@ export const SPECIES=Object.freeze({
 });
 
 export class CreatureSystem {
+ // `physics` is an optional body adapter: nothing here needs Box3D, and without one
+ // the behaviour alone decides where creatures stand. With one, every creature gets a
+ // physical presence the avatar is blocked by.
  constructor({root,shared,player,playerId,height,radius,combat=new Combat(),species=SPECIES,
-  camera=null,onPlayerDamage=null}={}){
-  Object.assign(this,{root,shared,player,playerId,height,radius,combat,species,camera,onPlayerDamage});
+  camera=null,onPlayerDamage=null,physics=null}={}){
+  Object.assign(this,{root,shared,player,playerId,height,radius,combat,species,camera,onPlayerDamage,physics});
   this.live=new Map();
   this.visuals={boar:new BoarVisual({root,shared,player,playerId})};
   this.pips=new HealthPips({root,camera});
@@ -37,6 +40,7 @@ export class CreatureSystem {
   creature.patrolWait=1+seededUnit(id,'idle')*3;
   this.visuals[type].spawn(id,position);
   this.live.set(id,creature);
+  this.physics?.addCreatureBody(creature);
   return true;
  }
  unload(id){
@@ -44,6 +48,7 @@ export class CreatureSystem {
   if(!creature)return false;
   this.visuals[creature.type].unload(id);
   this.pips.remove(id);
+  this.physics?.removeCreatureBody(id);
   this.live.delete(id);
   return true;
  }
@@ -57,6 +62,8 @@ export class CreatureSystem {
   for(const creature of this.live.values())this.species[creature.type].behaviour.think(creature,dt,context);
   // Resolve the crowd once everything has moved, never inside a seek.
   this.separate();
+  // Physics follows the behaviour; the behaviour never waits on physics.
+  this.physics?.syncCreatureBodies(this.live.values(),dt);
   for(const creature of this.live.values()){
    this.draw(creature);
    this.pip(creature,weapon);

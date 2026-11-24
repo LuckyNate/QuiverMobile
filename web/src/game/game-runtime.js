@@ -71,6 +71,9 @@ export const gameRuntime={
    const cubes=[];
    world.syncStatic(this.surface,this.activeCollisionAreas(),this.solidity);
    this.physics=world;this.fallingCubes=cubes;this.simulationReady=true;
+   // Creatures gain their physical presence only once the world they live in exists;
+   // anything already standing is picked up on the next creature sync.
+   this.harvesting.attachPhysics(world);
    this.status.report('Box3D','READY','Meadows starter; player and terrain contacts');
   }catch(error){
    this.loading.status('Physics initialization failed: '+error.message);
