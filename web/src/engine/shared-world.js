@@ -1,6 +1,11 @@
 export const GEAR_SLOTS=Object.freeze(['head','torso','arms','hands','hips','legs','feet','left-hand','right-hand']);
 export const GEAR_RECIPES=Object.freeze({}); // Future biome armor and weapon definitions.
-export const TOOL_RECIPES={axe:{sticks:1,stones:1},knife:{sticks:1,stones:1,fibers:2,pineSap:1},hammer:{sticks:1,logs:1},scythe:{stones:3,logs:1}};
+export const TOOL_RECIPES={axe:{sticks:1,stones:1},knife:{sticks:1,stones:1,fibers:2,pineSap:1},hammer:{sticks:1,logs:1},scythe:{stones:3,logs:1},torch:{sticks:1,fibers:2},club:{sticks:2,logs:1},bow:{sticks:3,fibers:4}};
+// Hand tools that belong in the weapons tab rather than the tools tab.
+export const WEAPON_TOOLS=Object.freeze(['club','bow']);
+// Arrows are ammunition, not a tool: crafted in bundles and carried as a count.
+export const ARROW_RECIPE=Object.freeze({sticks:1,stones:1,fibers:1});
+export const ARROWS_PER_CRAFT=5;
 // Gathered resources a species or the ground can award. Species drops add here.
 export const RESOURCE_TYPES=Object.freeze(['sticks','stones','pineSap']);
 // Host-owned save record; peers will exchange snapshots/events when networking is added.
@@ -74,6 +79,21 @@ export class SharedWorld {
   next.craftedTools=[...(previous.craftedTools||[]),tool];
   this.inventories.set(id,next);
   this.events.push({version:++this.version,type:'tool-crafted',playerId:id,tool});
+  if(this.events.length>256)this.events.shift();
+  this.save();return true;
+ }
+ canCraftArrows(id){
+  if(!this.players.has(id))return false;
+  const inv=this.getInventory(id);
+  return Object.entries(ARROW_RECIPE).every(([resource,amount])=>(inv[resource]||0)>=amount);
+ }
+ craftArrows(id,count=ARROWS_PER_CRAFT){
+  if(!this.canCraftArrows(id)||!Number.isSafeInteger(count)||count<1)return false;
+  const previous=this.getInventory(id),next={...previous};
+  for(const [resource,amount] of Object.entries(ARROW_RECIPE))next[resource]-=amount;
+  next.arrows=(previous.arrows||0)+count;
+  this.inventories.set(id,next);
+  this.events.push({version:++this.version,type:'arrows-crafted',playerId:id,count});
   if(this.events.length>256)this.events.shift();
   this.save();return true;
  }
