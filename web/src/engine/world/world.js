@@ -325,8 +325,11 @@ transformed=mix(position,aParent,cdlodMorph);`);
   g.computeVertexNormals();
   return g;
  }
+ // Resources keep their seeded position on the analytic surface, not on a terrain
+ // mesh, so streaming is not tied to the LOD bands any more: the ring is whatever
+ // the world setup asks for, out to the root edge at most.
  resourceStreamRadius(){
-  return Math.min(WORLD_SCALE.resourceStreamMeters,3*WORLD_SETUP.terrainLodBandMeters);
+  return Math.min(WORLD_SCALE.resourceStreamMeters,WORLD_SETUP.rootEdgeMeters);
  }
  select(anchor,position){
   const selected=[];

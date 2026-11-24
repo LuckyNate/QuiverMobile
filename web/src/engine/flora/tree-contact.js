@@ -20,6 +20,10 @@ export class TreeContact {
     t.contactLatched=false;
     continue;
    }
+   // A pine taller than this cannot reach the body, and the wood now streams far
+   // past the player, so most trees are skipped before any vector work.
+   const reach=5.5*(t.scale||1)+radius+1;
+   if(t.at.distanceToSquared(p)>reach*reach){t.contactLatched=false;continue;}
    t.bumpCooldown=Math.max(0,t.bumpCooldown-dt);
    const up=t.at.clone().normalize(),relative=p.clone().sub(t.at);
    const elevation=relative.dot(up);

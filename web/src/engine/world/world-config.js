@@ -8,7 +8,7 @@ export const WORLD_SETUP=Object.freeze({
  collisionResolutionMeters:1,
  collisionChunkMeters:32,
  resourceCellMeters:32,
- resourceStreamRootFraction:.25,
+ resourceStreamRootFraction:.625,
  cameraMaxZoomDiameters:2,
  cameraFarClipDiameters:6,
  seaLevelOffsetMeters:-1
