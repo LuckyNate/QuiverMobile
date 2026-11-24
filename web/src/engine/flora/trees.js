@@ -10,14 +10,14 @@ import {TreeContact} from './tree-contact.js';
 import {TreeLifecycle} from './tree-lifecycle.js';
 import {TreePopulation} from './tree-population.js';
 
-// Past 100 m a tree is a flat sprite. Crossing that line starts its model fading
+// Past 50 m a tree is a flat sprite. Crossing that line starts its model fading
 // up on a clock rather than with distance, and crossing back starts it fading out
 // on the same clock, so walking past a line never snaps anything on or off. The
 // card is held for the whole transition: it stays until the model is fully opaque
 // and comes back before the model starts to fade, so neither form is ever missing
 // while the other is see-through. Measured from the camera, because that is what
 // decides how big it looks on screen.
-const BILLBOARD_METERS=100;
+const BILLBOARD_METERS=50;
 const MODEL_FADE_SECONDS=.75;
 // The model stands 5.5 m tall, so a tree's size in metres is a multiple of it.
 const TREE_MODEL_HEIGHT=5.5;

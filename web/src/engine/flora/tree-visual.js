@@ -135,7 +135,8 @@ export class TreeVisual {
  imposterBatch(){
   if(this.imposters)return this.imposters;
   if(!this.imposterGeometry)return null;
-  const capacity=2048;
+  // Enough cards for every pine past the swap out to the 256 m streaming edge.
+  const capacity=4096;
   const mesh=new THREE.InstancedMesh(this.imposterGeometry,this.imposterMaterial,capacity);
   mesh.count=0;mesh.frustumCulled=false;mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   this.root.add(mesh);
