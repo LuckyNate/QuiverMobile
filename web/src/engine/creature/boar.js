@@ -19,6 +19,10 @@ export const BOAR=Object.freeze({
  // body radius it keeps clear of the next boar, so two never stand in one spot.
  stop:1.6,reach:1,damage:1,swingSeconds:1.2,alertSeconds:.25,fallSeconds:.5,
  lungeSpeed:9,lungeSeconds:.18,spacing:.6,
+ // Its body in Box3D: a kinematic sphere standing in for the barrel, lifted to the
+ // torso so the presence sits on the legs instead of through the ground. A sphere
+ // needs no rotation sync, so the nose turning never touches the solver.
+ volume:Object.freeze({shape:'sphere',radius:.6,lift:.5}),
  // Long enough to walk back to a kill and take it apart, then a short fade.
  carcassSeconds:90,carcassFadeSeconds:1.5,
  // What a knife takes off the carcass, in inventory units.
@@ -28,7 +32,7 @@ export const BOAR=Object.freeze({
 export class Boar extends Creature {
  constructor({id,position,home=position}){
   super({id,type:'boar',position,home,maxHealth:BOAR.maxHealth,speed:BOAR.walk,territory:BOAR.territory,
-   spacing:BOAR.spacing});
+   spacing:BOAR.spacing,volume:BOAR.volume});
  }
 }
 
