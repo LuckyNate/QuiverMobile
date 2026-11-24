@@ -32,6 +32,14 @@ export class TallGrassField {
   if(c.state==='falling'||c.state==='flying')return;
   this.visual.release(c);this.clumps.delete(id);
  }
+ // Shared by walking through a clump with the scythe and by tapping it.
+ cut(c,owner=this.playerId){
+  if(!c||c.state!=='standing')return false;
+  this.visual.detach(c);
+  c.state='falling';c.resource.state='falling';c.owner=owner;c.progress=0;
+  this.shared?.setEntity(c.id,{state:'felled',ownerId:owner});
+  return true;
+ }
  update(dt,body,tool){
   this.visual.update(dt,this.clumps);
   const playerPosition=this.player.position;
@@ -46,9 +54,7 @@ export class TallGrassField {
     const altitude=relative.dot(up);
     const lateral=relative.addScaledVector(up,-altitude).length();
     if(lateral>1.05||altitude<-.6||altitude>2.3)continue;
-    this.visual.detach(c);
-    c.state='falling';c.resource.state='falling';c.owner=this.playerId;c.progress=0;
-    this.shared?.setEntity(c.id,{state:'felled',ownerId:c.owner});
+    this.cut(c,this.playerId);
    }else if(c.state==='falling'){
     c.progress=Math.min(1,c.progress+dt/.38);
     c.blades.rotation.z=-Math.PI*.47*THREE.MathUtils.smoothstep(c.progress,0,1);

@@ -8,7 +8,7 @@ export class Conifer extends Tree {
   super({id,position,state,woodYield:1});
   this.species='conifer';
   this.logStrength=1.0;
-  this.secondary={resource:'pineSap',count:2};
+  this.secondary={resource:'pineSap',count:3};
  }
  snapshot(){return {...super.snapshot(),species:this.species,logStrength:this.logStrength};}
 }
