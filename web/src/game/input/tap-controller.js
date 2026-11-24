@@ -2,6 +2,10 @@ import * as THREE from 'three';
 
 // A press shorter than this is still a tap; at or beyond it, the hammer holds.
 const HOLD_MS=450;
+// Two taps in nearly the same place, close together in time, take a placed log back
+// out of a partial build instead of laying another.
+const DOUBLE_TAP_MS=320;
+const DOUBLE_TAP_PX=26;
 
 // Tap resources or terrain to walk using the normal player physics path, and
 // remember a spot to build a camp bonfire when the player arrives.
@@ -9,6 +13,7 @@ export class TapController {
  constructor({canvas,camera,height,radius,harvesting,sharedWorld,playerSystem,bonfire,building,message,isActive,setBonfireCandidate}){
   Object.assign(this,{canvas,camera,height,radius,harvesting,sharedWorld,playerSystem,bonfire,building,message,isActive,setBonfireCandidate});
   this.hammerPress=null;
+  this.lastTap=null;
   this.raycaster=new THREE.Raycaster();
   this.ndc=new THREE.Vector2();
   playerSystem.controls.onManualMove=()=>{
@@ -79,9 +84,12 @@ export class TapController {
   // cell under the finger instead of walking or harvesting.
   if(this.building?.mode){
    const ground=this.groundAt(screenX,screenY);
-   if(ground)this.building.tapAt(ground);
+   if(!ground)return;
+   if(this.doubleTap(screenX,screenY))this.building.recoverAt(ground);
+   else this.building.tapAt(ground);
    return;
   }
+  this.lastTap=null;
   const {height,radius,harvesting,sharedWorld,bonfire}=this;
   const picked=this.pick(screenX,screenY);
   const targetId=picked?.id??null,targetType=picked?.type??null;
@@ -101,6 +109,15 @@ export class TapController {
    this.setBonfireCandidate(destination.clone());
   }else this.setBonfireCandidate(null);
   this.playerSystem.setDestination(destination);
+ }
+ // The second tap of a pair is reported once and clears the record, so a third tap
+ // starts again and only ever one log comes back per double tap.
+ doubleTap(screenX,screenY){
+  const previous=this.lastTap,now=performance.now();
+  const paired=Boolean(previous)&&now-previous.at<=DOUBLE_TAP_MS&&
+   Math.hypot(screenX-previous.x,screenY-previous.y)<=DOUBLE_TAP_PX;
+  this.lastTap=paired?null:{x:screenX,y:screenY,at:now};
+  return paired;
  }
  // The terrain point under a touch: intersect a conservative shell, then refine
  // against the analytic surface until the ray meets the ground.
