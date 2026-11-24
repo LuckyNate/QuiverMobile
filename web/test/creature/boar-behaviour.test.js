@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {Boar,BOAR,BOAR_BEHAVIOUR} from '../../src/engine/creature/boar.js';
 import {surfaceFrame} from '../../src/engine/creature/behaviour.js';
+import {PLAYER_SPEED} from '../../src/engine/world/world-config.js';
 
 const RADIUS=200;
 const height={height:()=>10};
@@ -55,6 +56,37 @@ test('it alerts, closes in and bumps its snout to bite',()=>{
  assert.equal(f.events.hits,landed);
  for(let i=0;i<Math.ceil(BOAR.swingSeconds*60);i++)BOAR_BEHAVIOUR.think(f.boar,1/60,f.ctx(player));
  assert.equal(f.events.hits,landed+1);
+});
+
+test('it chases at the player\'s own speed, straight at their feet',()=>{
+ const f=fixture();
+ assert.equal(BOAR.chase,PLAYER_SPEED);
+ const player=f.playerAt(5);
+ BOAR_BEHAVIOUR.provoked(f.boar);
+ BOAR_BEHAVIOUR.think(f.boar,BOAR.alertSeconds,f.ctx(player));
+ let last=f.boar.at.distanceTo(player);
+ for(let i=0;i<40;i++){
+  BOAR_BEHAVIOUR.think(f.boar,1/60,f.ctx(player));
+  const gap=f.boar.at.distanceTo(player);
+  assert.ok(gap<=last+1e-9,'it never backs off or circles'); // no trailing, no circling
+  last=gap;
+ }
+ assert.ok(last<=BOAR.reach,'it closes the gap');
+ // Turn on it: the next step heads at where you are now, not where you were.
+ const turned=f.playerAt(5,{behind:true});
+ const before=f.boar.at.distanceTo(turned);
+ BOAR_BEHAVIOUR.think(f.boar,1/60,f.ctx(turned));
+ assert.ok(f.boar.at.distanceTo(turned)<before,'it cuts the corner immediately');
+});
+
+test('one long frame cannot carry the snout past you',()=>{
+ const f=fixture();
+ f.boar.state='attacking';
+ const player=f.playerAt(6);
+ BOAR_BEHAVIOUR.think(f.boar,2,f.ctx(player));   // asks for 12 m of travel
+ const gap=f.boar.at.distanceTo(player);
+ assert.ok(gap>=BOAR.reach*.7,'it stops with the snout on you');
+ assert.ok(gap<=BOAR.reach,'and never runs out the other side');
 });
 
 test('being hit provokes it and losing the player walks it home',()=>{

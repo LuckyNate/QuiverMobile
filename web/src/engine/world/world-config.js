@@ -1,5 +1,9 @@
 // QuiverMobile world setup. Planet dimensions and biome contents live here.
 import {TERRAIN_AMPLITUDE_RATIO} from './terrain-height.js';
+// The avatar's ground speed in metres per second. The physics body is driven at
+// exactly this, and a creature that chases the player matches it rather than
+// beating it.
+export const PLAYER_SPEED=6;
 export const WORLD_SETUP=Object.freeze({
  rootEdgeMeters:256,
  finestTerrainMeters:1,

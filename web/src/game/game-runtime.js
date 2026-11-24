@@ -1,5 +1,6 @@
 import {PhysicsWorld} from '../engine/physics/physics.js';
 import {RADIUS} from '../engine/world/world.js';
+import {PLAYER_SPEED} from '../engine/world/world-config.js';
 
 // Frame loop, physics bring-up and owner recovery for the game instance.
 // Composed onto Game.prototype; each method still uses the game as this.
@@ -123,7 +124,7 @@ export const gameRuntime={
     const start=performance.now();
     // The gait follows the speed the controls asked for, so the run begins with
     // the input instead of waiting for the physics body to reach a threshold.
-    const applied=this.physics.movePlayer(this.playerCollider,this.playerSystem.movement(dt),6,this.player.clone().normalize(),dt);
+    const applied=this.physics.movePlayer(this.playerCollider,this.playerSystem.movement(dt),PLAYER_SPEED,this.player.clone().normalize(),dt);
     this.playerSystem.setCommandedSpeed(applied||0);
     this.profiler.mark('move',start);
    }

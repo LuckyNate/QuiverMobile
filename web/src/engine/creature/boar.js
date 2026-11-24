@@ -1,13 +1,15 @@
 import {Creature} from './creature.js';
 import {CreatureBehaviour,tangentAt} from './behaviour.js';
 import {seededUnit} from '../world/seeded-hash.js';
+import {PLAYER_SPEED} from '../world/world-config.js';
 
 // The Meadows boar: three hit points, so three level 1 hits put it down. It goes
 // for anything that steps inside five metres and hurts you only by shouldering its
 // snout into you. It falls over where it dies and stays there, a carcass, until a
 // knife takes it apart.
 export const BOAR=Object.freeze({
- maxHealth:3,walk:1.2,charge:3.4,territory:10,
+ // Chase speed is the player's own: it can never outrun you, only cut you off.
+ maxHealth:3,walk:1.2,chase:PLAYER_SPEED,territory:10,
  // Aggro is a radius, not a cone: the boar does not care which way it was facing.
  aggro:5,lose:12,
  // The snout, not the body, has to reach you: it walks up and bumps to bite.
@@ -57,7 +59,13 @@ export class BoarBehaviour extends CreatureBehaviour {
     this.face(boar,player);
     const gap=boar.at.distanceTo(player);
     if(gap>this.tuning.reach){
-     this.step(boar,player.clone().sub(boar.at),this.tuning.charge*dt,context);
+     // Always straight at the player's feet, never along the trail they walked: at
+     // their own speed the boar cannot outrun them, so the inside line on every
+     // turn is how it gains anything. The step aims a little inside the snout's
+     // reach, so a long frame can never carry it through you, and the boar closes
+     // on you instead of stalling exactly at the edge of its own reach.
+     this.step(boar,player.clone().sub(boar.at),
+      Math.min(this.tuning.chase*dt,gap-this.tuning.reach*.75),context);
     }else if(boar.swingClock<=0){
      boar.swingClock=this.tuning.swingSeconds;
      // The bite is the bump: the snout is driven into the player, then it backs off.
