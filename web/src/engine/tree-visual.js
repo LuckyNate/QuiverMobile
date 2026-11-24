@@ -177,6 +177,14 @@ export class TreeVisual {
  // Hand over between the two forms across a band rather than at one distance:
  // the meshes fade out as a tree leaves the near range while its card fades in.
  setTreeFade(entry,meshAlpha,cardAlpha,camera){
+  // Trees spawn before the conifer model has loaded and the sprite is drawn, and
+  // there is no card to hand over to until then. Fading to one without it left
+  // the tree half gone and cloned a null material.
+  if(!this.imposterGeometry||!this.imposterMaterial){
+   this.fadeMesh(entry,1);
+   this.fadeCard(entry,0,camera);
+   return;
+  }
   this.fadeMesh(entry,meshAlpha);
   this.fadeCard(entry,cardAlpha,camera);
  }
