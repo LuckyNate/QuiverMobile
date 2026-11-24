@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {BuildGrid,CELL_METERS,POST_HEIGHT,LOG_HEIGHT,COURSES,CROSS_LOGS,WALL_SLOTS,WINDOW,DOOR} from './build-grid.js';
+import {BuildGrid,CELL_METERS,POST_HEIGHT,LOG_HEIGHT,COURSES,CROSS_LOGS,WALL_SLOTS,SOLID,WINDOW,DOOR} from './build-grid.js';
 
 const LOG_RADIUS=LOG_HEIGHT/2;
 const POST_REACH=.7;
@@ -134,6 +134,7 @@ export class Building {
   if(!this.bonfire.exists||!this.anchorFromFire())return;
   for(const [id,state] of this.shared.entities){
    if(!id.startsWith(PREFIX)||state?.anchor!==this.anchorId)continue;
+   if(state?.state==='recovered')continue;
    if(state.kind==='post')this.grid.restorePost(state.i,state.j);
    else if(state.kind==='ground'&&state.state!=='open')this.grid.restoreGround(state.key);
    else if(state.kind==='cross')this.grid.restoreCross(state.i,state.j,state.count);
@@ -279,6 +280,72 @@ export class Building {
   this.saveOpenings(key);
   this.message?.('Blown wide open, beam and braces left standing');
   this.render();
+ }
+ // Double tap takes one whole log back out of a partial build. Timber that has been
+ // cut is not a log any more, so it only derezzes and never comes back.
+ recoverAt(point){
+  if(!this.mode||!this.anchor)return;
+  const {i,j}=this.cellAt(point);
+  const post=this.postNear(i,j,point);
+  if(post&&this.grid.hasPost(post.i,post.j))return this.recoverPost(post.i,post.j);
+  const gap=this.gapNear(i,j,point);
+  if(gap&&this.grid.groundLaid(gap))return this.recoverGap(gap);
+  this.recoverCross(i,j);
+ }
+ loadedAt(i,j){
+  for(const [key,count] of this.grid.courses){
+   if(count<=0)continue;
+   if(BuildGrid.endsOf(key).some(([x,y])=>x===i&&y===j))return true;
+  }
+  return false;
+ }
+ recoverPost(i,j){
+  if(this.loadedAt(i,j)){this.message?.('A wall is stacked on that post');return;}
+  this.grid.removePost(i,j);
+  this.shared.setEntity(PREFIX+'post:'+i+':'+j,{state:'recovered',kind:'post',anchor:this.anchorId,i,j,ownerId:this.playerId});
+  this.shared.awardLog(this.playerId,1,1);
+  this.message?.('Post taken back');
+  this.render();
+ }
+ // A gap holds its ground log and the courses above it, so the top course comes back
+ // first. A gap that has been cut holds no whole logs at all.
+ recoverGap(gap){
+  if(this.grid.isBlown(gap)||this.grid.openingsAt(gap).some(state=>state!==SOLID)){
+   this.message?.('Cut timber only derezzes');
+   return;
+  }
+  if(this.grid.takeCourse(gap)){
+   this.shared.awardLog(this.playerId,1,1);
+   this.saveCourse(gap);
+   this.message?.('Log taken back');
+   this.render();
+   return;
+  }
+  this.grid.removeGround(gap);
+  this.shared.setEntity(PREFIX+'ground:'+gap,{state:'recovered',kind:'ground',anchor:this.anchorId,key:gap,ownerId:this.playerId});
+  this.settleUnfloor(BuildGrid.cellsOf(gap));
+  this.shared.awardLog(this.playerId,1,1);
+  this.message?.('Ground log taken back');
+  this.render();
+ }
+ recoverCross(i,j){
+  if(!this.grid.takeCross(i,j)){this.message?.('Nothing to take back here');return;}
+  this.shared.awardLog(this.playerId,1,1);
+  this.shared.setEntity(PREFIX+'cross:'+i+':'+j,{state:'standing',kind:'cross',anchor:this.anchorId,i,j,count:this.grid.crossLogs(i,j),ownerId:this.playerId});
+  this.settleUnfloor([[i,j]]);
+  this.message?.('Cross log taken back');
+  this.render();
+ }
+ // A floor whose material has been taken back is no longer a floor.
+ settleUnfloor(cells){
+  for(const [i,j] of cells){
+   if(!this.grid.unfloor(i,j))continue;
+   this.shared.setEntity(PREFIX+'floor:'+i+':'+j,{state:'recovered',kind:'floor',anchor:this.anchorId,i,j,ownerId:this.playerId});
+  }
+ }
+ saveCourse(gap){
+  const count=this.grid.coursesAt(gap);
+  this.shared.setEntity(PREFIX+'course:'+gap,{state:count>0?'standing':'recovered',kind:'course',anchor:this.anchorId,key:gap,count,ownerId:this.playerId});
  }
  saveOpenings(key){
   this.shared.setEntity(PREFIX+'openings:'+key,{state:'cut',kind:'openings',anchor:this.anchorId,key,slots:this.grid.openingsAt(key).slice(),blown:this.grid.isBlown(key),ownerId:this.playerId});
