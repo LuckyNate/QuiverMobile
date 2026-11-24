@@ -42,7 +42,7 @@ Conditions should blend across biome boundaries rather than switching at an invi
 
 **Progression order:** **Meadows** is the easiest and the starting biome. **Black Forest** is next. The remaining eighteen names, their order, flora, enemies and bosses are open.
 
-**Implemented:** per-face names, ground colours, resource densities and grass style in `web/src/engine/world-config.js`. Only Meadows is populated; the other nineteen faces are coloured and empty but fully walkable.
+**Implemented:** per-face names, ground colours, resource densities and grass style in `web/src/engine/world/world-config.js`. Only Meadows is populated; the other nineteen faces are coloured and empty but fully walkable.
 
 ## 5. The two-resource rule
 

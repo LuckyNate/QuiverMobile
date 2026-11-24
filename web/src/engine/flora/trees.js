@@ -1,14 +1,14 @@
 import * as THREE from 'three';
-import {ResourceDensity} from './engine/resource-density.js';
-import {ResourceDistributor} from './engine/resource-distributor.js';
-import {withinSceneryRange} from './engine/scenery-visibility.js';
-import {Conifer} from './engine/conifer.js';
-import {WorldObjectManager} from './engine/world-object-manager.js';
-import {InteractionSystem} from './engine/interaction-system.js';
-import {TreeVisual} from './engine/tree-visual.js';
-import {TreeContact} from './engine/tree-contact.js';
-import {TreeLifecycle} from './engine/tree-lifecycle.js';
-import {TreePopulation} from './engine/tree-population.js';
+import {ResourceDensity} from '../biome/resource-density.js';
+import {ResourceDistributor} from '../biome/resource-distributor.js';
+import {withinSceneryRange} from '../render/scenery-visibility.js';
+import {Conifer} from './conifer.js';
+import {WorldObjectManager} from '../entity/world-object-manager.js';
+import {InteractionSystem} from '../tool/interaction-system.js';
+import {TreeVisual} from './tree-visual.js';
+import {TreeContact} from './tree-contact.js';
+import {TreeLifecycle} from './tree-lifecycle.js';
+import {TreePopulation} from './tree-population.js';
 
 // Past 30 m a tree is a flat sprite. The moment one crosses inside that distance
 // its model starts fading up on a clock rather than with distance, so walking past

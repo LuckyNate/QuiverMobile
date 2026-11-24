@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {withinSceneryRange} from './scenery-visibility.js';
+import {withinSceneryRange} from '../render/scenery-visibility.js';
 
 // Stick and stone follow exactly the same seeded biome spawn/unload contract as trees.
 export class GroundResources {

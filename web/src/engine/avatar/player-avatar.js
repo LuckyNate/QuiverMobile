@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import {refineAvatarShape} from './engine/avatar-shape.js';
-import {JimBody} from './engine/jim-body.js';
+import {refineAvatarShape} from './avatar-shape.js';
+import {JimBody} from './jim-body.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 
 // Box3D owns the player capsule. Jim owns the visual articulated body,

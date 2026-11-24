@@ -15,4 +15,4 @@ jobs:
         with:
           node-version: '22'
       - name: Test unified world octree
-        run: node --test web/test/world-octree.test.js
+        run: node --test web/test/world/world-octree.test.js

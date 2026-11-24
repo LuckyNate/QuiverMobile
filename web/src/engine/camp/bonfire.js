@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {VoxelFireEmitter} from './voxel-fire-emitter.js';
+import {VoxelFireEmitter} from '../fx/voxel-fire-emitter.js';
 import {CampRest} from './camp-rest.js';
 
 const HOUR=3600000;

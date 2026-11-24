@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {WORLD_SCALE} from './engine/world-config.js';
+import {WORLD_SCALE} from '../engine/world/world-config.js';
 
 // Input only. The physics body owns position; this class returns intent.
 export class PlayerControls {

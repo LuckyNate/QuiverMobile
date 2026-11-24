@@ -1,7 +1,7 @@
 // Equipment slots and the rendered avatar preview.
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
-import {refineAvatarShape} from '../engine/avatar-shape.js';
+import {refineAvatarShape} from '../engine/avatar/avatar-shape.js';
 export const panelGear={
  makeGear(pane){
   const view=document.createElement('div');

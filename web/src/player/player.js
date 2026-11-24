@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import {PlayerControls} from './player-controls.js';
-import {PlayerAvatar} from './player-avatar.js';
-import {CameraCollision} from './engine/camera-collision.js';
-import {pendingCampTeleport} from './engine/camp-respawn.js';
+import {PlayerAvatar} from '../engine/avatar/player-avatar.js';
+import {CameraCollision} from '../engine/physics/camera-collision.js';
+import {pendingCampTeleport} from '../engine/camp/camp-respawn.js';
 
 // GTA-style third-person navigation adapted to radial planetary gravity.
 // Physics in main.js remains the sole authority for world-space position.

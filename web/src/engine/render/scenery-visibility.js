@@ -1,4 +1,4 @@
-import {WORLD_SCALE} from './world-config.js';
+import {WORLD_SCALE} from '../world/world-config.js';
 // Shared player-centered visibility policy for trees and future scenery.
 // Render visibility must not alter simulation, persistence, or respawning.
 export const SCENERY_VISIBILITY_METERS=Math.min(2500,WORLD_SCALE.diameter*2);

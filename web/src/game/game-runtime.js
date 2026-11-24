@@ -1,5 +1,5 @@
-import {PhysicsWorld} from '../physics.js';
-import {RADIUS} from '../world.js';
+import {PhysicsWorld} from '../engine/physics/physics.js';
+import {RADIUS} from '../engine/world/world.js';
 
 // Frame loop, physics bring-up and owner recovery for the game instance.
 // Composed onto Game.prototype; each method still uses the game as this.

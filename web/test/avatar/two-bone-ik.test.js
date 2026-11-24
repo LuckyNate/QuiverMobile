@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {solveTwoBone} from '../src/engine/two-bone-ik.js';
+import {solveTwoBone} from '../../src/engine/avatar/two-bone-ik.js';
 const d=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z);
 const origin={x:0,y:0,z:0};
 test('Jim two-bone solver reaches a planted foot with both bones at fixed lengths',()=>{

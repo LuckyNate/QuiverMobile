@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import {createDyePaletteTexture,dyeUV} from './dye-palette.js';
-import {WORLD_SCALE} from './world-config.js';
+import {createDyePaletteTexture,dyeUV} from '../avatar/dye-palette.js';
+import {WORLD_SCALE} from '../world/world-config.js';
 
 // Renderer, scene, lighting and camera for the single WebGL viewport.
 export class GameView {

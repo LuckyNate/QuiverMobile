@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {WorldOctree,sweptBounds} from '../src/engine/world-octree.js';
+import {WorldOctree,sweptBounds} from '../../src/engine/world/world-octree.js';
 const box=(x,y,z,s=1)=>({min:[x,y,z],max:[x+s,y+s,z+s]});
 test('static ground and player occupy same tree and query correctly',()=>{
  const tree=new WorldOctree({halfSize:32});

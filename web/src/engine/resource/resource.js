@@ -1,4 +1,4 @@
-import {WorldObject} from './world-object.js';
+import {WorldObject} from '../entity/world-object.js';
 
 // Resource policy and state only; no renderer or Box3D ownership.
 // A resource is graphical until its required tool is equipped.

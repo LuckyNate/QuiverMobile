@@ -2,7 +2,7 @@
 
 How the game is built: architecture, world systems, file map, build and verification. What the game *is* lives in [GAME_BIBLE.md](GAME_BIBLE.md).
 
-**Status:** experimental working prototype. Values below are current runtime configuration, not permanent engine contracts — several have changed size before (root edge 8192 → 4096 → 256 m) and will again. Verify against `web/src/engine/world-config.js` and the source before treating any number as fixed. Where a feature is described as implemented, it has been built and compiled but **in-game device behaviour is not verified** unless stated.
+**Status:** experimental working prototype. Values below are current runtime configuration, not permanent engine contracts — several have changed size before (root edge 8192 → 4096 → 256 m) and will again. Verify against `web/src/engine/world/world-config.js` and the source before treating any number as fixed. Where a feature is described as implemented, it has been built and compiled but **in-game device behaviour is not verified** unless stated.
 
 ---
 
@@ -33,7 +33,7 @@ Render-only geometry changes (LOD, seam conformance) must never alter physics or
 
 ## 3. Code map
 
-`web/src` — 11 top-level modules plus four folders.
+`web/src` — one entry module, `main.js`, that starts `Game`; everything else lives in a folder that names its job. Two rules keep the tree honest: a folder holds only things that change for the same reason, and `engine/world` (the planet's geometry and solidity) never mixes with `engine/biome` (what is allowed to exist on it).
 
 ```
 main.js                 bootstrap: finds #app, runs new Game({app}).start()
@@ -41,10 +41,12 @@ main.js                 bootstrap: finds #app, runs new Game({app}).start()
 game/
   game.js               Game: constructs systems, wires panels/console, starts loop
   game-runtime.js       frame loop, physics bring-up, readiness, hard reset
-  tap-controller.js     tap input: harvest, move-to, bonfire placement
+  survival.js           needs/health model
+  input/tap-controller.js   tap input: harvest, move-to, bonfire placement
 
 console/
   commands.js           every owner console command, one class, explicit handlers
+  camp-commands.js      registers /die against engine/camp/camp-respawn.js
 
 gui/
   status-report.js      named init stages, failures, onFailed hook
@@ -52,73 +54,113 @@ gui/
   profiler.js           per-frame timing readout in the Admin panel
 
 ui/
-  game-panels.js        thin coordinator, mixes the three modules below onto one class
+  game-panels.js        thin coordinator, mixes the panel modules onto one class
   panel-layout.js       panel shells, half-screen expansion, canvas resize
   panel-inventory.js    tool/resource tabs, slot counts, selection
   panel-gear.js         active tool, log strength, readiness colouring
   console.js            the console widget: history, help, command registry
-  camp-commands.js      registers /die against engine/camp-respawn.js
+  survival-meters.js    survival HUD readout
+  tool-icon.js          tool icon rendering for the panels
 
-engine/                 53 files, one responsibility each
+player/
+  player.js             PlayerSystem: input, heading, chase camera, movement
+  player-controls.js    input bindings and the movement intent
+
+engine/world/           the planet: shape, solidity, water
   world-config.js       planet dimensions, derived scale, per-face biome config
   terrain-height.js     seeded layered radial height authority
+  d20-address.js        stable face/cell/chunk addressing
+  world.js              WorldTerrain: D20 LOD, seams, atomic generation swap
+  world-system.js       owns the octree, implicit solidity and surface chunks
   world-octree.js       unified spatial index (standalone, not wired in yet)
   implicit-sphere.js    analytical static occupancy
+  world-solidity.js     static solidity from convex icosphere triangles
+  solidity.js           disjoint maximal solid AABBs, merge pass, octree
   sphere-surface.js     outward 1 m collision hull patches
+  chunked-surface.js    deterministic on-demand surface chunks
   terrain-occupancy.js  deterministic 32 m surface query chunks
-  rolling-terrain-cache.js, chunked-surface.js
-  physics-world.js      Box3D world, gravity, static proxy sync, player capsule
-  physics-body.js       body/collider helpers
-  camera-collision.js   camera pull-in against terrain
-  two-bone-ik.js        avatar limb solving
-  game-view.js          renderer, scene, camera, resize
-  spawn-point.js        deterministic dry Meadows spawn search
-  debug-aabb.js         hidden AABB debug view
+  rolling-terrain-cache.js  bounded rolling terrain geometry cache
+  water.js              visual sea surface; immersion is sampled from terrain
 
+engine/biome/           what may exist where
   biome.js              biome classification by id/parameters
   biome-map.js          D20 face classification shared across systems
   biome-population.js   density → candidate placements
-  biome-resource-zone.js  32 m resource cell grid per face, streamed 5×5
-  d20-address.js        stable face/cell/chunk addressing
-  resource.js           resource object contract (tool, yield, contact policy)
-  resource-handler.js   live streaming entry point (trees, grass, sticks, stones)
-  resource-type-registry.js  type → spawn/unload adapter
+  biome-resource-zone.js   32 m resource cell grid per face, streamed 5×5
   resource-density.js   expected resources per km²
-  resource-distributor.js    seeded per-cell candidates without reading triangles
-  ground-resources.js   ground pickups and selection
-  mineral-deposit.js    pick-gated deposit contract (not spawned)
-  rock.js               pick-gated rock contract (not spawned)
+  resource-distributor.js   seeded per-cell candidates without reading triangles
+  spawn-point.js        deterministic dry Meadows spawn search
 
-  tree.js               tree as a Resource
-  tree-population.js    per-cell candidate handling and replacement
-  tree-visual.js        tree mesh construction
-  tree-contact.js       axe-gated contact against the Box3D player body
-  tree-lifecycle.js     felling, fading, flight, collection, save state
-  conifer.js, grass-visual.js, tall-grass.js, structure.js
+engine/physics/
+  physics-world.js      Box3D world, gravity, static proxy sync, player capsule
+  physics-body.js       body/collider helpers
+  camera-collision.js   camera pull-in against terrain
+  physics.js            re-export barrel for the two modules above
 
+engine/render/
+  game-view.js          renderer, scene, camera, resize
+  scenery-visibility.js player-centered visibility budget for scenery
+  debug-aabb.js         hidden AABB debug view
+
+engine/entity/
   world-object.js       stable id, type, position, state, snapshot
   world-object-manager.js  spawn/lookup/mutate/despawn over the registry
   object-registry.js    live objects by stable id
   environmental-object.js  non-interactive scenery object
+  structure.js          player-built world object contract
   shared-world.js       persistent entity store, inventory, harvest records
-  interaction-system.js tool/resource permission checks
-  tool-registry.js      tool definitions
 
+engine/resource/
+  resource.js           resource object contract (tool, yield, contact policy)
+  resource-handler.js   live streaming entry point (trees, grass, sticks, stones)
+  resource-type-registry.js  type → spawn/unload adapter
+  ground-resources.js   ground pickups and selection
+  rock.js               pick-gated rock contract (not spawned)
+  mineral-deposit.js    pick-gated deposit contract (not spawned)
+
+engine/flora/
+  trees.js              tree adapter: population, visual, contact, lifecycle
+  tree.js               tree as a Resource
+  conifer.js            pine species: logs plus pine sap
+  tree-population.js    per-cell candidate handling and replacement
+  tree-visual.js        tree mesh construction
+  tree-sprite.js        one-shot tree → texture for distant billboard cards
+  tree-contact.js       axe-gated contact against the Box3D player body
+  tree-lifecycle.js     felling, fading, flight, collection, save state
+  grass-visual.js       grass blade rendering
+  tall-grass.js         tall grass placement
+
+engine/creature/
+  boar-visual.js        boar visual only (no behaviour yet)
+
+engine/tool/
+  tool-registry.js      tool definitions
+  interaction-system.js tool/resource permission checks
+  models/               axe, bow, club, hammer, knife, scythe, torch,
+                        parts.js shared geometry, index.js registry
+
+engine/avatar/
+  player-avatar.js      avatar assembly, GLB fallback
+  jim-body.js           articulated body, planted supports, predictive IK
+  avatar-shape.js       avatar shape refinement
+  two-bone-ik.js        avatar limb solving
+  dye-palette.js        dye colours
+
+engine/camp/
   bonfire.js            bonfire mesh, 12-log build, fuel reserve, Add Fuel button
   camp-rest.js          resting near the fire sets the respawn point, sit pose
   camp-respawn.js       pending camp teleport handoff, applied on the physics step
-  voxel-fire-emitter.js, billboard-particles.js
 
-  jim-body.js, avatar-shape.js, dye-palette.js   avatar visuals
+engine/fx/
+  billboard-particles.js   three-nebula billboard particles
+  voxel-fire-emitter.js    voxel fire emission
 ```
 
-Top-level modules: `player.js` (PlayerSystem), `player-controls.js`, `player-avatar.js`, `world.js` (WorldTerrain LOD + seams), `world-system.js`, `world-solidity.js`, `solidity.js`, `water.js`, `trees.js` (tree adapter), `physics.js` (thin re-export of `physics-world.js` + `physics-body.js`).
-
-`web/test` holds four `node --test` files: `terrain-occupancy`, `two-bone-ik`, `world-config`, `world-octree`.
+`web/test` mirrors the source it covers: `web/test/world` holds `terrain-occupancy`, `world-config` and `world-octree`; `web/test/avatar` holds `two-bone-ik`.
 
 ## 4. World scale
 
-Everything derives from `WORLD_SETUP` in `web/src/engine/world-config.js`:
+Everything derives from `WORLD_SETUP` in `web/src/engine/world/world-config.js`:
 
 ```
 rootEdgeMeters            256        D20 root face edge
@@ -156,7 +198,7 @@ Derived in `WORLD_SCALE`: `radius = rootEdge·√(10+2√5)/4`, `diameter`, `max
 - **`SphereSurface`** generates outward-facing 1 m hull patches from the same height provider near the player; only nearby patches are registered with Box3D as static proxies. Never every triangle of the planet.
 - **`TerrainOccupancy`** caches physical surface queries in deterministic 32 m world-space chunks, independent of graphics LOD; chunks can be discarded and regenerated from the seed.
 - **`PhysicsWorld`** runs a fixed timestep, radial gravity toward the planet centre, a dynamic player capsule and demo falling boxes. Player movement target is 10 m/s. `syncStatic` adds support before retiring stale contact bodies so contact never vanishes for a frame.
-- **Unified octree module** (`engine/world-octree.js`): one spatial index for static world, terrain triangles, player and dynamic bodies, with stable ids, triangle-AABB broad phase (the AABB is never treated as solid), swept-AABB candidates, and `physicsCandidates(dynamicId, proposedBounds)` for the Box3D adapter. It is tested standalone (`node --test web/test/world-octree.test.js`) and **not yet wired into the runtime**.
+- **Unified octree module** (`engine/world/world-octree.js`): one spatial index for static world, terrain triangles, player and dynamic bodies, with stable ids, triangle-AABB broad phase (the AABB is never treated as solid), swept-AABB candidates, and `physicsCandidates(dynamicId, proposedBounds)` for the Box3D adapter. It is tested standalone (`node --test web/test/world/world-octree.test.js`) and **not yet wired into the runtime**.
 - **Camera** pull-in is done with physics-free queries (`camera-collision.js`).
 
 ## 7. Water
@@ -165,7 +207,7 @@ Transparent animated sea-level icosphere at `RADIUS − 1 m`, no underwater fog.
 
 ## 8. Population and persistence
 
-**Streaming.** `engine/biome-resource-zone.js` owns a fixed 32 m tangent cell grid per D20 face. The handler requests a bounded 5×5 cell neighbourhood around the avatar, unloads cells behind the player, and populates at most one new cell per biome per frame. It samples elevation read-only: terrain, seed, LOD and physics are untouched. Only Meadows currently generates content; `STARTER_BIOME_FACE = 6`.
+**Streaming.** `engine/biome/biome-resource-zone.js` owns a fixed 32 m tangent cell grid per D20 face. The handler requests a bounded 5×5 cell neighbourhood around the avatar, unloads cells behind the player, and populates at most one new cell per biome per frame. It samples elevation read-only: terrain, seed, LOD and physics are untouched. Only Meadows currently generates content; `STARTER_BIOME_FACE = 6`.
 
 **Identity.** Resource ids encode face, type, cell coordinate and candidate ordinal — stable across LOD changes and reloads. `SharedWorld` harvest records are consulted, so a harvested resource is not recreated when its cell reloads.
 
@@ -181,7 +223,7 @@ Transparent animated sea-level icosphere at `RADIUS − 1 m`, no underwater fog.
 
 ## 10. Console and panels
 
-`console/commands.js` registers every command through `panels.registerCommand(name, handler, description)` — explicit handlers, no `eval`, owner only. `ui/console.js` is the widget: history, `help`, `clear`, dispatch. `ui/camp-commands.js` registers `/die` and queues a camp teleport through `engine/camp-respawn.js`, which only stores a pending position; the physics step applies it to the capsule. Nothing here runs on a timer.
+`console/commands.js` registers every command through `panels.registerCommand(name, handler, description)` — explicit handlers, no `eval`, owner only. `ui/console.js` is the widget: history, `help`, `clear`, dispatch. `console/camp-commands.js` registers `/die` and queues a camp teleport through `engine/camp/camp-respawn.js`, which only stores a pending position; the physics step applies it to the capsule. Nothing here runs on a timer.
 
 Degraded paths are deliberate: `hardReset(label)` blanks the window and reloads (used by `/reset` and after `/wipe confirm`), and `syncAvatarToCapsule()` snaps the chase camera rather than sweeping it across the planet.
 
@@ -198,10 +240,10 @@ There is no `test` npm script; run the tests directly:
 
 ```
 cd web
-node --test test/world-config.test.js
-node --test test/terrain-occupancy.test.js
-node --test test/two-bone-ik.test.js
-node --test test/world-octree.test.js
+node --test test/world/world-config.test.js
+node --test test/world/terrain-occupancy.test.js
+node --test test/avatar/two-bone-ik.test.js
+node --test test/world/world-octree.test.js
 ```
 
 Android: the workflow builds the web bundle, copies `web/dist` into the app's web assets, signs a release APK with the encrypted keystore in `signing/`, and publishes the update. A green build does **not** verify rendering, feel or frame rate on device.
@@ -231,7 +273,7 @@ Android: the workflow builds the web bundle, copies `web/dist` into the app's we
 
 ## 14. Open engineering work
 
-- **Per-biome parameter sets:** extend `world-config.js` from names/colours/densities/grass into terrain shaping, climate and variable weather, water and hazards, vegetation and mob rosters, atmosphere. Keep world-global settings separate from per-biome properties and from simulated dynamic state, and keep one authoritative terrain/solidity definition.
+- **Per-biome parameter sets:** extend `world/world-config.js` from names/colours/densities/grass into terrain shaping, climate and variable weather, water and hazards, vegetation and mob rosters, atmosphere. Keep world-global settings separate from per-biome properties and from simulated dynamic state, and keep one authoritative terrain/solidity definition.
 - **Day/night:** derive world age from creation timestamp plus real elapsed time (including while the game is closed); compute shared sun/moon directions from it; drive sky shader, directional sunlight, ambient light and shadows from the same calculation; illumination must depend on surface normal and local horizon so the terminator is correct across the globe, not a uniform dimmer. One authoritative world clock.
 - **Render resolution control:** an Admin control for WebGL pixel ratio, independent of terrain LOD, persistent between launches, without touching touch coordinates, FOV or gameplay.
 - **Seam validation on device:** cross-face boundaries, adjacent-detail changes, cracks, sustained frame rate.

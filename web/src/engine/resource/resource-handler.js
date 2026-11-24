@@ -1,14 +1,14 @@
 import * as THREE from 'three';
-import {TreeHarvestSystem} from '../trees.js';
-import {Biome} from './biome.js';
-import {BiomeResourceZone} from './biome-resource-zone.js';
-import {ResourceDensity} from './resource-density.js';
-import {ResourceDistributor} from './resource-distributor.js';
+import {TreeHarvestSystem} from '../flora/trees.js';
+import {Biome} from '../biome/biome.js';
+import {BiomeResourceZone} from '../biome/biome-resource-zone.js';
+import {ResourceDensity} from '../biome/resource-density.js';
+import {ResourceDistributor} from '../biome/resource-distributor.js';
 import {ResourceTypeRegistry} from './resource-type-registry.js';
-import {TallGrassField} from './tall-grass.js';
+import {TallGrassField} from '../flora/tall-grass.js';
 import {GroundResources} from './ground-resources.js';
-import {BoarVisual} from './boar-visual.js';
-import {WORLD_SETUP,BIOME_SETUP} from './world-config.js';
+import {BoarVisual} from '../creature/boar-visual.js';
+import {WORLD_SETUP,BIOME_SETUP} from '../world/world-config.js';
 
 // Biomes request resources near the avatar. This owns the live resource bridge;
 // TreeHarvestSystem keeps its existing visuals, contact, collection and Box3D adapter.

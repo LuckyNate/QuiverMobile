@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {WORLD_SETUP,WORLD_SCALE,BIOME_SETUP,STARTER_BIOME_FACE,terrainLodAtHorizontalDistance} from '../src/engine/world-config.js';
+import {WORLD_SETUP,WORLD_SCALE,BIOME_SETUP,STARTER_BIOME_FACE,terrainLodAtHorizontalDistance} from '../../src/engine/world/world-config.js';
 test('tiny world scale retains 1m terrain',()=>{
  assert.equal(WORLD_SETUP.rootEdgeMeters,256);
  assert.equal(WORLD_SETUP.terrainLodBandMeters,20);

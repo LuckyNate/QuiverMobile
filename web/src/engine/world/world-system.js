@@ -1,9 +1,9 @@
-import {TerrainHeight} from './engine/terrain-height.js';
-import {WorldOctree} from './engine/world-octree.js';
-import {ImplicitSphere} from './engine/implicit-sphere.js';
-import {SphereSurface} from './engine/sphere-surface.js';
-import {ChunkedSurface} from './engine/chunked-surface.js';
-import {WORLD_SETUP,WORLD_SCALE} from './engine/world-config.js';
+import {TerrainHeight} from './terrain-height.js';
+import {WorldOctree} from './world-octree.js';
+import {ImplicitSphere} from './implicit-sphere.js';
+import {SphereSurface} from './sphere-surface.js';
+import {ChunkedSurface} from './chunked-surface.js';
+import {WORLD_SETUP,WORLD_SCALE} from './world-config.js';
 
 // World owns the spatial index and solid planet construction.
 // Do not mix renderer terrain, sea level or input into collision geometry.

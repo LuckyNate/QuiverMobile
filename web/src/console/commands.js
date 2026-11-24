@@ -1,4 +1,4 @@
-import {registerCampRespawnCommand} from '../ui/camp-commands.js';
+import {registerCampRespawnCommand} from './camp-commands.js';
 
 // Every owner console command in one place. Handlers are explicit, never eval'd.
 export class ConsoleCommands {

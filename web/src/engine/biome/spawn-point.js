@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {faceAtDirection} from './biome-map.js';
-import {WORLD_SETUP,STARTER_BIOME_FACE} from './world-config.js';
+import {WORLD_SETUP,STARTER_BIOME_FACE} from '../world/world-config.js';
 
 // Select a deterministic dry, gently sloped Meadows starting location.
 // The surrounding capsule footprint is sampled, not just the center point.
