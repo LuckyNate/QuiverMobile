@@ -32,7 +32,9 @@ export function terrainLodAtHorizontalDistance(meters,maxLod=WORLD_SCALE.maxTerr
 }
 // Edit each face's name, ground color, densities, and optional grass style here.
 // null groundColor uses the original altitude-driven sand/green/rock palette.
-// Density units: expected resources per square kilometer. Empty {} spawns none.
+// Density units: expected resources per square kilometer of surface; the world is
+// triangles, so a cell populates half its square area (see resource-distributor.js).
+// Empty {} spawns none.
 export const STARTER_BIOME_FACE=6;
 const biomeDefinitions=[
  {name:'Face 00',groundColor:0xc26665,resources:{}},
