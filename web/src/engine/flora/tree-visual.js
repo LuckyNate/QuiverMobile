@@ -24,6 +24,9 @@ export class TreeVisual {
   this.billboardQuaternion=null;
   this.billboardMatrix=new THREE.Matrix4();
   this.billboardUp=new THREE.Vector3();
+  this.billboardDirection=new THREE.Vector3();
+  this.billboardRight=new THREE.Vector3();
+  this.billboardFaceUp=new THREE.Vector3();
   // The conifer GLB belongs to this resource type only; trees can spawn before it loads.
   new GLTFLoader().load(import.meta.env.BASE_URL+'conifer.glb',gltf=>{
    const trunk=gltf.scene.getObjectByName('Trunk');
@@ -157,15 +160,24 @@ export class TreeVisual {
   entry.imposterIndex=null;
   batch.mesh.count=batch.entries.length;
  }
- // A card always stands on the tree's own up and turns only around it. Copying
- // the camera's whole rotation tips it back whenever the view looks down, which
- // lifts its base off the ground.
+ // A card stands on the tree's own up and turns only around it. A full look-at
+ // pitches the card toward the camera, which tips its base off the ground as the
+ // view goes overhead, so the view direction is flattened onto the tree's own
+ // horizontal plane and the card is built from that.
  placeCard(object,entry,camera){
   object.position.copy(entry.tree.position);
   if(camera){
-   this.billboardUp.set(0,1,0).applyQuaternion(entry.tree.quaternion);
-   this.billboardMatrix.lookAt(camera.position,entry.tree.position,this.billboardUp);
-   object.quaternion.setFromRotationMatrix(this.billboardMatrix);
+   const up=this.billboardUp.set(0,1,0).applyQuaternion(entry.tree.quaternion);
+   const toCamera=this.billboardDirection.copy(camera.position).sub(entry.tree.position);
+   // Flatten onto the tree's horizontal plane, so looking down cannot tip it.
+   toCamera.addScaledVector(up,-toCamera.dot(up));
+   if(toCamera.lengthSq()>1e-8){
+    const z=toCamera.normalize();
+    const x=this.billboardRight.crossVectors(up,z).normalize();
+    const y=this.billboardFaceUp.crossVectors(z,x).normalize();
+    this.billboardMatrix.makeBasis(x,y,z);
+    object.quaternion.setFromRotationMatrix(this.billboardMatrix);
+   }else object.quaternion.copy(entry.tree.quaternion);
   }else object.quaternion.copy(entry.tree.quaternion);
   // The card is framed on the model's own bounds, so it scales with the tree.
   object.scale.setScalar(entry.scale||1);
