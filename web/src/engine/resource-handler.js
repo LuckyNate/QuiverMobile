@@ -18,6 +18,7 @@ export class ResourceHandler extends TreeHarvestSystem {
   if(!terrain?.roots?.length)throw new Error('ResourceHandler requires read-only D20 biome roots');
   this.chunks=[]; // Disable the old four-cell Meadows-only population loop.
   this.entryById=new Map();
+  this.tapTarget=null; // {type,id} of a tapped tree or clump, gathered on arrival.
   this.resourceTypesById=new Map();
   this.resourceTypes=new ResourceTypeRegistry();
   this.grass=new TallGrassField({root:this.root,shared,player,playerId});
@@ -89,10 +90,36 @@ export class ResourceHandler extends TreeHarvestSystem {
   this.treeVisual.release(entry.trunk,entry.foliage);
   entry.foliage.material.dispose();
  }
+ // Screen taps mark a tree or grass clump to gather once the avatar walks up to
+ // it; sticks and stones use ground.select() and collect themselves instead.
+ tapGather(type,id){this.tapTarget=type&&id?{type,id}:null;}
+ clearTapGather(){this.tapTarget=null;}
+ gatherTapTarget(body){
+  const target=this.tapTarget;
+  if(!target)return;
+  const avatar=body?.getPosition();
+  if(!avatar)return;
+  const at=new THREE.Vector3(avatar.x,avatar.y,avatar.z);
+  const tool=this.shared?.getEquippedTool(this.playerId)||null;
+  if(target.type==='tree'){
+   const t=this.findTree(target.id);
+   if(!t||t.state!=='standing'){this.clearTapGather();return;}
+   if(t.at.distanceTo(at)>2.4)return;
+   if(tool==='axe')this.fell(t,this.playerId);
+   this.clearTapGather();
+  }else if(target.type==='grass'){
+   const c=this.grass.clumps.get(target.id);
+   if(!c||c.state!=='standing'){this.clearTapGather();return;}
+   if(c.position.distanceTo(at)>1.8)return;
+   if(tool==='scythe')this.grass.cut(c,this.playerId);
+   this.clearTapGather();
+  }else this.clearTapGather();
+ }
  update(dt,body=null){
   const streamRadius=this.terrain.resourceStreamRadius();
   for(const zone of this.zones)zone.update(this.player.position,streamRadius);
   super.update(dt,body);
+  this.gatherTapTarget(body);
   this.grass.update(dt,body,this.shared?.getEquippedTool(this.playerId));
   this.ground.update(dt,body);
   this.boars.update();
