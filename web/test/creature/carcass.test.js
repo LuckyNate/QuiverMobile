@@ -54,6 +54,33 @@ test('a dead boar does not bite and finishes falling over',()=>{
  assert.equal(system.get(ID).tip,1);
 });
 
+test('a carcass waits ninety seconds, fades out and despawns',()=>{
+ const {system,kill}=fixture();
+ kill();
+ system.update(89,{tool:null});
+ assert.equal(system.has(ID),true);
+ assert.equal(system.get(ID).fade,1);        // solid and lootable right up to the end
+ system.update(1,{tool:null});
+ assert.equal(system.get(ID).fade,1);        // ninety seconds: the fade has just begun
+ system.update(.75,{tool:null});
+ const boar=system.get(ID),item=system.visuals.boar.items.get(ID);
+ assert.ok(boar.fade>0&&boar.fade<1);
+ assert.ok(item.alpha>0&&item.alpha<1);
+ assert.ok(item.solo,'the fading carcass owns a translucent copy of the material');
+ system.update(1,{tool:null});
+ assert.equal(system.has(ID),false);         // faded out, then gone
+ assert.equal(system.visuals.boar.items.has(ID),false);
+});
+
+test('a carcass still gives its loot at the last second',()=>{
+ const {system,awards,kill}=fixture();
+ kill();
+ system.update(89.9,{tool:null});
+ assert.equal(system.has(ID),true);
+ assert.deepEqual(system.harvest(ID),{rawBacon:1,hide:1,tusks:2});
+ assert.deepEqual(awards,[['rawBacon',1],['hide',1],['tusks',2]]);
+});
+
 test('the health pip shows only while a weapon is in hand',()=>{
  const {system}=fixture();
  system.update(1/60,{tool:'club'});

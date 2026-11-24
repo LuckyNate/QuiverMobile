@@ -5,8 +5,8 @@ import {PLAYER_SPEED} from '../world/world-config.js';
 
 // The Meadows boar: three hit points, so three level 1 hits put it down. It goes
 // for anything that steps inside five metres and hurts you only by shouldering its
-// snout into you. It falls over where it dies and stays there, a carcass, until a
-// knife takes it apart.
+// snout into you. It falls over where it dies and lies there, a carcass, for ninety
+// seconds before it fades out of the world.
 export const BOAR=Object.freeze({
  // Chase speed is the player's own: it can never outrun you, only cut you off.
  maxHealth:3,walk:1.2,chase:PLAYER_SPEED,territory:10,
@@ -14,6 +14,8 @@ export const BOAR=Object.freeze({
  aggro:5,lose:12,
  // The snout, not the body, has to reach you: it walks up and bumps to bite.
  reach:1.15,bump:.2,damage:1,swingSeconds:1.8,alertSeconds:.25,fallSeconds:.5,
+ // Long enough to walk back to a kill and take it apart, then a short fade.
+ carcassSeconds:90,carcassFadeSeconds:1.5,
  // What a knife takes off the carcass, in inventory units.
  loot:{rawBacon:1,hide:1,tusks:2}
 });
@@ -33,9 +35,15 @@ export class BoarBehaviour extends CreatureBehaviour {
  }
  think(boar,dt,context){
   boar.stateTime+=dt;
-  // A dead boar stops thinking: it only tips over onto its side and lies still.
+  // A dead boar stops thinking: it tips over, lies lootable for its carcass time,
+  // then fades out of existence and is retired, which frees its slot to respawn.
   if(boar.dead||boar.state==='dead'){
    boar.tip=Math.min(1,boar.tip+dt/Math.max(.01,this.tuning.fallSeconds));
+   if(boar.stateTime>=this.tuning.carcassSeconds){
+    const fading=boar.stateTime-this.tuning.carcassSeconds;
+    boar.fade=Math.max(0,1-fading/Math.max(.01,this.tuning.carcassFadeSeconds));
+    if(boar.fade<=0)context.retire(boar);
+   }
    return;
   }
   boar.swingClock=Math.max(0,boar.swingClock-dt);

@@ -90,7 +90,8 @@ export class BoarVisual {
   if(this.items.has(id))return false;
   const batch=this.batch();
   const item={id,position:position.clone(),batch,index:batch.entries.length,
-   yaw:seededUnit(id,'yaw')*Math.PI*2,size:.85+seededUnit(id,'size')*.3,fade:1,tip:0,visible:true};
+   yaw:seededUnit(id,'yaw')*Math.PI*2,size:.85+seededUnit(id,'size')*.3,
+   alpha:1,solo:null,tip:0,visible:true};
   batch.entries.push(item);
   batch.mesh.count=batch.entries.length;
   this.transform(item);
@@ -105,7 +106,15 @@ export class BoarVisual {
   this.tip.setFromAxisAngle(this.tipAxis,-item.tip*Math.PI/2);
   this.dummy.quaternion.copy(this.upright).multiply(this.spin).multiply(this.tip);
   this.dummy.position.copy(item.position);
-  this.dummy.scale.setScalar(item.visible?item.size*item.fade:0);
+  this.dummy.scale.setScalar(item.visible?item.size:0);
+  // A fading carcass has left the batch for its own mesh, so it can be drawn
+  // translucent without touching every other boar's material.
+  if(item.solo){
+   item.solo.position.copy(this.dummy.position);
+   item.solo.quaternion.copy(this.dummy.quaternion);
+   item.solo.scale.copy(this.dummy.scale);
+   return;
+  }
   this.dummy.updateMatrix();
   item.batch.mesh.setMatrixAt(item.index,this.dummy.matrix);
   item.batch.mesh.instanceMatrix.needsUpdate=true;
@@ -119,12 +128,26 @@ export class BoarVisual {
   this.transform(item);
   return true;
  }
- setFade(id,fade){
+ // Every boar in a batch shares one material, so the first translucent frame
+ // moves this one onto its own mesh with a copy of it; from then on alpha is its.
+ setFade(id,alpha){
   const item=this.items.get(id);
   if(!item)return;
-  const next=Math.max(0,Math.min(1,fade));
-  if(item.fade===next)return;
-  item.fade=next;
+  const next=Math.max(0,Math.min(1,alpha));
+  if(item.alpha===next)return;
+  item.alpha=next;
+  if(next<1&&!item.solo)this.detach(item);
+  if(item.solo)item.solo.material.opacity=next;
+ }
+ detach(item){
+  const batch=item.batch,last=batch.entries.pop();
+  if(last!==item){batch.entries[item.index]=last;last.index=item.index;this.transform(last);}
+  batch.mesh.count=batch.entries.length;
+  const material=this.material.clone();
+  material.transparent=true;
+  material.opacity=item.alpha;
+  item.solo=new THREE.Mesh(this.geometry,material);
+  this.root.add(item.solo);
   this.transform(item);
  }
  // Death lays the pig over onto its side and leaves it there as a carcass.
@@ -139,6 +162,12 @@ export class BoarVisual {
  unload(id){
   const item=this.items.get(id);
   if(!item)return;
+  if(item.solo){
+   this.root.remove(item.solo);
+   item.solo.material.dispose();
+   this.items.delete(id);
+   return;
+  }
   const batch=item.batch,last=batch.entries.pop();
   if(last!==item){batch.entries[item.index]=last;last.index=item.index;this.transform(last);}
   batch.mesh.count=batch.entries.length;
