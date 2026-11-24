@@ -243,11 +243,12 @@ export class Building {
   }
   this.render();
  }
- // With the axe, a finished wall is cut where it is struck: a window, then a door in
- // that same slot, then a second door beside it. A wall between two rooms that is all
- // doors can be blown wide open instead.
+ // With the hammer's hatchet, a finished wall is cut where it is struck: a window,
+ // then a door in that same slot, then a second door beside it. A wall between two
+ // rooms that is all doors can be blown wide open instead.
  cutAt(key,point){
-  if(this.shared.getEquippedTool(this.playerId)!=='axe'){this.message?.('Equip the axe to cut this wall');return;}
+  const tool=this.shared.getEquippedTool(this.playerId);
+  if(tool!=='hammer'&&tool!=='axe'){this.message?.('Hold the hammer to cut this wall');return;}
   const slots=this.grid.openingsAt(key);
   if(slots.every(state=>state===DOOR)&&this.grid.isInterior(key)){this.blowAt(key);return;}
   const slot=this.slotAt(key,point),state=slots[slot];
