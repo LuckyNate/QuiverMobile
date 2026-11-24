@@ -8,7 +8,9 @@ export const WORLD_SETUP=Object.freeze({
  collisionResolutionMeters:1,
  collisionChunkMeters:32,
  resourceCellMeters:32,
- resourceStreamRootFraction:1,
+ // Half the root edge, 128 m: further out the terrain mesh is coarser than the
+ // surface resources are placed on, so trees stop meeting the ground.
+ resourceStreamRootFraction:.5,
  cameraMaxZoomDiameters:2,
  cameraFarClipDiameters:6,
  seaLevelOffsetMeters:-1
