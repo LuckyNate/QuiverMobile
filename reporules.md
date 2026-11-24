@@ -56,3 +56,23 @@
 - Be concise and specific about causes, alternatives, tradeoffs, and impact.
 - Distinguish observations, assumptions, proposals, and verified results.
 - Stop at the agreed scope; request new permission for additional work.
+
+## 8. Working rhythm
+
+The owner works in incremental, singular fixes. Default to one small change per
+round, with a small blast radius:
+
+- **One change per round.** Make exactly the requested change; nothing adjacent.
+- **Smallest diff.** No refactors, renames or cleanup alongside a fix. Report
+  anything adjacent that was noticed, and leave it alone.
+- **Always running.** Build, commit and push each fix to `main` as soon as it is
+  done, so the deployed build is current. This is standing authorization for that
+  loop, and it supersedes the per-change go-ahead in section 1 and the
+  commit/push restriction in section 5 for routine fixes.
+- **Short reports.** State what changed, whether the build passed, and what to
+  look at. Nothing more.
+
+Standing authorization covers the fix → build → commit → push loop only. It does
+not authorize force-pushing, branch deletion, workflow or dependency changes, or
+expanding the scope of a requested change; if a fix cannot stay small, say so and
+let the owner split it.
