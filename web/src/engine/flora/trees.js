@@ -10,15 +10,17 @@ import {TreeContact} from './tree-contact.js';
 import {TreeLifecycle} from './tree-lifecycle.js';
 import {TreePopulation} from './tree-population.js';
 
-// Past 30 m a tree is a flat sprite. Crossing that line starts its model fading
+// Past 35 m a tree is a flat sprite. Crossing that line starts its model fading
 // up on a clock rather than with distance, and crossing back starts it fading out
 // on the same clock, so walking past a line never snaps anything on or off. The
 // card is held for the whole transition: it stays until the model is fully opaque
 // and comes back before the model starts to fade, so neither form is ever missing
 // while the other is see-through. Measured from the camera, because that is what
 // decides how big it looks on screen.
-const BILLBOARD_METERS=30;
+const BILLBOARD_METERS=35;
 const MODEL_FADE_SECONDS=.75;
+// The model stands 5.5 m tall, so a tree's size in metres is a multiple of it.
+const TREE_MODEL_HEIGHT=5.5;
 
 // All player/world mutations use stable IDs. Only Meadows is populated now.
 export class TreeHarvestSystem {
@@ -70,11 +72,15 @@ export class TreeHarvestSystem {
  makeTree(chunk,serial,position,id='meadows:tree:'+chunk+':'+serial){
   const {tree,visual,trunk,foliage}=this.treeVisual.create(position);
   this.root.add(tree);
+  // Seeded per tree, so a pine keeps its size every time it streams back in.
+  const height=3+7*this.hash(serial*131+chunk*17+7);
+  const scale=height/TREE_MODEL_HEIGHT;
+  tree.scale.setScalar(scale);
   const saved=this.shared?.getEntity(id);
   const state=saved&&saved.state!=='standing'?'collected':'standing';
   tree.visible=state==='standing';
   const object=this.objects.spawn(new Conifer({id,position:position.toArray(),state}));
-  const entry={id,object,chunk,serial,tree,visual,trunk,foliage,at:position,state,hits:0,progress:0,ownerId:null,respawnTime:0,bumpCooldown:0,modelFade:0};
+  const entry={id,object,chunk,serial,tree,visual,trunk,foliage,at:position,state,hits:0,progress:0,ownerId:null,respawnTime:0,bumpCooldown:0,modelFade:0,scale};
   this.trees.push(entry);
   this.treeVisual.attach(entry);
   return entry;

@@ -43,10 +43,12 @@ export class TreeContact {
      if(penetration>bestPenetration){bestPenetration=penetration;hitPart=part;}
     }
    };
+   // Both frusta scale with the tree, so a 10 m pine is not chopped at 4 m.
    // CylinderGeometry(.24,.31,4): bottom=.31, top=.24, y=0..4.
-   test('trunk',0,4,y=>.31-(.07*y/4));
+   const s=t.scale||1;
+   test('trunk',0,4*s,y=>.31*s-.07*y/4);
    // ConeGeometry(1.35,4.5): base=1.0, tip=5.5.
-   test('foliage',1,5.5,y=>1.35*(5.5-y)/4.5);
+   test('foliage',s,5.5*s,y=>1.35*(5.5*s-y)/4.5);
    if(!hitPart){
     // A fresh bump requires leaving this tree first; otherwise overlapping
     // foliage retriggers a new knockback and makes steering feel disabled.

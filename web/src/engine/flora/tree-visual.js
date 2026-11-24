@@ -91,15 +91,16 @@ export class TreeVisual {
   this.root.add(mesh);batch={mesh,entries:[],capacity,kind};batches.push(batch);return batch;
  }
  setInstanceTransform(entry){
-  const t=entry.tree;
+  const t=entry.tree,scale=entry.scale||1;
   this.dummy.position.copy(t.position);
   this.dummy.quaternion.copy(t.quaternion);
   const offset=entry.kind==='trunk'?(this.trunkGeometry?0:2):
    entry.kind==='foliage'?(this.foliageGeometry?1:3.25):
    (this.foliageGeometry?.992:1);
-  const up=new THREE.Vector3(0,offset,0).applyQuaternion(t.quaternion);
+  // The offset is a height above the tree's base, so it grows with the tree.
+  const up=new THREE.Vector3(0,offset*scale,0).applyQuaternion(t.quaternion);
   this.dummy.position.add(up);
-  this.dummy.scale.setScalar(entry.visible?1:0);this.dummy.updateMatrix();
+  this.dummy.scale.setScalar(entry.visible?scale:0);this.dummy.updateMatrix();
   entry.batch.mesh.setMatrixAt(entry.index,this.dummy.matrix);
   entry.batch.mesh.instanceMatrix.needsUpdate=true;
  }
@@ -107,7 +108,7 @@ export class TreeVisual {
   entry.renderInstances=[];
   for(const kind of ['trunk','foliage','cap']){
    const batch=this.batch(kind);
-   const record={tree:entry.tree,kind,batch,index:batch.entries.length,visible:true};
+   const record={tree:entry.tree,kind,batch,index:batch.entries.length,visible:true,scale:entry.scale||1};
    batch.entries.push(record);batch.mesh.count=batch.entries.length;
    entry.renderInstances.push(record);this.setInstanceTransform(record);
   }
@@ -166,7 +167,8 @@ export class TreeVisual {
    this.billboardMatrix.lookAt(camera.position,entry.tree.position,this.billboardUp);
    object.quaternion.setFromRotationMatrix(this.billboardMatrix);
   }else object.quaternion.copy(entry.tree.quaternion);
-  object.scale.setScalar(1);
+  // The card is framed on the model's own bounds, so it scales with the tree.
+  object.scale.setScalar(entry.scale||1);
  }
  writeImposter(entry,camera){
   const batch=this.imposters;
