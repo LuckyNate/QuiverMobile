@@ -3,7 +3,7 @@ import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {renderTreeSprite} from './tree-sprite.js';
 
 // Owns tree meshes only; resource identity, persistence and physics live elsewhere.
-// Trees inside the imposter distance draw as trunk/foliage instances; the ones
+// Trees inside the billboard distance draw as trunk/foliage instances; the ones
 // beyond it draw as one camera-facing card made from a render of the same model.
 export class TreeVisual {
  constructor(trunkMaterial,leafMaterial,root){
@@ -66,8 +66,9 @@ export class TreeVisual {
   const geometry=new THREE.PlaneGeometry(size.x*1.04,size.y*1.04);
   geometry.translate(0,size.y*.52-.06,0);
   this.imposterGeometry=geometry;
-  this.imposterMaterial=new THREE.MeshBasicMaterial({map:texture,transparent:true,alphaTest:.4,
-   depthWrite:true,side:THREE.DoubleSide});
+  // An opaque cutout, not a blended overlay: sprites drawn this way sit in the
+  // depth-sorted world like any other surface instead of ghosting over it.
+  this.imposterMaterial=new THREE.MeshBasicMaterial({map:texture,transparent:false,alphaTest:.5});
  }
  capFoliage(foliage){
   if(foliage.userData.baseCap)return;
@@ -113,7 +114,6 @@ export class TreeVisual {
  }
  remove(entry){
   this.clearImposter(entry);
-  this.releaseCard(entry);
   for(const record of entry.renderInstances||[]){
    const batch=record.batch,last=batch.entries.pop();
    if(last!==record){batch.entries[record.index]=last;last.index=record.index;this.setInstanceTransform(last);}
@@ -174,86 +174,9 @@ export class TreeVisual {
   batch.mesh.setMatrixAt(entry.imposterIndex,this.dummy.matrix);
   batch.mesh.instanceMatrix.needsUpdate=true;
  }
- // Hand over between the two forms across a band rather than at one distance:
- // the meshes fade out as a tree leaves the near range while its card fades in.
- setTreeFade(entry,meshAlpha,cardAlpha,camera){
-  // Trees spawn before the conifer model has loaded and the sprite is drawn, and
-  // there is no card to hand over to until then. Fading to one without it left
-  // the tree half gone and cloned a null material.
-  if(!this.imposterGeometry||!this.imposterMaterial){
-   this.fadeMesh(entry,1);
-   this.fadeCard(entry,0,camera);
-   return;
-  }
-  this.fadeMesh(entry,meshAlpha);
-  this.fadeCard(entry,cardAlpha,camera);
- }
- fadeMesh(entry,alpha){
-  if(alpha>=.999){
-   this.setVisible(entry,true);
-   if(entry.fading){
-    entry.fading=false;
-    entry.tree.visible=false;
-    this.restoreMeshOpacity(entry);
-   }
-   return;
-  }
-  this.setVisible(entry,false);
-  if(!entry.fading){
-   entry.fading=true;
-   // The shared trunk material is fading for one tree only, so it gets a copy.
-   if(entry.trunk.material===this.trunkMaterial)entry.trunk.material=this.trunkMaterial.clone();
-   entry.trunk.material.transparent=true;
-   entry.foliage.material.transparent=true;
-  }
-  entry.tree.visible=alpha>.01;
-  entry.trunk.material.opacity=alpha;
-  entry.foliage.material.opacity=alpha;
- }
- restoreMeshOpacity(entry){
-  if(entry.trunk.material!==this.trunkMaterial){
-   entry.trunk.material.opacity=1;
-   entry.trunk.material.transparent=false;
-  }
-  entry.foliage.material.opacity=1;
- }
- // Cards in the band carry their own material so each can hold its own alpha.
- fadeCard(entry,alpha,camera){
-  if(alpha>=.999){
-   this.releaseCard(entry);
-   this.setImposter(entry,true,camera);
-   return;
-  }
-  this.clearImposter(entry);
-  if(alpha<=.01){
-   if(entry.card)entry.card.visible=false;
-   return;
-  }
-  if(!entry.card){
-   entry.card=new THREE.Mesh(this.imposterGeometry,this.imposterMaterial.clone());
-   entry.card.material.transparent=true;
-   entry.card.material.depthWrite=false;
-   entry.card.frustumCulled=false;
-   this.root.add(entry.card);
-  }
-  entry.card.visible=true;
-  entry.card.material.opacity=alpha;
-  this.placeCard(entry.card,entry,camera);
- }
- releaseCard(entry){
-  if(!entry.card)return;
-  this.root.remove(entry.card);
-  entry.card.material.dispose();
-  entry.card=null;
- }
  hide(entry){
   this.setVisible(entry,false);
   this.clearImposter(entry);
-  this.releaseCard(entry);
-  if(entry.fading){
-   entry.fading=false;
-   this.restoreMeshOpacity(entry);
-  }
   entry.tree.visible=false;
  }
  // Cards only need turning when the view turns; a few degrees of lag is invisible
@@ -271,11 +194,6 @@ export class TreeVisual {
  }
  activate(entry){
   this.clearImposter(entry);
-  this.releaseCard(entry);
-  if(entry.fading){
-   entry.fading=false;
-   this.restoreMeshOpacity(entry);
-  }
   this.remove(entry);
   entry.tree.visible=true;
  }
