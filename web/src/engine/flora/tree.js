@@ -1,4 +1,4 @@
-import {Resource} from './resource.js';
+import {Resource} from '../resource/resource.js';
 
 // Tree resource contract; the existing TreeHarvestSystem remains the runtime
 // implementation until its responsibilities are migrated in separate commits.

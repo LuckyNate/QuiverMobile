@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
-import {withinSceneryRange} from './scenery-visibility.js';
+import {withinSceneryRange} from '../render/scenery-visibility.js';
 
 // Meadows boars are scenery: one goofy cylinder pig per seeded spawn, no
 // behaviour beyond standing on the ground at a deterministic angle and size.

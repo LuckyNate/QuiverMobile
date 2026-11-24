@@ -1,6 +1,6 @@
 // Inventory tabs, resource and tool slots, and their refresh logic.
-import {DYE_COLORS} from '../engine/dye-palette.js';
-import {TOOL_RECIPES,WEAPON_TOOLS} from '../engine/shared-world.js';
+import {DYE_COLORS} from '../engine/avatar/dye-palette.js';
+import {TOOL_RECIPES,WEAPON_TOOLS} from '../engine/entity/shared-world.js';
 import {toolIcon} from './tool-icon.js';
 // Recipe ingredients read as inventory keys; species drops get a proper name.
 const RESOURCE_NAMES={logs:'4 m Logs',fibers:'Fibers',sticks:'Sticks',stones:'Stones',pineSap:'Pine Sap'};

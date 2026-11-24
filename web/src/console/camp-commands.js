@@ -1,4 +1,4 @@
-import {requestCampTeleport} from '../engine/camp-respawn.js';
+import {requestCampTeleport} from '../engine/camp/camp-respawn.js';
 
 // Owner console command for dying at the most recently used camp.
 export function registerCampRespawnCommand(console,{sharedWorld,playerId}){

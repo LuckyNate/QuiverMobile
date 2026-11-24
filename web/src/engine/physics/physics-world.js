@@ -4,7 +4,7 @@
 // Dynamic objects own placement, octree queries and collision-safe movement.
 // The world heightfield is the sole static-ground authority.
 import Box3D from 'box3d-wasm';
-import {takeCampTeleport} from './camp-respawn.js';
+import {takeCampTeleport} from '../camp/camp-respawn.js';
 import {DynamicSolidBody} from './physics-body.js';
 
 export class PhysicsWorld {

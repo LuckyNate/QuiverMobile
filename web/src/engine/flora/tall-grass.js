@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import {Resource} from './resource.js';
+import {Resource} from '../resource/resource.js';
 import {GrassVisual} from './grass-visual.js';
-import {withinSceneryRange} from './scenery-visibility.js';
-import {MEADOWS_GREEN_DYE} from './dye-palette.js';
+import {withinSceneryRange} from '../render/scenery-visibility.js';
+import {MEADOWS_GREEN_DYE} from '../avatar/dye-palette.js';
 
 export class TallGrass extends Resource {
  constructor({id,position}={}){

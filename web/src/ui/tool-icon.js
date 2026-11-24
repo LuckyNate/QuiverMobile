@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {toolModel} from '../engine/toolmodels/index.js';
+import {toolModel} from '../engine/tool/models/index.js';
 
 // Inventory slots show the tool you own rather than its name, so the grid reads
 // at a glance. One small offscreen renderer draws each model once and the PNG is

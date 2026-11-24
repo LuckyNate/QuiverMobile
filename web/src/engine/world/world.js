@@ -1,7 +1,7 @@
-import {TerrainHeight} from './engine/terrain-height.js';
-import {rootAddress,appendChild} from './engine/d20-address.js';
-import {WORLD_SETUP,WORLD_SCALE,BIOME_SETUP,terrainLodAtHorizontalDistance} from './engine/world-config.js';
-import {D20_ROOT_CORNERS,containsSphericalTriangle} from './engine/biome-map.js';
+import {TerrainHeight} from './terrain-height.js';
+import {rootAddress,appendChild} from './d20-address.js';
+import {WORLD_SETUP,WORLD_SCALE,BIOME_SETUP,terrainLodAtHorizontalDistance} from './world-config.js';
+import {D20_ROOT_CORNERS,containsSphericalTriangle} from '../biome/biome-map.js';
 import * as THREE from 'three';
 export const ROOT_EDGE_METERS=WORLD_SETUP.rootEdgeMeters;
 export const RADIUS=WORLD_SCALE.radius;

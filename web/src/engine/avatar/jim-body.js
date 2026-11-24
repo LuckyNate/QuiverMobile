@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {solveTwoBone} from './two-bone-ik.js';
-import {toolModel} from './toolmodels/index.js';
+import {toolModel} from '../tool/models/index.js';
 
 // Jim's articulated-body layout and procedural two-bone limb solver.
 // The original Box3D capsule remains authoritative for position and contacts;
