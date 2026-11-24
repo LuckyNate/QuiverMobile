@@ -56,6 +56,12 @@ export class TreeHarvestSystem {
   });
   if(autoPopulate)this.populate();
  }
+ // Stable 32-bit seed from a tree's id text, for anything hash() is fed.
+ seedOf(text){
+  let h=2166136261;
+  for(let i=0;i<text.length;i++)h=Math.imul(h^text.charCodeAt(i),16777619);
+  return h>>>0;
+ }
  hash(n){let x=(n+0x9e3779b9)|0;x=Math.imul(x^(x>>>16),0x21f0aaad);x=Math.imul(x^(x>>>15),0x735a2d97);return ((x^(x>>>15))>>>0)/4294967296;}
  // Four 32m child areas surrounding the Meadows landing site.
  location(chunk,serial){
@@ -72,9 +78,10 @@ export class TreeHarvestSystem {
  makeTree(chunk,serial,position,id='meadows:tree:'+chunk+':'+serial){
   const {tree,visual,trunk,foliage}=this.treeVisual.create(position);
   this.root.add(tree);
-  // Seeded per tree, so a pine keeps its size every time it streams back in.
-  // Large pines: 10 m up to 18 m, all of them well past the 5.5 m model.
-  const height=10+8*this.hash(serial*131+chunk*17+7);
+  // Seeded from the tree's stable id, not from chunk/serial: the streaming layer
+  // passes a cell object and serial 0, which hashed to the same value for every
+  // tree and made a whole wood one height. Large pines: 10 m up to 18 m.
+  const height=10+8*this.hash(this.seedOf(String(id)));
   const scale=height/TREE_MODEL_HEIGHT;
   tree.scale.setScalar(scale);
   const saved=this.shared?.getEntity(id);
