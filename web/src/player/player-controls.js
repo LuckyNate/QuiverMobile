@@ -55,7 +55,9 @@ export class PlayerControls {
    // A claimed press is a live hold: it ends on release and is cancelled by a
    // second finger or an interrupted gesture. Nothing is kept for later.
    if(tap?.claimed){
-    if(e.type==='pointerup'&&!tap.multi)this.onHoldEnd?.();
+    // The release reports where it ended and whether it travelled, so a hold
+    // handler can tell a still press from a drag without guessing.
+    if(e.type==='pointerup'&&!tap.multi)this.onHoldEnd?.(e.clientX,e.clientY,tap.moved);
     else this.onHoldCancel?.();
     return;
    }

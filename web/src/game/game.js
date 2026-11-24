@@ -8,6 +8,7 @@ import {WorldWater} from '../engine/world/water.js';
 import {ResourceHandler} from '../engine/resource/resource-handler.js';
 import {SharedWorld} from '../engine/entity/shared-world.js';
 import {Bonfire} from '../engine/camp/bonfire.js';
+import {Building} from '../engine/build/building.js';
 import {GamePanels} from '../ui/game-panels.js';
 import {Survival} from './survival.js';
 import {StatusReport} from '../gui/status-report.js';
@@ -65,6 +66,9 @@ export class Game {
   this.panels=new GamePanels({app,canvas:this.canvas,controls:this.playerSystem.controls,sharedWorld:this.sharedWorld,playerId:'local-owner'});
   this.panels.updateSurvival(this.survival.needs());
   this.bonfire=new Bonfire({scene:this.scene,shared:this.sharedWorld,player:this.playerSystem,playerId:'local-owner',camera:this.camera,app});
+  // Building lives on the camp the fire permits: cells, shared walls and floors.
+  this.building=new Building({scene:this.scene,shared:this.sharedWorld,player:this.playerSystem,height:this.height,radius:RADIUS,
+   bonfire:this.bonfire,playerId:'local-owner',message:text=>this.panels.print(text)});
   this.pendingBonfire=null;
   this.status.onFailed=(problems,reported)=>{
    for(const [name,value] of problems){
@@ -75,7 +79,7 @@ export class Game {
   this.tap=new TapController({
    canvas:this.canvas,camera:this.camera,height:this.height,radius:RADIUS,
    harvesting:this.harvesting,sharedWorld:this.sharedWorld,playerSystem:this.playerSystem,
-   bonfire:this.bonfire,isActive:()=>this.started&&this.simulationReady,
+   bonfire:this.bonfire,building:this.building,message:text=>this.panels.print(text),isActive:()=>this.started&&this.simulationReady,
    setBonfireCandidate:point=>{this.pendingBonfire=point;}
   });
   setInterval(()=>{if(this.panels.openPanel==='inventory')this.panels.refreshInventory();},500);
