@@ -1,13 +1,14 @@
 // Inventory tabs, resource and tool slots, and their refresh logic.
 import {DYE_COLORS} from '../engine/dye-palette.js';
-import {TOOL_RECIPES} from '../engine/shared-world.js';
+import {TOOL_RECIPES,WEAPON_TOOLS} from '../engine/shared-world.js';
 // Recipe ingredients read as inventory keys; species drops get a proper name.
 const RESOURCE_NAMES={logs:'4 m Logs',fibers:'Fibers',sticks:'Sticks',stones:'Stones',pineSap:'Pine Sap'};
 // Unmapped keys still read as words: birchBark -> Birch Bark.
 const resourceName=key=>RESOURCE_NAMES[key]||key.replace(/([a-z0-9])([A-Z])/g,'$1 $2').replace(/^./,c=>c.toUpperCase());
 // Inventory keys that are bookkeeping rather than something you carry in a slot.
-const NOT_A_RESOURCE=new Set(['equippedTool','craftedTools','unlockedDyes','gear','logStrength','fiberQuality']);
+const NOT_A_RESOURCE=new Set(['equippedTool','craftedTools','unlockedDyes','gear','logStrength','fiberQuality','arrows']);
 const SLOT_STYLE='min-height:64px;padding:8px;border:1px solid #526477;border-radius:5px;display:flex;flex-direction:column;justify-content:center;gap:4px;background:#172430';
+const label=id=>id[0].toUpperCase()+id.slice(1);
 export const panelInventory={
  registerInventoryTab(id,label,content){
   if(this.inventoryTabs.has(id))throw new Error('Duplicate inventory tab: '+id);
@@ -54,35 +55,39 @@ export const panelInventory={
    grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px';
    return grid;
   };
-  const makeSlot=(id,label,{interactive=false,tag=null,note=''}={})=>{
+  const makeSlot=(id,title,{interactive=false,tag=null,note='',onClick=null}={})=>{
    const slot=document.createElement(interactive?'button':'div');
    if(interactive){
     slot.type='button';
-    slot.addEventListener('click',()=>{
+    slot.addEventListener('click',onClick||(()=>{
      const current=this.sharedWorld.getEquippedTool(this.playerId);
      if(this.sharedWorld.hasTool(this.playerId,id))this.sharedWorld.setEquippedTool(this.playerId,current===id?null:id);
      else this.sharedWorld.craftTool(this.playerId,id);
      this.refreshInventory();
-    });
+    }));
    }
    slot.style.cssText=SLOT_STYLE;
-   const name=document.createElement('strong');name.textContent=label;
+   const name=document.createElement('strong');name.textContent=title;
    const quantity=document.createElement('span');quantity.style.fontSize='12px';
    if(note)quantity.textContent=note;
    slot.append(name,quantity);
-   this.slots.set(id,{slot,name,quantity,isTool:interactive,tag});
+   this.slots.set(id,{slot,name,quantity,isTool:interactive&&Object.hasOwn(TOOL_RECIPES,id),tag});
    return slot;
   };
   // Craftable tools are fixed slots: they exist whether or not you have one yet.
+  // Weapons craft the same way, they just live in their own tab.
   const toolsGrid=makeGrid();
-  for(const id of Object.keys(TOOL_RECIPES))toolsGrid.append(makeSlot(id,id[0].toUpperCase()+id.slice(1),{interactive:true}));
+  for(const id of Object.keys(TOOL_RECIPES).filter(id=>!WEAPON_TOOLS.includes(id)))toolsGrid.append(makeSlot(id,label(id),{interactive:true}));
   toolsPane.append(toolsGrid);
-  // Nothing weapon-shaped is defined yet (GEAR_RECIPES is empty), so the tab
-  // holds empty slots instead of inventing items to fill them with.
   const weaponsGrid=makeGrid();
-  for(const id of ['weapon-1','weapon-2','weapon-3','weapon-4'])weaponsGrid.append(makeSlot(id,'Empty',{note:'No weapon'}));
+  for(const id of WEAPON_TOOLS)weaponsGrid.append(makeSlot(id,label(id),{interactive:true}));
+  // Arrows are ammunition: a count you spend, not something you equip.
+  weaponsGrid.append(makeSlot('arrows','Arrows',{interactive:true,tag:'arrows',note:'Count: 0',onClick:()=>{
+   this.sharedWorld.craftArrows(this.playerId);
+   this.refreshInventory();
+  }}));
   const weaponsHint=document.createElement('p');
-  weaponsHint.textContent='No weapons can be crafted yet.';
+  weaponsHint.textContent='Club, bow and arrows. Arrows come in fives.';
   weaponsPane.append(weaponsHint,weaponsGrid);
   // Resources are not listed up front: every slot here is one you have picked up,
   // created by growResources() as the inventory gains a new kind of item.
@@ -159,13 +164,19 @@ export const panelInventory={
     entry.slot.setAttribute('aria-pressed',String(active));
     entry.quantity.textContent=active?'Equipped':crafted?'Tap to equip':ready?'Tap to craft':Object.entries(TOOL_RECIPES[id]).map(([item,n])=>resourceName(item)+' '+(inventory[item]||0)+'/'+n).join(' · ');
    }
+   else if(entry.tag==='arrows'){
+    const ready=this.sharedWorld.canCraftArrows(this.playerId);
+    entry.slot.style.borderColor=ready?'#d6b243':'#667078';
+    entry.slot.style.background=ready?'#796420':'#34383c';
+    entry.slot.style.color=ready?'#fff0b3':'#b2b5b7';
+    entry.quantity.textContent='Count: '+(inventory.arrows||0)+(ready?' · Tap to craft':'');
+   }
    else if(entry.tag==='logs')entry.quantity.textContent='Count: '+count+' | Strength: '+averageStrength.toFixed(2);
    else if(entry.tag==='fibers'){
     const fibers=inventory.fibers||0;
     entry.quantity.textContent='Count: '+fibers+' | Quality: '+(fibers?(inventory.fiberQuality||0)/fibers:0).toFixed(2);
    }
    else if(entry.tag)entry.quantity.textContent='Count: '+(inventory[entry.tag]||0);
-   else if(!entry.quantity.textContent)entry.quantity.textContent='No weapon';
   }
  }
 
