@@ -10,6 +10,11 @@ import {TreeContact} from './engine/tree-contact.js';
 import {TreeLifecycle} from './engine/tree-lifecycle.js';
 import {TreePopulation} from './engine/tree-population.js';
 
+// Past this distance a tree is one camera-facing card instead of a trunk, a
+// canopy and a cap; nearer than it, nothing changes.
+const IMPOSTER_METERS=45;
+const IMPOSTER_SQUARED=IMPOSTER_METERS**2;
+
 // All player/world mutations use stable IDs. Only Meadows is populated now.
 export class TreeHarvestSystem {
  constructor(scene,player,height,radius,{shared=null,playerId='local-owner',camera=null,autoPopulate=true}={}){
@@ -98,10 +103,17 @@ export class TreeHarvestSystem {
   // Keep trees and their simulation alive outside the render range.
   for(const t of this.trees){
    const visible=withinSceneryRange(t.at,this.player.position);
-   if(t.state==='standing')this.treeVisual.setVisible(t,this.renderEnabled&&visible);
-   else if(t.state==='falling'||t.state==='fading')t.tree.visible=this.renderEnabled&&visible;
+   if(t.state==='standing'){
+    const far=this.renderEnabled&&visible&&t.at.distanceToSquared(this.player.position)>IMPOSTER_SQUARED;
+    this.treeVisual.setVisible(t,this.renderEnabled&&visible&&!far);
+    this.treeVisual.setImposter(t,far,this.camera);
+   }else{
+    this.treeVisual.clearImposter(t);
+    if(t.state==='falling'||t.state==='fading')t.tree.visible=this.renderEnabled&&visible;
+   }
    if(t.state==='flying')t.trunk.visible=this.renderEnabled&&withinSceneryRange(t.trunk.position,this.player.position);
   }
+  this.treeVisual.updateBillboards(this.camera);
   this.attackClock=Math.max(0,this.attackClock-dt);
   this.bump(body,dt);
   this.lifecycle.update(this.trees,dt);

@@ -1,7 +1,10 @@
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {renderTreeSprite} from './tree-sprite.js';
 
 // Owns tree meshes only; resource identity, persistence and physics live elsewhere.
+// Trees inside the imposter distance draw as trunk/foliage instances; the ones
+// beyond it draw as one camera-facing card made from a render of the same model.
 export class TreeVisual {
  constructor(trunkMaterial,leafMaterial,root){
   this.root=root;this.batches=new Map();this.dummy=new THREE.Object3D();
@@ -15,6 +18,10 @@ export class TreeVisual {
   // GLB foliage is open underneath. A downward-facing shared cap closes the base.
   this.foliageCapGeometry=new THREE.CircleGeometry(1.35,8);
   this.foliageCapGeometry.rotateX(Math.PI/2);
+  this.imposterGeometry=null;
+  this.imposterMaterial=null;
+  this.imposters=null;
+  this.billboardQuaternion=null;
   // The conifer GLB belongs to this resource type only; trees can spawn before it loads.
   new GLTFLoader().load(import.meta.env.BASE_URL+'conifer.glb',gltf=>{
    const trunk=gltf.scene.getObjectByName('Trunk');
@@ -26,6 +33,7 @@ export class TreeVisual {
     batch.mesh.geometry=batch.kind==='trunk'?this.trunkGeometry:batch.kind==='foliage'?this.foliageGeometry:this.foliageCapGeometry;
     for(const entry of batch.entries)this.setInstanceTransform(entry);
    }
+   this.buildImposter();
    for(const instance of this.instances){
     // Shared fallback geometry remains owned by this renderer.
     instance.trunk.geometry=this.trunkGeometry;
@@ -35,6 +43,28 @@ export class TreeVisual {
     instance.foliage.position.y=1;
    }
   },undefined,error=>console.error('Conifer GLB unavailable; retaining tree geometry',error));
+ }
+ // The card is drawn from the loaded model, so it cannot drift from the tree it
+ // stands in for; the sprite carries the model's own size.
+ buildImposter(){
+  if(this.imposterGeometry||!this.trunkGeometry||!this.foliageGeometry)return;
+  const sprite=renderTreeSprite(()=>{
+   const model=new THREE.Group();
+   const trunk=new THREE.Mesh(this.trunkGeometry,this.trunkMaterial);
+   const foliage=new THREE.Mesh(this.foliageGeometry,this.leafMaterial.clone());
+   foliage.position.y=1;
+   this.capFoliage(foliage);
+   model.add(trunk,foliage);
+   return model;
+  });
+  if(!sprite)return;
+  const {texture,size}=sprite;
+  // The plane's bottom edge sits on the trunk's base so a card plants like a tree.
+  const geometry=new THREE.PlaneGeometry(size.x*1.04,size.y*1.04);
+  geometry.translate(0,size.y*.52,0);
+  this.imposterGeometry=geometry;
+  this.imposterMaterial=new THREE.MeshBasicMaterial({map:texture,transparent:true,alphaTest:.4,
+   depthWrite:true,side:THREE.DoubleSide});
  }
  capFoliage(foliage){
   if(foliage.userData.baseCap)return;
@@ -79,6 +109,7 @@ export class TreeVisual {
   entry.tree.visible=false;
  }
  remove(entry){
+  this.clearImposter(entry);
   for(const record of entry.renderInstances||[]){
    const batch=record.batch,last=batch.entries.pop();
    if(last!==record){batch.entries[record.index]=last;last.index=record.index;this.setInstanceTransform(last);}
@@ -91,7 +122,59 @@ export class TreeVisual {
    record.visible=visible;this.setInstanceTransform(record);
   }
  }
+ imposterBatch(){
+  if(this.imposters)return this.imposters;
+  if(!this.imposterGeometry)return null;
+  const capacity=2048;
+  const mesh=new THREE.InstancedMesh(this.imposterGeometry,this.imposterMaterial,capacity);
+  mesh.count=0;mesh.frustumCulled=false;mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  this.root.add(mesh);
+  this.imposters={mesh,entries:[],capacity};
+  return this.imposters;
+ }
+ setImposter(entry,on,camera){
+  if(!on){this.clearImposter(entry);return;}
+  const batch=this.imposterBatch();
+  if(!batch||entry.imposterIndex!=null||batch.entries.length>=batch.capacity)return;
+  entry.imposterIndex=batch.entries.length;
+  batch.entries.push(entry);
+  batch.mesh.count=batch.entries.length;
+  this.writeImposter(entry,camera);
+ }
+ clearImposter(entry){
+  const batch=this.imposters;
+  if(!batch||entry.imposterIndex==null)return;
+  const index=entry.imposterIndex;
+  const last=batch.entries.pop();
+  if(last!==entry){batch.entries[index]=last;last.imposterIndex=index;this.writeImposter(last,this.lastCamera);}
+  entry.imposterIndex=null;
+  batch.mesh.count=batch.entries.length;
+ }
+ writeImposter(entry,camera){
+  const batch=this.imposters;
+  if(!batch||entry.imposterIndex==null)return;
+  this.dummy.position.copy(entry.tree.position);
+  this.dummy.quaternion.copy(camera?camera.quaternion:entry.tree.quaternion);
+  this.dummy.scale.setScalar(1);
+  this.dummy.updateMatrix();
+  batch.mesh.setMatrixAt(entry.imposterIndex,this.dummy.matrix);
+  batch.mesh.instanceMatrix.needsUpdate=true;
+ }
+ // Cards only need turning when the view turns; a few degrees of lag is invisible
+ // at the distance they are shown from.
+ updateBillboards(camera){
+  if(!camera)return;
+  this.lastCamera=camera;
+  const batch=this.imposters;
+  if(!batch||!batch.entries.length)return;
+  const previous=this.billboardQuaternion;
+  if(previous&&previous.angleTo(camera.quaternion)<=.05)return;
+  if(previous)previous.copy(camera.quaternion);
+  else this.billboardQuaternion=camera.quaternion.clone();
+  for(const entry of batch.entries)this.writeImposter(entry,camera);
+ }
  activate(entry){
+  this.clearImposter(entry);
   this.remove(entry);
   entry.tree.visible=true;
  }
