@@ -34,7 +34,7 @@ export class ResourceHandler extends TreeHarvestSystem {
   this.ground=new GroundResources({root:this.root,shared,player,playerId});
   // Enemies live in their own system: species modules own behaviour and combat,
   // while the spawn registry only knows this is a creature kind.
-  this.creatures=new CreatureSystem({root:this.root,shared,player,playerId,height,radius,
+  this.creatures=new CreatureSystem({root:this.root,shared,player,playerId,height,radius,camera,
    onPlayerDamage});
   // Each kind names the adapter that owns its live objects, the category it
   // belongs to, and how long a removed one waits before its cell may put it back.
@@ -233,6 +233,23 @@ export class ResourceHandler extends TreeHarvestSystem {
    if(!c||c.state!=='standing'){this.clearTapGather();return;}
    if(c.position.distanceTo(at)>1.8)return;
    if(tool==='scythe')this.grass.cut(c,this.playerId);
+   this.clearTapGather();
+  }else if(target.type==='boar'){
+   const creature=this.creatures.get(target.id);
+   if(!creature){this.clearTapGather();return;}
+   if(creature.dead){
+    // A knife on the carcass takes it apart; anything else leaves it lying there.
+    if(tool!=='knife')return;
+    if(creature.at.distanceTo(at)>1.6)return;
+    this.creatures.harvest(creature.id,this.playerId);
+    this.clearTapGather();
+    return;
+   }
+   // One tap, one hit, and only with a weapon that actually reaches it.
+   const weapon=this.creatures.combat.weapon(tool);
+   if(!weapon){this.clearTapGather();return;}
+   if(creature.at.distanceTo(at)>weapon.reach)return;
+   this.creatures.strike(creature.id,tool);
    this.clearTapGather();
   }else this.clearTapGather();
  }
