@@ -40,6 +40,13 @@ export class TapController {
   for(const c of harvesting.creatures.creatures())consider(c.at,'boar',c.id,true);
   for(const c of harvesting.grass.clumps.values())consider(c.position,'grass',c.id,c.state==='standing'&&c.group.visible);
   for(const item of harvesting.ground.items.values())consider(item.position,'ground',item.id,item.state==='standing'&&item.group.visible);
+  // A carcass is opened by this tap or not at all: no walk-to, no remembered
+  // target, so a knife picked up later cannot loot a pig on its own.
+  if(targetType==='boar'&&harvesting.tapCarcass(targetId)){
+   harvesting.ground.select(null);
+   this.setBonfireCandidate(null);
+   return;
+  }
   harvesting.ground.select(targetType==='ground'?targetId:null);
   harvesting.tapGather(targetType==='ground'?null:targetType,targetId);
   if(!destination){

@@ -10,6 +10,9 @@ import {GroundResources} from './ground-resources.js';
 import {CreatureSystem} from '../creature/creature-system.js';
 import {WORLD_SETUP,BIOME_SETUP} from '../world/world-config.js';
 
+// How close the avatar has to stand to work a carcass with a knife.
+const CARCASS_REACH=1.6;
+
 // One density profile per face. The biome table is the only place that says how
 // many of a type a cell holds, resources and creatures alike.
 function densityProfiles(setup){
@@ -215,6 +218,17 @@ export class ResourceHandler extends TreeHarvestSystem {
  // it; sticks and stones use ground.select() and collect themselves instead.
  tapGather(type,id){this.tapTarget=type&&id?{type,id}:null;}
  clearTapGather(){this.tapTarget=null;}
+ // A carcass is opened by the tap that lands on it, and only with the knife
+ // already in hand: nothing is remembered, so drawing a knife later can never
+ // loot a pig you tapped some other time.
+ tapCarcass(id){
+  const creature=this.creatures.get(id);
+  if(!creature?.dead)return false;
+  if((this.shared?.getEquippedTool(this.playerId)||null)!=='knife')return false;
+  if(creature.at.distanceTo(this.player.position)>CARCASS_REACH)return false;
+  this.creatures.harvest(creature.id,this.playerId);
+  return true;
+ }
  gatherTapTarget(body){
   const target=this.tapTarget;
   if(!target)return;
@@ -236,16 +250,9 @@ export class ResourceHandler extends TreeHarvestSystem {
    this.clearTapGather();
   }else if(target.type==='boar'){
    const creature=this.creatures.get(target.id);
-   if(!creature){this.clearTapGather();return;}
-   if(creature.dead){
-    // A knife on the carcass takes it apart; anything else leaves it lying there,
-    // and a tap made with the wrong tool is spent rather than kept for later.
-    if(tool!=='knife'){this.clearTapGather();return;}
-    if(creature.at.distanceTo(at)>1.6)return;
-    this.creatures.harvest(creature.id,this.playerId);
-    this.clearTapGather();
-    return;
-   }
+   // A carcass is never worked from a remembered target: tapCarcass() loots it
+   // on the tap itself, so anything still holding one drops it here.
+   if(!creature||creature.dead){this.clearTapGather();return;}
    // One tap, one hit, and only with a weapon that actually reaches it.
    const weapon=this.creatures.combat.weapon(tool);
    if(!weapon){this.clearTapGather();return;}
