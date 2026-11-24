@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {BuildGrid,CELL_METERS,POST_HEIGHT,LOG_HEIGHT,COURSES,CROSS_LOGS} from './build-grid.js';
 
-const LOG_RADIUS=.14;
+const LOG_RADIUS=LOG_HEIGHT/2;
 const POST_REACH=.7;
 const GAP_REACH=.5;
 const DEREZZ_MS=260;
@@ -96,7 +96,7 @@ export class Building {
    for(let k=0;k<count;k++)this.group.add(this.crossMesh(i,j,k));
   }
   for(const [key,count] of this.grid.courses){
-   for(let k=0;k<count;k++)this.group.add(this.gapMesh(key,LOG_HEIGHT*(k+1)));
+   for(let k=0;k<count;k++)this.group.add(this.gapMesh(key,LOG_HEIGHT*(k+1.5)));
   }
  }
  restore(){
@@ -106,7 +106,7 @@ export class Building {
    if(state.kind==='post')this.grid.restorePost(state.i,state.j);
    else if(state.kind==='ground'&&state.state!=='open')this.grid.restoreGround(state.key);
    else if(state.kind==='cross')this.grid.restoreCross(state.i,state.j,state.count);
-   else if(state.kind==='course')this.grid.restoreCourse(state.key,state.count);
+   else if(state.kind==='course')this.grid.restoreCourse(state.key,Math.min(state.count??0,COURSES));
    else if(state.kind==='floor')this.grid.restoreFloor(state.i,state.j);
   }
   this.render();

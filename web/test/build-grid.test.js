@@ -1,9 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {BuildGrid,CELL_METERS,COURSES,CROSS_LOGS} from '../src/engine/build/build-grid.js';
+import {BuildGrid,CELL_METERS,POST_HEIGHT,LOG_HEIGHT,COURSES,CROSS_LOGS} from '../src/engine/build/build-grid.js';
 
 test('a cell is four metres across',()=>{
  assert.equal(CELL_METERS,4);
+});
+
+test('a wall is eight half-metre logs up to the post line',()=>{
+ assert.equal(LOG_HEIGHT,.5);
+ assert.equal(COURSES,7);
+ assert.equal((COURSES+1)*LOG_HEIGHT,POST_HEIGHT);
 });
 
 test('a floor is the ground square plus the cross in the middle',()=>{

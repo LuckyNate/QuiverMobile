@@ -5,8 +5,10 @@
 // storage lives here.
 export const CELL_METERS=4;
 export const POST_HEIGHT=4;
-export const LOG_HEIGHT=.28;
-export const COURSES=Math.round(POST_HEIGHT/LOG_HEIGHT);
+export const LOG_HEIGHT=.5;
+// The ground log is the bottom of the wall, so seven courses above it make the eight
+// half-metre logs that reach the four metre post line.
+export const COURSES=Math.round(POST_HEIGHT/LOG_HEIGHT)-1;
 export const CROSS_LOGS=2;
 
 const SIDES=['south','east','north','west'];
