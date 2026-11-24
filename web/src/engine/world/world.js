@@ -2,6 +2,7 @@ import {TerrainHeight} from './terrain-height.js';
 import {rootAddress,appendChild} from './d20-address.js';
 import {WORLD_SETUP,WORLD_SCALE,BIOME_SETUP,terrainLodAtHorizontalDistance} from './world-config.js';
 import {D20_ROOT_CORNERS,containsSphericalTriangle} from '../biome/biome-map.js';
+import {createGroundNoise} from './ground-noise.js';
 import * as THREE from 'three';
 export const ROOT_EDGE_METERS=WORLD_SETUP.rootEdgeMeters;
 export const RADIUS=WORLD_SCALE.radius;
@@ -29,6 +30,9 @@ const MORPH_FRACTION=.5;
 // own edges: those vertices are shared with a neighbour that is not bending, so
 // moving them would fold the surface over itself into a ridge along the seam.
 const MORPH_STRENGTH=1;
+// One tile of ground noise every 0.6 m, so the grain reads at walking distance and
+// washes into flat colour by the far LOD bands.
+const GROUND_NOISE_TILE_METERS=.6;
 function columnDistance(up,node){
  const dot=THREE.MathUtils.clamp(up.dot(node.center),-1,1);
  return dot<=0?Math.PI*RADIUS:Math.max(0,RADIUS*Math.sqrt(1-dot*dot)-node.reach);
@@ -162,7 +166,12 @@ export class WorldTerrain {
  constructor(scene,height=new TerrainHeight(),startPosition=new THREE.Vector3(0,0,RADIUS+1.3),zFar=5000){
   this.height=height;
   this.roots=roots.map(([a,b,c],face)=>node(a,b,c,0,null,rootAddress(face)));
-  this.material=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:1,side:THREE.DoubleSide,flatShading:true});
+  // The noise tint rides on the vertex colour, and the same noise drives the
+  // normal, so sand, grass and rock all keep their palette and gain a surface.
+  this.noise=createGroundNoise();
+  this.material=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:1,side:THREE.DoubleSide,flatShading:true,
+   map:this.noise.tint,normalMap:this.noise.normal,normalScale:new THREE.Vector2(.35,.35)});
+  this.material.color.setScalar(1.12);
   const radiusLiteral=RADIUS.toFixed(9);
   this.material.customProgramCacheKey=()=>'terrainCdlod';
   // Chunk detail and the morph that hides detail swaps must agree on one
@@ -223,8 +232,14 @@ transformed=mix(position,aParent,cdlodMorph);`);
   return n;
  }
  geometry(n,detail,seam=null){
-  const positions=[],colors=[],parents=[],bands=[],tapers=[];
+  const positions=[],colors=[],parents=[],bands=[],tapers=[],uvs=[];
   const nodes=[n.a,n.b,n.c];
+  // Ground noise is mapped in metres along the chunk's own tangent plane, so the
+  // grain keeps its size everywhere and needs no seam matching: it is noise.
+  const faceUp=n.center.clone().normalize();
+  const faceReference=Math.abs(faceUp.z)<.9?new THREE.Vector3(0,0,1):new THREE.Vector3(0,1,0);
+  const faceEast=new THREE.Vector3().crossVectors(faceUp,faceReference).normalize();
+  const faceNorth=new THREE.Vector3().crossVectors(faceEast,faceUp).normalize();
   const groundColor=BIOME_SETUP[Number(n.address.slice(1,3))].groundColor;
   const tint=groundColor===null?null:new THREE.Color(groundColor);
   const radiusAt=v=>this.height.radius(v,RADIUS);
@@ -276,6 +291,7 @@ transformed=mix(position,aParent,cdlodMorph);`);
    const target=onSeam(dir)||!parent?at:parent;
    parents.push(target.x,target.y,target.z);
    colors.push(color.r,color.g,color.b);
+   uvs.push(dir.dot(faceEast)*RADIUS/GROUND_NOISE_TILE_METERS,dir.dot(faceNorth)*RADIUS/GROUND_NOISE_TILE_METERS);
    bands.push(range.start,range.end);
    tapers.push(taperAt(dir));
   };
@@ -322,6 +338,7 @@ transformed=mix(position,aParent,cdlodMorph);`);
   g.setAttribute('aBand',new THREE.Float32BufferAttribute(bands,2));
   g.setAttribute('aTaper',new THREE.Float32BufferAttribute(tapers,1));
   g.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
+  g.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
   g.computeVertexNormals();
   return g;
  }
