@@ -73,7 +73,8 @@ export class TreeHarvestSystem {
   const {tree,visual,trunk,foliage}=this.treeVisual.create(position);
   this.root.add(tree);
   // Seeded per tree, so a pine keeps its size every time it streams back in.
-  const height=3+7*this.hash(serial*131+chunk*17+7);
+  // Large pines: 10 m up to 18 m, all of them well past the 5.5 m model.
+  const height=10+8*this.hash(serial*131+chunk*17+7);
   const scale=height/TREE_MODEL_HEIGHT;
   tree.scale.setScalar(scale);
   const saved=this.shared?.getEntity(id);
