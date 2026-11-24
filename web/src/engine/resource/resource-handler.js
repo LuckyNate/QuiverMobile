@@ -1,73 +1,131 @@
 import * as THREE from 'three';
 import {TreeHarvestSystem,TREE_CROWN_METERS} from '../flora/trees.js';
 import {Biome} from '../biome/biome.js';
-import {BiomeResourceZone} from '../biome/biome-resource-zone.js';
+import {PopulationZone} from '../population/population-zone.js';
+import {SpawnRegistry} from '../population/spawn-registry.js';
 import {ResourceDensity} from '../biome/resource-density.js';
 import {ResourceDistributor} from '../biome/resource-distributor.js';
-import {ResourceTypeRegistry} from './resource-type-registry.js';
 import {TallGrassField} from '../flora/tall-grass.js';
 import {GroundResources} from './ground-resources.js';
-import {BoarVisual} from '../creature/boar-visual.js';
+import {CreatureSystem} from '../creature/creature-system.js';
 import {WORLD_SETUP,BIOME_SETUP} from '../world/world-config.js';
 
-// Biomes request resources near the avatar. This owns the live resource bridge;
+// One density profile per face. The biome table is the only place that says how
+// many of a type a cell holds, resources and creatures alike.
+function densityProfiles(setup){
+ const profiles={};
+ for(const conf of setup)profiles['F'+String(conf.id).padStart(2,'0')]={...conf.resources,...conf.creatures};
+ return profiles;
+}
+
+// Biomes request inhabitants near the avatar. This owns the live spawn bridge;
 // TreeHarvestSystem keeps its existing visuals, contact, collection and Box3D adapter.
 export class ResourceHandler extends TreeHarvestSystem {
- constructor(scene,player,height,radius,{terrain,shared=null,playerId='local-owner',camera=null}={}){
+ constructor(scene,player,height,radius,{terrain,shared=null,playerId='local-owner',camera=null,onPlayerDamage=null}={}){
   super(scene,player,height,radius,{shared,playerId,camera,autoPopulate:false});
   if(!terrain?.roots?.length)throw new Error('ResourceHandler requires read-only D20 biome roots');
   this.chunks=[]; // Disable the old four-cell Meadows-only population loop.
   this.entryById=new Map();
   this.tapTarget=null; // {type,id} of a tapped tree or clump, gathered on arrival.
-  this.resourceTypesById=new Map();
-  this.resourceTypes=new ResourceTypeRegistry();
+  this.typeById=new Map();
+  this.spawns=new SpawnRegistry();
   this.grass=new TallGrassField({root:this.root,shared,player,playerId});
   this.grass.onDiscovery=()=>this.onDyeDiscovery?.();
   this.ground=new GroundResources({root:this.root,shared,player,playerId});
-  this.boars=new BoarVisual({root:this.root,shared,player,playerId});
-  this.resourceTypes.register('tree',{
-   spawn:(id,position,cell)=>this.spawnTree(id,position,cell),
+  // Enemies live in their own system: species modules own behaviour and combat,
+  // while the spawn registry only knows this is a creature kind.
+  this.creatures=new CreatureSystem({root:this.root,shared,player,playerId,height,radius,
+   onPlayerDamage});
+  // Each kind names the adapter that owns its live objects, the category it
+  // belongs to, and how long a removed one waits before its cell may put it back.
+  // A creature registers beside a resource without pretending to be one.
+  this.spawns.register({type:'tree',category:'resource',respawnSeconds:8,adapter:{
+   spawn:(id,position,context)=>{
+    // A collected tree keeps its entry until the cell is evicted; retire it so the
+    // same seeded slot can stand again.
+    if(this.findTree(id)?.state==='collected')this.unloadTree(id);
+    return this.spawnTree(id,position,context?.cellKey);
+   },
    unload:id=>this.unloadTree(id),
+   alive:id=>{
+    const tree=this.findTree(id);
+    return Boolean(tree)&&tree.state!=='collected';
+   },
    busy:id=>['falling','fading','flying'].includes(this.findTree(id)?.state)
-  });
-  this.resourceTypes.register('grass',{
-   spawn:(id,position,cell)=>this.grass.spawn(id,position,cell?.biome),
+  }});
+  this.spawns.register({type:'grass',category:'resource',respawnSeconds:25,adapter:{
+   spawn:(id,position,context)=>this.grass.spawn(id,position,context?.biome),
    unload:id=>this.grass.unload(id),
+   alive:id=>Boolean(this.grass.clumps.get(id)),
    busy:id=>['falling','flying'].includes(this.grass.clumps.get(id)?.state)
-  });
-  for(const type of ['stick','stone'])this.resourceTypes.register(type,{
+  }});
+  for(const type of ['stick','stone'])this.spawns.register({type,category:'resource',respawnSeconds:20,adapter:{
    spawn:(id,position)=>this.ground.spawn(type,id,position),
    unload:id=>this.ground.unload(id),
+   alive:id=>this.ground.items.has(id),
    busy:id=>this.ground.isBusy(id)
-  });
-  this.resourceTypes.register('boar',{
-   spawn:(id,position)=>this.boars.spawn(id,position),
-   unload:id=>this.boars.unload(id)
-  });
+  }});
+  this.spawns.register({type:'boar',category:'creature',respawnSeconds:60,adapter:{
+   spawn:(id,position)=>this.creatures.spawn('boar',id,position),
+   unload:id=>this.creatures.unload(id),
+   alive:id=>this.creatures.has(id)
+  }});
+  // One density table and one distributor serve every face; the seed decides all.
+  this.density=new ResourceDensity({seed:shared?.seed||'QuiverGL',profiles:densityProfiles(BIOME_SETUP)});
+  this.distributor=new ResourceDistributor(this.density);
   this.zones=terrain.roots.map(root=>{
    const id=Number(root.address.slice(1,3));
    const conf=BIOME_SETUP[id];
-   const biome=new Biome({id,name:conf.name,grassStyle:conf.grassStyle,resourceDensity:conf.resourceDensity});
-   return new BiomeResourceZone({biome,root,radius,height,host:this,cellSize:WORLD_SETUP.resourceCellMeters,
-    distributor:new ResourceDistributor(new ResourceDensity({
-     seed:shared?.seed||'QuiverGL',
-     profiles:{['F'+String(id).padStart(2,'0')]:biome.resourceDensity}
-    }))});
+   const biome=new Biome({id,name:conf.name,grassStyle:conf.grassStyle,
+    resources:conf.resources,creatures:conf.creatures,tolerances:conf.tolerances});
+   return new PopulationZone({biome,root,radius,height,host:this,cellSize:WORLD_SETUP.resourceCellMeters,
+    distributor:this.distributor});
   });
   this.terrain=terrain;
  }
- canSpawnResource(type){return this.resourceTypes.canSpawn(type);}
- resourceInTransition(id){return this.resourceTypes.isBusy(this.resourceTypesById.get(id),id);}
- spawnResource(type,id,position,cell){
-  const spawned=this.resourceTypes.spawn(type,id,position,cell);
-  if(spawned)this.resourceTypesById.set(id,type);
+ // The kinds this face asks for, in table order. Anything a face names but no
+ // adapter registered is skipped rather than spawned half-alive.
+ kindsIn(biome){
+  const kinds=[];
+  for(const type of biome.types()){
+   const kind=this.spawns.get(type);
+   if(kind&&biome.density(type)>0)kinds.push(kind);
+  }
+  return kinds;
+ }
+ canSpawn(type){return this.spawns.canSpawn(type);}
+ inTransition(id){return this.spawns.isBusy(this.typeById.get(id),id);}
+ spawn(type,id,position,context){
+  const spawned=this.spawns.spawn(type,id,position,context);
+  if(spawned)this.typeById.set(id,type);
   return spawned;
  }
- unloadResource(id){
-  const type=this.resourceTypesById.get(id);
+ unload(id){
+  const type=this.typeById.get(id);
   if(!type)return;
-  this.resourceTypes.unload(type,id);
-  this.resourceTypesById.delete(id);
+  this.spawns.unload(type,id);
+  this.typeById.delete(id);
+ }
+ // The live half of the zone's contract. Deadlines are written to the shared
+ // world, so a cell that comes back into range remembers what is still regrowing.
+ kind(type){return this.spawns.get(type);}
+ alive(type,id){
+  const kind=this.spawns.get(type);
+  return kind?kind.alive(id):false;
+ }
+ removedAt(id){
+  const at=this.shared?.getEntity(id)?.respawnAt;
+  return Number.isFinite(at)?at:null;
+ }
+ noteRemoved(id,at){
+  if(!this.shared)return;
+  const saved=this.shared.getEntity(id)||{};
+  this.shared.setEntity(id,{...saved,state:'collected',respawnAt:at});
+ }
+ respawn(type,id,position,context){
+  const saved=this.shared?.getEntity(id);
+  if(saved)this.shared.setEntity(id,{...saved,state:'standing',respawnAt:0});
+  return this.spawn(type,id,position,context);
  }
  spawnTree(id,position,chunk){
   if(this.entryById.has(id))return false;
@@ -187,6 +245,6 @@ export class ResourceHandler extends TreeHarvestSystem {
   this.player.setTool(this.shared?.getEquippedTool(this.playerId)||null);
   this.grass.update(dt,body,this.shared?.getEquippedTool(this.playerId));
   this.ground.update(dt,body);
-  this.boars.update();
+  this.creatures.update(dt,{tool:this.shared?.getEquippedTool(this.playerId)||null});
  }
 }

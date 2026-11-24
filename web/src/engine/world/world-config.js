@@ -40,11 +40,14 @@ export function terrainLodAtHorizontalDistance(meters,maxLod=WORLD_SCALE.maxTerr
 }
 // Edit each face's name, ground color, densities, and optional grass style here.
 // null groundColor uses the original altitude-driven sand/green/rock palette.
-// Density units: resources per 32 m resource cell, the unit the world spawns in.
+// Density units: inhabitants per 32 m resource cell, the unit the world spawns in.
 // Trees that would grow into a neighbour are pushed apart at spawn, so this figure is
 // exactly what the cell plants.
 // A fraction is a chance per cell: boar:0.7 is one boar in seven cells of ten.
-// Empty {} spawns none.
+// `resources` are harvestable, `creatures` are living inhabitants: both are seeded,
+// streamed and id-stamped by the same population system. Empty {} spawns none.
+// `tolerance` is how many of a cell's target may be missing before it replenishes;
+// the cell then refills to its target. The respawn delay is per type, not per face.
 export const STARTER_BIOME_FACE=6;
 const biomeDefinitions=[
  {name:'Face 00',groundColor:0xc26665,resources:{}},
@@ -53,7 +56,8 @@ const biomeDefinitions=[
  {name:'Face 03',groundColor:0x9bca68,resources:{}},
  {name:'Face 04',groundColor:0x58ad80,resources:{}},
  {name:'Face 05',groundColor:0x59bba9,resources:{}},
- {name:'Meadows',groundColor:null,resources:{tree:18,grass:36,stick:12,stone:8,boar:0.7}},
+ {name:'Meadows',groundColor:null,resources:{tree:18,grass:36,stick:12,stone:8},creatures:{boar:0.7},
+  tolerance:{tree:2,grass:6,stick:4,stone:2,boar:1}},
  {name:'Face 07',groundColor:0x579fcd,resources:{}},
  {name:'Face 08',groundColor:0x6477ca,resources:{}},
  {name:'Face 09',groundColor:0x956ac8,resources:{}},
@@ -70,6 +74,8 @@ const biomeDefinitions=[
 ];
 export const BIOME_SETUP=Object.freeze(biomeDefinitions.map((entry,id)=>Object.freeze({
  id,name:entry.name,groundColor:entry.groundColor,
- resourceDensity:Object.freeze({...entry.resources}),
+ resources:Object.freeze({...entry.resources}),
+ creatures:Object.freeze({...entry.creatures}),
+ tolerances:Object.freeze({...entry.tolerance}),
  grassStyle:Object.freeze({...entry.grassStyle})
 })));
