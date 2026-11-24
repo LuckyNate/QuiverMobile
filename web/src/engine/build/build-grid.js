@@ -151,6 +151,30 @@ export class BuildGrid {
   this.blown.add(key);
   this.openings.set(key,new Array(WALL_SLOTS).fill(DOOR));
  }
+ // Taking whole material back out of a partial build. Only a log that is still whole
+ // comes back; anything cut has already become an opening and stays open.
+ removePost(i,j){return this.posts.delete(BuildGrid.post(i,j));}
+ removeGround(key){return this.ground.delete(key);}
+ takeCourse(key){
+  const count=this.coursesAt(key);
+  if(count<=0)return false;
+  if(count===1)this.courses.delete(key);
+  else this.courses.set(key,count-1);
+  return true;
+ }
+ takeCross(i,j){
+  const key=this.cellKey(i,j),count=this.crossLogs(i,j);
+  if(count<=0)return false;
+  if(count===1)this.cross.delete(key);
+  else this.cross.set(key,count-1);
+  return true;
+ }
+ // Taking material back can undo a finished floor.
+ unfloor(i,j){
+  if(!this.isFloored(i,j)||this.readyToFloor(i,j))return false;
+  this.floored.delete(this.cellKey(i,j));
+  return true;
+ }
  restorePost(i,j){this.posts.add(BuildGrid.post(i,j));}
  restoreGround(key){this.ground.add(key);}
  restoreCross(i,j,count=CROSS_LOGS){this.cross.set(this.cellKey(i,j),count);}
