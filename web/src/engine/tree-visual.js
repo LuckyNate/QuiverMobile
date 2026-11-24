@@ -22,6 +22,8 @@ export class TreeVisual {
   this.imposterMaterial=null;
   this.imposters=null;
   this.billboardQuaternion=null;
+  this.billboardMatrix=new THREE.Matrix4();
+  this.billboardUp=new THREE.Vector3();
   // The conifer GLB belongs to this resource type only; trees can spawn before it loads.
   new GLTFLoader().load(import.meta.env.BASE_URL+'conifer.glb',gltf=>{
    const trunk=gltf.scene.getObjectByName('Trunk');
@@ -59,9 +61,10 @@ export class TreeVisual {
   });
   if(!sprite)return;
   const {texture,size}=sprite;
-  // The plane's bottom edge sits on the trunk's base so a card plants like a tree.
+  // The plane's bottom edge sits a few centimetres below the trunk's base so no
+  // hairline of ground shows through where the terrain wobbles under it.
   const geometry=new THREE.PlaneGeometry(size.x*1.04,size.y*1.04);
-  geometry.translate(0,size.y*.52,0);
+  geometry.translate(0,size.y*.52-.06,0);
   this.imposterGeometry=geometry;
   this.imposterMaterial=new THREE.MeshBasicMaterial({map:texture,transparent:true,alphaTest:.4,
    depthWrite:true,side:THREE.DoubleSide});
@@ -154,7 +157,15 @@ export class TreeVisual {
   const batch=this.imposters;
   if(!batch||entry.imposterIndex==null)return;
   this.dummy.position.copy(entry.tree.position);
-  this.dummy.quaternion.copy(camera?camera.quaternion:entry.tree.quaternion);
+  if(camera){
+   // Yaw only. Copying the camera's whole rotation tips the card back whenever
+   // the view looks down, which lifts its base off the ground.
+   // The trunk's own up at that spot on the planet, so a card leans exactly
+   // where the tree it replaces stands.
+   this.billboardUp.set(0,1,0).applyQuaternion(entry.tree.quaternion);
+   this.billboardMatrix.lookAt(camera.position,entry.tree.position,this.billboardUp);
+   this.dummy.quaternion.setFromRotationMatrix(this.billboardMatrix);
+  }else this.dummy.quaternion.copy(entry.tree.quaternion);
   this.dummy.scale.setScalar(1);
   this.dummy.updateMatrix();
   batch.mesh.setMatrixAt(entry.imposterIndex,this.dummy.matrix);
