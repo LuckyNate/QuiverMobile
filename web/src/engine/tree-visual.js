@@ -114,6 +114,7 @@ export class TreeVisual {
  }
  remove(entry){
   this.clearImposter(entry);
+  this.endModelFade(entry);
   for(const record of entry.renderInstances||[]){
    const batch=record.batch,last=batch.entries.pop();
    if(last!==record){batch.entries[record.index]=last;last.index=record.index;this.setInstanceTransform(last);}
@@ -174,9 +175,49 @@ export class TreeVisual {
   batch.mesh.setMatrixAt(entry.imposterIndex,this.dummy.matrix);
   batch.mesh.instanceMatrix.needsUpdate=true;
  }
+ // The model eases in as a tree approaches the billboard distance. The card stays
+ // put until the model is at full strength, so neither form arrives in one frame.
+ setModelAlpha(entry,alpha){
+  if(alpha>=.999){
+   this.setVisible(entry,true);
+   this.endModelFade(entry);
+   return;
+  }
+  // A tree out past the billboard distance keeps its card and no per-tree material.
+  if(alpha<=0){
+   this.setVisible(entry,false);
+   this.endModelFade(entry);
+   return;
+  }
+  this.setVisible(entry,false);
+  if(!entry.fading){
+   entry.fading=true;
+   // The shared trunk material is fading for one tree only, so it gets a copy.
+   if(entry.trunk.material===this.trunkMaterial)entry.trunk.material=this.trunkMaterial.clone();
+   entry.trunk.material.transparent=true;
+   entry.foliage.material.transparent=true;
+  }
+  entry.tree.visible=true;
+  entry.trunk.material.opacity=alpha;
+  entry.foliage.material.opacity=alpha;
+ }
+ endModelFade(entry){
+  if(!entry.fading)return;
+  entry.fading=false;
+  entry.tree.visible=false;
+  this.restoreModelOpacity(entry);
+ }
+ restoreModelOpacity(entry){
+  if(entry.trunk.material!==this.trunkMaterial){
+   entry.trunk.material.opacity=1;
+   entry.trunk.material.transparent=false;
+  }
+  entry.foliage.material.opacity=1;
+ }
  hide(entry){
   this.setVisible(entry,false);
   this.clearImposter(entry);
+  this.endModelFade(entry);
   entry.tree.visible=false;
  }
  // Cards only need turning when the view turns; a few degrees of lag is invisible

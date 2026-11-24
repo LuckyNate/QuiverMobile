@@ -10,11 +10,12 @@ import {TreeContact} from './engine/tree-contact.js';
 import {TreeLifecycle} from './engine/tree-lifecycle.js';
 import {TreePopulation} from './engine/tree-population.js';
 
-// Past this distance a tree is a flat sprite instead of a model. Measured from the
-// camera, because that is what decides how big it looks on screen, and swapped
-// outright the way a Doom billboard is: no blend, no ghost.
+// Past 30 m a tree is a flat sprite. The moment one crosses inside that distance
+// its model starts fading up on a clock rather than with distance, so walking past
+// a line does not snap anything on. The card stays behind it until it is solid.
+// Measured from the camera, because that is what decides how big it looks on screen.
 const BILLBOARD_METERS=30;
-const BILLBOARD_SQUARED=BILLBOARD_METERS**2;
+const MODEL_FADE_SECONDS=.75;
 
 // All player/world mutations use stable IDs. Only Meadows is populated now.
 export class TreeHarvestSystem {
@@ -70,7 +71,7 @@ export class TreeHarvestSystem {
   const state=saved&&saved.state!=='standing'?'collected':'standing';
   tree.visible=state==='standing';
   const object=this.objects.spawn(new Conifer({id,position:position.toArray(),state}));
-  const entry={id,object,chunk,serial,tree,visual,trunk,foliage,at:position,state,hits:0,progress:0,ownerId:null,respawnTime:0,bumpCooldown:0};
+  const entry={id,object,chunk,serial,tree,visual,trunk,foliage,at:position,state,hits:0,progress:0,ownerId:null,respawnTime:0,bumpCooldown:0,modelFade:0};
   this.trees.push(entry);
   this.treeVisual.attach(entry);
   return entry;
@@ -108,9 +109,11 @@ export class TreeHarvestSystem {
    if(t.state==='standing'){
     if(!this.renderEnabled||!visible)this.treeVisual.hide(t);
     else{
-     const near=t.at.distanceToSquared(eye)<=BILLBOARD_SQUARED;
-     this.treeVisual.setVisible(t,near);
-     this.treeVisual.setImposter(t,!near,this.camera);
+     const metres=Math.sqrt(t.at.distanceToSquared(eye));
+     const fade=metres<=BILLBOARD_METERS?Math.min(1,(t.modelFade||0)+dt/MODEL_FADE_SECONDS):0;
+     t.modelFade=fade;
+     this.treeVisual.setModelAlpha(t,fade);
+     this.treeVisual.setImposter(t,fade<1,this.camera);
     }
    }else{
     this.treeVisual.clearImposter(t);
