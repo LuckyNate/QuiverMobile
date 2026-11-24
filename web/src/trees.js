@@ -12,7 +12,7 @@ import {TreePopulation} from './engine/tree-population.js';
 
 // Past this distance a tree is one camera-facing card instead of a trunk, a
 // canopy and a cap; nearer than it, nothing changes.
-const IMPOSTER_METERS=45;
+const IMPOSTER_METERS=20;
 const IMPOSTER_SQUARED=IMPOSTER_METERS**2;
 
 // All player/world mutations use stable IDs. Only Meadows is populated now.
