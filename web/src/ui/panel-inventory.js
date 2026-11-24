@@ -31,7 +31,7 @@ export const panelInventory={
   this.inventoryTabBar=document.createElement('div');
   this.inventoryTabBar.style.cssText='display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap';
   this.inventoryTabContents=document.createElement('div');
-  const toolsPane=document.createElement('div'),resourcesPane=document.createElement('div'),dyePane=document.createElement('div'),gearPane=document.createElement('div');
+  const toolsPane=document.createElement('div'),weaponsPane=document.createElement('div'),resourcesPane=document.createElement('div'),dyePane=document.createElement('div'),gearPane=document.createElement('div');
   const makeGrid=()=>{
    const grid=document.createElement('div');
    grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px';
@@ -63,6 +63,21 @@ export const panelInventory={
    this.slots.set(id,{slot,name,quantity,isTool});
   }
   toolsPane.append(toolsGrid);
+  // Nothing weapon-shaped is defined yet (GEAR_RECIPES is empty), so the tab
+  // holds empty slots instead of inventing items to fill them with.
+  const weaponsGrid=makeGrid();
+  for(const id of ['weapon-1','weapon-2','weapon-3','weapon-4']){
+   const slot=document.createElement('div');
+   slot.style.cssText='min-height:64px;padding:8px;border:1px solid #526477;border-radius:5px;display:flex;flex-direction:column;justify-content:center;gap:4px;background:#172430';
+   const name=document.createElement('strong');name.textContent='Empty';
+   const quantity=document.createElement('span');quantity.style.fontSize='12px';quantity.textContent='No weapon';
+   slot.append(name,quantity);
+   weaponsGrid.append(slot);
+   this.slots.set(id,{slot,name,quantity,isTool:false});
+  }
+  const weaponsHint=document.createElement('p');
+  weaponsHint.textContent='No weapons can be crafted yet.';
+  weaponsPane.append(weaponsHint,weaponsGrid);
   resourcesPane.append(resourcesGrid);
   const dyeGrid=document.createElement('div');
   dyeGrid.style.cssText='display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:3px;max-width:420px';
@@ -80,6 +95,7 @@ export const panelInventory={
   dyePane.append(dyeHint,dyeGrid);
   this.bottom.content.append(this.inventoryTabBar,this.inventoryTabContents);
   this.registerInventoryTab('tools','Tools',toolsPane);
+  this.registerInventoryTab('weapons','Weapons',weaponsPane);
   this.registerInventoryTab('resources','Resources',resourcesPane);
   this.registerInventoryTab('dyes','Dyes',dyePane);
   this.makeGear(gearPane);
@@ -117,6 +133,7 @@ export const panelInventory={
    }
    else if(id==='sticks'||id==='stones')entry.quantity.textContent='Count: '+(inventory[id]||0);
    else if(entry.isTool)continue;
+   else if(id.startsWith('weapon-'))entry.quantity.textContent='No weapon';
    else entry.quantity.textContent='Not acquired';
   }
  }
