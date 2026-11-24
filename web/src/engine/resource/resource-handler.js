@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {TreeHarvestSystem} from '../flora/trees.js';
+import {TreeHarvestSystem,TREE_CROWN_METERS} from '../flora/trees.js';
 import {Biome} from '../biome/biome.js';
 import {BiomeResourceZone} from '../biome/biome-resource-zone.js';
 import {ResourceDensity} from '../biome/resource-density.js';
@@ -73,6 +73,15 @@ export class ResourceHandler extends TreeHarvestSystem {
   if(this.entryById.has(id))return false;
   const record=this.shared?.getEntity(id);
   if(record&&record.state!=='standing')return false;
+  // Pines respect each other: two crowns may meet, but a trunk never grows into
+  // another tree's canopy, so a seeded candidate too close to one already standing
+  // is dropped rather than planted inside it.
+  const crown=TREE_CROWN_METERS*this.sizeOf(id).scale;
+  for(const other of this.trees){
+   if(other.state==='collected')continue;
+   const gap=crown+TREE_CROWN_METERS*other.scale;
+   if(other.at.distanceToSquared(position)<gap*gap)return false;
+  }
   const entry=this.makeTree(chunk,0,position,id);
   this.entryById.set(id,entry);
   return true;

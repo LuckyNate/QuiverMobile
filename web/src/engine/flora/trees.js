@@ -25,6 +25,9 @@ const TREE_MODEL_HEIGHT=5.5;
 // pines stand near 6.5 m and the extremes are rare rather than evenly spread.
 const TREE_HEIGHT_MEAN=6.5;
 const TREE_HEIGHT_SIGMA=(10-3)/6;
+// Radius of the foliage cone at the model's base height; a tree's crown is this
+// multiplied by its scale, and two crowns may touch but never grow through.
+export const TREE_CROWN_METERS=1.35;
 
 // All player/world mutations use stable IDs. Only Meadows is populated now.
 export class TreeHarvestSystem {
@@ -67,6 +70,14 @@ export class TreeHarvestSystem {
   return h>>>0;
  }
  hash(n){let x=(n+0x9e3779b9)|0;x=Math.imul(x^(x>>>16),0x21f0aaad);x=Math.imul(x^(x>>>15),0x735a2d97);return ((x^(x>>>15))>>>0)/4294967296;}
+ // A pine's height and model scale, derived from its stable id.
+ sizeOf(id){
+  const seed=this.seedOf(String(id));
+  const u1=Math.max(this.hash(seed),1e-9),u2=this.hash(seed+104729);
+  const gaussian=Math.sqrt(-2*Math.log(u1))*Math.cos(6.283185307179586*u2);
+  const height=Math.min(10,Math.max(3,TREE_HEIGHT_MEAN+TREE_HEIGHT_SIGMA*gaussian));
+  return {height,scale:height/TREE_MODEL_HEIGHT};
+ }
  // Four 32m child areas surrounding the Meadows landing site.
  location(chunk,serial){
   const angle=6.283185307179586*this.hash(serial*13+chunk*317+11);
@@ -84,13 +95,8 @@ export class TreeHarvestSystem {
   this.root.add(tree);
   // Seeded from the tree's stable id, not from chunk/serial: the streaming layer
   // passes a cell object and serial 0, which hashed to the same value for every
-  // tree and made a whole wood one height. Two hashes feed Box-Muller so the size
-  // lands on the bell curve instead of a flat band, and is clamped to 3 m - 10 m.
-  const seed=this.seedOf(String(id));
-  const u1=Math.max(this.hash(seed),1e-9),u2=this.hash(seed+104729);
-  const gaussian=Math.sqrt(-2*Math.log(u1))*Math.cos(6.283185307179586*u2);
-  const height=Math.min(10,Math.max(3,TREE_HEIGHT_MEAN+TREE_HEIGHT_SIGMA*gaussian));
-  const scale=height/TREE_MODEL_HEIGHT;
+  // tree and made a whole wood one height.
+  const {scale}=this.sizeOf(id);
   tree.scale.setScalar(scale);
   const saved=this.shared?.getEntity(id);
   const state=saved&&saved.state!=='standing'?'collected':'standing';
