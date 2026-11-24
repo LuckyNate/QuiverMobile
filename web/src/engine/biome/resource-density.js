@@ -1,7 +1,8 @@
 // Read-only resource density policy; never alters terrain or its LOD.
-// Density is an expected count per square kilometer, not a per-chunk quota.
+// Density is a count per 32 m resource cell: the unit the world spawns in, so the
+// number written in the biome table is what one cell holds.
 export class ResourceDensity {
- constructor({profiles={meadows:{tree:4500,rock:500}},seed='QuiverGL'}={}){
+ constructor({profiles={meadows:{tree:18,rock:2}},seed='QuiverGL'}={}){
   this.profiles=profiles;
   this.seed=String(seed);
  }
@@ -9,7 +10,7 @@ export class ResourceDensity {
   const density=this.profiles[biome]?.[type]??0;
   return Number.isFinite(density)?Math.max(0,density):0;
  }
- expected(biome,type,areaSquareMeters){return this.get(biome,type)*Math.max(0,areaSquareMeters)/1000000;}
+ expected(biome,type){return this.get(biome,type);}
  // Fixed coordinate hash; no Math.random() or dependency on active LOD.
  sample(type,x,y,z){
   let h=2166136261;

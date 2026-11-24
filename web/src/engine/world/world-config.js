@@ -32,8 +32,8 @@ export function terrainLodAtHorizontalDistance(meters,maxLod=WORLD_SCALE.maxTerr
 }
 // Edit each face's name, ground color, densities, and optional grass style here.
 // null groundColor uses the original altitude-driven sand/green/rock palette.
-// Density units: expected resources per square kilometer of surface; the world is
-// triangles, so a cell populates half its square area (see resource-distributor.js).
+// Density units: resources per 32 m resource cell, the unit the world spawns in.
+// A fraction is a chance per cell: boar:0.7 is one boar in seven cells of ten.
 // Empty {} spawns none.
 export const STARTER_BIOME_FACE=6;
 const biomeDefinitions=[
@@ -43,7 +43,7 @@ const biomeDefinitions=[
  {name:'Face 03',groundColor:0x9bca68,resources:{}},
  {name:'Face 04',groundColor:0x58ad80,resources:{}},
  {name:'Face 05',groundColor:0x59bba9,resources:{}},
- {name:'Meadows',groundColor:null,resources:{tree:36000,grass:36000,stick:12000,stone:8000,boar:700}},
+ {name:'Meadows',groundColor:null,resources:{tree:18,grass:36,stick:12,stone:8,boar:0.7}},
  {name:'Face 07',groundColor:0x579fcd,resources:{}},
  {name:'Face 08',groundColor:0x6477ca,resources:{}},
  {name:'Face 09',groundColor:0x956ac8,resources:{}},

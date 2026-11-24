@@ -3,10 +3,9 @@
 export class ResourceDistributor {
  constructor(density){this.density=density;}
  candidates({biome,type,cellX,cellY,cellSize=32,origin,axisX,axisY,sampleSurface}){
-  // A cell is a square in the grid, but the surface inside it is triangles, and a
-  // triangle covers half its bounding rectangle. Populating the full square would
-  // count every triangle's area twice, so the area used is half of it.
-  const expected=this.density.expected(biome,type,cellSize*cellSize/2);
+  // Density is written per cell, so cellSize only places the candidates; no area
+  // conversion sits between the number in the biome table and what spawns.
+  const expected=this.density.expected(biome,type);
   const whole=Math.floor(expected),fraction=expected-whole;
   const total=whole+(this.density.sample(type,cellX,cellY,'count')<fraction?1:0);
   const results=[];
