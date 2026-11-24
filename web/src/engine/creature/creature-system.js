@@ -81,6 +81,15 @@ export class CreatureSystem {
   if(result.killed)this.kill(creature);
   return result;
  }
+ // An arrow that has arrived does its damage now. The release already paid the
+ // bow's cooldown, so the hit itself is not gated on it a second time.
+ damage(id,amount){
+  const creature=this.live.get(id);
+  if(!creature||creature.dead)return null;
+  const result=this.combat.hit(creature,amount);
+  if(result.killed)this.kill(creature);
+  return result;
+ }
  // Death is not removal: the animal falls where it stands and waits, a carcass,
  // until a knife is used on it. Only then does the population see it gone and
  // schedule its return.

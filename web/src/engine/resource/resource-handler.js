@@ -8,6 +8,9 @@ import {ResourceDistributor} from '../biome/resource-distributor.js';
 import {TallGrassField} from '../flora/tall-grass.js';
 import {GroundResources} from './ground-resources.js';
 import {CreatureSystem} from '../creature/creature-system.js';
+import {HealthPips} from '../creature/health-pip.js';
+import {ArrowSystem} from '../combat/arrows.js';
+import {BOW,planShot} from '../combat/arrow.js';
 import {WORLD_SETUP,BIOME_SETUP} from '../world/world-config.js';
 
 // How close the avatar has to stand for a tap to reach what it landed on.
@@ -38,6 +41,15 @@ export class ResourceHandler extends TreeHarvestSystem {
   // while the spawn registry only knows this is a creature kind.
   this.creatures=new CreatureSystem({root:this.root,shared,player,playerId,height,radius,camera,
    onPlayerDamage});
+  // Arrows belong to the shot: they exist between release and arrival, and the
+  // hit is decided by the release, not by where the animal has run to since.
+  this.arrows=new ArrowSystem({root:this.root,onArrive:(plan,id)=>{
+   if(plan.hit)this.creatures.damage(id,this.creatures.combat.damage('bow'));
+  }});
+  // How far the string is back, over the avatar's head. Purely a drawing of the
+  // live draw; nothing reads it.
+  this.drawGauge=new HealthPips({root:this.root,camera,lift:1.6,fill:0xd9a63a});
+  this.bowDraw=null;
   // Each kind names the adapter that owns its live objects, the category it
   // belongs to, and how long a removed one waits before its cell may put it back.
   // A creature registers beside a resource without pretending to be one.
@@ -245,11 +257,41 @@ export class ResourceHandler extends TreeHarvestSystem {
    return true;
   }
   // A living boar takes one hit from whatever weapon is in hand and in reach.
+  // The bow never does: it only looses an arrow when the string is let go.
   const weapon=this.creatures.combat.weapon(tool);
-  if(!weapon||creature.at.distanceTo(at)>weapon.reach)return false;
+  if(!weapon||weapon.ranged||creature.at.distanceTo(at)>weapon.reach)return false;
   this.creatures.strike(creature.id,tool);
   return true;
  }
+ // Pressing an animal with the bow in hand draws the string. Beyond the bow's
+ // range it is not raised at all, so there is nothing to release.
+ drawBow(id,now=Date.now()){
+  if(this.bowDraw)return null;
+  if(this.shared?.getEquippedTool(this.playerId)!=='bow')return null;
+  const creature=this.creatures.get(id);
+  if(!creature||creature.dead)return null;
+  if(creature.at.distanceTo(this.player.position)>BOW.range)return null;
+  this.bowDraw={id,started:now};
+  return this.bowDraw;
+ }
+ // Letting go is the whole aim: how long the string was held is how far the arrow
+ // carries, so an early release drops short and a long one flies past.
+ releaseBow(hold=null,now=Date.now()){
+  const draw=this.bowDraw;
+  this.bowDraw=null;
+  if(!draw)return {fired:false,reason:'none'};
+  const creature=this.creatures.get(draw.id);
+  if(!creature||creature.dead)return {fired:false,reason:'gone'};
+  const seconds=hold??(now-draw.started)/1000;
+  const from=this.player.position;
+  const plan=planShot({from,to:creature.at,up:from.clone().normalize(),hold:seconds});
+  if(!plan.fired)return plan;
+  const swing=this.creatures.combat.strike({actorId:this.playerId,weapon:'bow',target:null,now});
+  if(!swing.swing)return {fired:false,reason:'cooldown'};
+  this.arrows.fire(plan,draw.id);
+  return plan;
+ }
+ cancelDraw(){this.bowDraw=null;}
  update(dt,body=null){
   const streamRadius=this.terrain.resourceStreamRadius();
   for(const zone of this.zones)zone.update(this.player.position,streamRadius);
@@ -259,5 +301,11 @@ export class ResourceHandler extends TreeHarvestSystem {
   this.grass.update(dt,body,this.shared?.getEquippedTool(this.playerId));
   this.ground.update(dt,body);
   this.creatures.update(dt,{tool:this.shared?.getEquippedTool(this.playerId)||null});
+  this.arrows.update(dt);
+  if(this.bowDraw){
+   const held=(Date.now()-this.bowDraw.started)/1000;
+   this.drawGauge.show('bow-notch',this.player.position,Math.min(1,held/BOW.drawSeconds));
+  }else this.drawGauge.hide('bow-notch');
+  this.drawGauge.update();
  }
 }

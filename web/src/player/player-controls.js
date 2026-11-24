@@ -9,6 +9,9 @@ export class PlayerControls {
   this.x=0;this.y=0;this.lookDX=0;this.lookDY=0;
   this.swimUp=false;this.swimDown=false;this.zoom=8;
   this.onTap=null;this.onManualMove=null;this.tapStart=new Map();this.lastPinch=null;
+  // A press may be claimed by a hold gesture (drawing a bow). A claimed press
+  // fires on release or is cancelled, and never also becomes a tap.
+  this.onPress=null;this.onHoldEnd=null;this.onHoldCancel=null;
   this.onKeyDown=e=>{if(!this.enabled)return;if(e.target?.matches?.('input,textarea,[contenteditable]'))return;const key=e.key.toLowerCase();this.keys.add(key);if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(key))e.preventDefault();};
   this.onKeyUp=e=>this.keys.delete(e.key.toLowerCase());
   window.addEventListener('keydown',this.onKeyDown);
@@ -20,7 +23,8 @@ export class PlayerControls {
    const side=e.clientX<canvas.getBoundingClientRect().left+canvas.getBoundingClientRect().width/2?'move':'look';
    this.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY,originX:e.clientX,originY:e.clientY,side});
    this.lastPinch=null;
-   this.tapStart.set(e.pointerId,{x:e.clientX,y:e.clientY,moved:false,multi:this.pointers.size>1});
+   const claimed=this.onPress?.(e.clientX,e.clientY)===true;
+   this.tapStart.set(e.pointerId,{x:e.clientX,y:e.clientY,moved:false,multi:this.pointers.size>1,claimed});
    if(this.pointers.size>1)for(const tap of this.tapStart.values())tap.multi=true;
    this.assign();
   });
@@ -48,10 +52,17 @@ export class PlayerControls {
    if(!this.pointers.delete(e.pointerId))return;
    this.lastPinch=null;
    this.assign();
+   // A claimed press is a live hold: it ends on release and is cancelled by a
+   // second finger or an interrupted gesture. Nothing is kept for later.
+   if(tap?.claimed){
+    if(e.type==='pointerup'&&!tap.multi)this.onHoldEnd?.();
+    else this.onHoldCancel?.();
+    return;
+   }
    if(e.type==='pointerup'&&tap&&!tap.moved&&!tap.multi)this.onTap?.(e.clientX,e.clientY);
   };
   canvas.addEventListener('pointerup',release);canvas.addEventListener('pointercancel',release);
-  window.addEventListener('blur',()=>{this.pointers.clear();this.tapStart.clear();this.keys.clear();this.assign();this.swimUp=false;this.swimDown=false;this.lastPinch=null;});
+  window.addEventListener('blur',()=>{this.pointers.clear();this.tapStart.clear();this.keys.clear();this.assign();this.swimUp=false;this.swimDown=false;this.lastPinch=null;this.onHoldCancel?.();});
   canvas.addEventListener('wheel',e=>{e.preventDefault();if(!this.enabled)return;this.setZoom(this.zoom*Math.exp(e.deltaY*.001));},{passive:false});
   this.setZoom(8);
   this.swimButtons=document.createElement('div');
@@ -68,7 +79,7 @@ export class PlayerControls {
  }
  setEnabled(enabled){
   this.enabled=Boolean(enabled);
-  if(!this.enabled){this.keys.clear();this.pointers.clear();this.swimUp=false;this.swimDown=false;this.assign();}
+  if(!this.enabled){this.keys.clear();this.pointers.clear();this.swimUp=false;this.swimDown=false;this.assign();this.onHoldCancel?.();}
   this.swimButtons.style.visibility=this.enabled?'visible':'hidden';
  }
  assign(){

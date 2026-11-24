@@ -29,7 +29,10 @@ test('three hits put a boar down and the killing blow is reported once',()=>{
 
 test('an unknown weapon never swings and a bow outranges a club',()=>{
  assert.equal(new Combat().strike({weapon:'axe',target:target(),now:0}).swing,false);
- assert.ok(WEAPONS.club.reach<WEAPONS.bow.reach);
+ // The bow outranges a club by having a range at all: it has no reach, so it
+ // cannot damage anything on the spot.
+ assert.ok(WEAPONS.club.reach<WEAPONS.bow.range);
+ assert.equal(WEAPONS.bow.reach,undefined);
  assert.ok(WEAPONS.knife.reach<WEAPONS.club.reach);
  assert.equal(new Combat().readyIn('player','axe',0),Infinity);
 });

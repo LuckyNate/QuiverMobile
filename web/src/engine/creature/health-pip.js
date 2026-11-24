@@ -6,12 +6,12 @@ import * as THREE from 'three';
 const BAR_WIDTH=.46,BAR_HEIGHT=.055;
 const BACK_WIDTH=.5,BACK_HEIGHT=.085;
 export class HealthPips {
- constructor({root,camera,lift=1.35}={}){
+ constructor({root,camera,lift=1.35,fill=0xd23c3c}={}){
   this.root=root;this.camera=camera;this.lift=lift;
   this.backGeometry=new THREE.PlaneGeometry(BACK_WIDTH,BACK_HEIGHT);
   this.fillGeometry=new THREE.PlaneGeometry(BAR_WIDTH,BAR_HEIGHT);
   this.backMaterial=new THREE.MeshBasicMaterial({color:0x101418,depthWrite:false});
-  this.fillMaterial=new THREE.MeshBasicMaterial({color:0xd23c3c,depthWrite:false});
+  this.fillMaterial=new THREE.MeshBasicMaterial({color:fill,depthWrite:false});
   this.items=new Map();
   this.forward=new THREE.Vector3();
   this.xAxis=new THREE.Vector3();

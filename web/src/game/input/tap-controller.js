@@ -13,15 +13,22 @@ export class TapController {
    harvesting.ground.clearSelection();
   };
   playerSystem.controls.onTap=(screenX,screenY)=>this.tap(screenX,screenY);
+  // Holding on an animal with the bow draws the string; letting go looses the
+  // arrow. Out of range the press is not claimed, so nothing is drawn and
+  // nothing is loosed.
+  playerSystem.controls.onPress=(screenX,screenY)=>this.press(screenX,screenY);
+  playerSystem.controls.onHoldEnd=()=>this.harvesting.releaseBow();
+  playerSystem.controls.onHoldCancel=()=>this.harvesting.cancelDraw();
  }
- tap(screenX,screenY){
-  if(!this.isActive())return;
-  const {canvas,camera,height,radius,harvesting,sharedWorld,bonfire}=this;
+ // What the finger is on: the nearest of the things a touch can mean, else null.
+ pick(screenX,screenY){
+  if(!this.isActive())return null;
+  const {canvas,camera,harvesting}=this;
   const bounds=canvas.getBoundingClientRect();
   this.ndc.set((screenX-bounds.left)/bounds.width*2-1,1-(screenY-bounds.top)/bounds.height*2);
   this.raycaster.setFromCamera(this.ndc,camera);
-  let destination=null,best=Infinity,targetId=null,targetType=null;
-  // Trees, grass, boars and loose items all answer to the same tap: the nearest
+  let picked=null,best=Infinity;
+  // Trees, grass, boars and loose items all answer to the same touch: the nearest
   // one to the finger is what the touch is aimed at.
   const consider=(position,type,id,visible)=>{
    if(!visible)return;
@@ -31,13 +38,27 @@ export class TapController {
    const sy=(1-projected.y)*bounds.height*.5+bounds.top;
    const pixels=Math.hypot(screenX-sx,screenY-sy);
    if(pixels<Math.max(18,48/position.distanceTo(camera.position)*8)&&pixels<best){
-    best=pixels;destination=position;targetId=id;targetType=type;
+    best=pixels;picked={at:position,id,type};
    }
   };
   for(const t of harvesting.trees)consider(t.at,'tree',t.id,t.state==='standing'&&t.tree.visible);
   for(const c of harvesting.creatures.creatures())consider(c.at,'boar',c.id,true);
   for(const c of harvesting.grass.clumps.values())consider(c.position,'grass',c.id,c.state==='standing'&&c.group.visible);
   for(const item of harvesting.ground.items.values())consider(item.position,'ground',item.id,item.state==='standing'&&item.group.visible);
+  return picked;
+ }
+ // A press claims the touch only when the bow can draw at that animal.
+ press(screenX,screenY){
+  const picked=this.pick(screenX,screenY);
+  if(picked?.type!=='boar')return false;
+  return this.harvesting.drawBow(picked.id)!==null;
+ }
+ tap(screenX,screenY){
+  if(!this.isActive())return;
+  const {height,radius,harvesting,sharedWorld,bonfire}=this;
+  const picked=this.pick(screenX,screenY);
+  const targetId=picked?.id??null,targetType=picked?.type??null;
+  let destination=picked?.at??null;
   // Touch input does its work on the spot: the tap acts now, with what is in
   // hand, if the avatar is already close enough. Nothing here is remembered for
   // a later frame, walk or tool swap to set off. A tap out of reach just walks
@@ -65,7 +86,7 @@ export class TapController {
    destination=point;
   }
   if(!targetId&&sharedWorld.getEquippedTool('local-owner')==='hammer'&&!bonfire.exists&&
-     (sharedWorld.getInventory('local-owner').logs||0)>=12){
+   (sharedWorld.getInventory('local-owner').logs||0)>=12){
    this.setBonfireCandidate(destination.clone());
   }else this.setBonfireCandidate(null);
   this.playerSystem.setDestination(destination);

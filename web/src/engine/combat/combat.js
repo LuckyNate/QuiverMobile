@@ -3,10 +3,14 @@
 // per hit, so a level 1 club does 1 hp and a boar's three points cost three hits.
 // Movement, senses and rendering live in the creature modules; nothing here knows
 // what a boar is.
+import {BOW} from './arrow.js';
+
 export const WEAPONS=Object.freeze({
  club:{level:1,reach:2.2,cooldown:.6},
  knife:{level:1,reach:1.2,cooldown:.4},
- bow:{level:1,reach:24,cooldown:.9}
+ // The bow has range instead of reach: it never hits on the spot. Its shots are
+ // loosed on release, so the cooldown belongs to letting the string go.
+ bow:{level:1,range:BOW.range,cooldown:.9,ranged:true}
 });
 
 export class Combat {
