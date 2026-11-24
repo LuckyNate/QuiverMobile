@@ -10,12 +10,11 @@ import {TreeContact} from './engine/tree-contact.js';
 import {TreeLifecycle} from './engine/tree-lifecycle.js';
 import {TreePopulation} from './engine/tree-population.js';
 
-// Meshes fade out over 17-20 m while the card arrives over the first half of that
-// band and is at full strength from 19 m, before the model is gone. The card is
-// present for the whole fade, so no tree ever looks washed out or vanishes on a
-// frame where both forms are faint.
-const MESH_FADE_FROM=17,MESH_FADE_TO=20;
-const CARD_FADE_FROM=17,CARD_FADE_TO=19;
+// Past this distance a tree is a flat sprite instead of a model. Measured from the
+// camera, because that is what decides how big it looks on screen, and swapped
+// outright the way a Doom billboard is: no blend, no ghost.
+const BILLBOARD_METERS=30;
+const BILLBOARD_SQUARED=BILLBOARD_METERS**2;
 
 // All player/world mutations use stable IDs. Only Meadows is populated now.
 export class TreeHarvestSystem {
@@ -103,19 +102,18 @@ export class TreeHarvestSystem {
  update(dt,body=null){
   // Visibility is always centered on the avatar, never the camera.
   // Keep trees and their simulation alive outside the render range.
+  const eye=this.camera?.position||this.player.position;
   for(const t of this.trees){
    const visible=withinSceneryRange(t.at,this.player.position);
    if(t.state==='standing'){
     if(!this.renderEnabled||!visible)this.treeVisual.hide(t);
     else{
-     const metres=Math.sqrt(t.at.distanceToSquared(this.player.position));
-     const card=Math.min(1,Math.max(0,(metres-CARD_FADE_FROM)/(CARD_FADE_TO-CARD_FADE_FROM)));
-     const mesh=Math.min(1,Math.max(0,(MESH_FADE_TO-metres)/(MESH_FADE_TO-MESH_FADE_FROM)));
-     this.treeVisual.setTreeFade(t,mesh,card,this.camera);
+     const near=t.at.distanceToSquared(eye)<=BILLBOARD_SQUARED;
+     this.treeVisual.setVisible(t,near);
+     this.treeVisual.setImposter(t,!near,this.camera);
     }
    }else{
     this.treeVisual.clearImposter(t);
-    this.treeVisual.releaseCard(t);
     if(t.state==='falling'||t.state==='fading')t.tree.visible=this.renderEnabled&&visible;
    }
    if(t.state==='flying')t.trunk.visible=this.renderEnabled&&withinSceneryRange(t.trunk.position,this.player.position);
