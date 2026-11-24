@@ -6,6 +6,12 @@ import {pendingCampTeleport} from '../engine/camp/camp-respawn.js';
 
 // GTA-style third-person navigation adapted to radial planetary gravity.
 // Physics in main.js remains the sole authority for world-space position.
+
+// A tap walks the avatar to a spot. When the ground refuses to let it climb (a
+// sheer bank, a ledge lip, a shore) the goal would stay set and the avatar would
+// march into it forever, so a walk that stops closing the gap is abandoned.
+const WALK_ARRIVE=.65,WALK_PROGRESS=.35,WALK_STALL_SECONDS=1.2,WALK_LIMIT_SECONDS=60;
+
 export class PlayerSystem {
  constructor(scene,camera,canvas,radius,report){
   this.position=new THREE.Vector3(0,0,radius+2);
@@ -18,12 +24,16 @@ export class PlayerSystem {
   this.viewZoom=8;this.cameraPosition=null;this.lastTurn=0;
   this.cameraCollision=null;
   this.walkDestination=null;
+  this.walkBest=Infinity;this.walkStall=0;this.walkTime=0;
   this.commandedSpeed=0;
  }
  // Physics resolution can hold the capsule below the speed the stick asked for;
  // the gait reads the command so the run starts when the player pushes the stick.
  setCommandedSpeed(speed){this.commandedSpeed=speed;}
- setDestination(position){this.walkDestination=position.clone();}
+ setDestination(position){
+  this.walkDestination=position.clone();
+  this.walkBest=Infinity;this.walkStall=0;this.walkTime=0;
+ }
  cancelDestination(){this.walkDestination=null;}
  setCameraCollision(height,radius){
   this.cameraCollision=new CameraCollision(height,radius);
@@ -58,7 +68,12 @@ export class PlayerSystem {
    const delta=this.walkDestination.clone().sub(this.position);
    delta.addScaledVector(up,-delta.dot(up));
    const distance=delta.length();
-   if(distance<.65)this.walkDestination=null;
+   this.walkTime+=dt;
+   if(distance<this.walkBest-WALK_PROGRESS){this.walkBest=distance;this.walkStall=0;}
+   else this.walkStall+=dt;
+   // Arrived, blocked, or walking far longer than any tap should last.
+   if(distance<WALK_ARRIVE||this.walkStall>WALK_STALL_SECONDS||this.walkTime>WALK_LIMIT_SECONDS)
+    this.walkDestination=null;
    else auto=delta.multiplyScalar(Math.min(1,distance/2)/distance);
   }
   // Movement uses the two-handed camera-relative stick (or keyboard).
