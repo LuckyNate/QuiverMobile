@@ -23,7 +23,7 @@ export class Building {
   this.wood=new THREE.MeshStandardMaterial({color:0x745039,roughness:1});
   this.postGeometry=new THREE.CylinderGeometry(LOG_RADIUS,LOG_RADIUS,POST_HEIGHT,6);
   this.beamGeometry=new THREE.CylinderGeometry(LOG_RADIUS,LOG_RADIUS,CELL_METERS,6);
-  // The flooring that fills a finished cell, laid on top of its log frame.
+  // The flooring that fills a finished cell, laid on its single log layer.
   this.deckGeometry=new THREE.BoxGeometry(CELL_METERS-LOG_HEIGHT,.08,CELL_METERS-LOG_HEIGHT);
   this.mode=false;
   this.anchor=null;
@@ -112,20 +112,19 @@ export class Building {
   }
   return pieces;
  }
- // The cross lies between the ground ring rather than through it, and the second log
- // rests on the first, so the frame stacks instead of intersecting.
+ // The floor is one layer deep: the whole frame lies flat at ground level and the
+ // cross simply passes through the ring where they meet. It is a game, not carpentry.
  crossMesh(i,j,index){
-  const u=i*CELL_METERS,v=j*CELL_METERS,mid=CELL_METERS/2,inset=LOG_RADIUS;
-  const lift=index===0?LOG_HEIGHT/2:LOG_HEIGHT*1.5;
+  const u=i*CELL_METERS,v=j*CELL_METERS,mid=CELL_METERS/2,lift=LOG_HEIGHT/2;
   return index===0
-   ?this.meshBetween(this.pointAt(u+inset,v+mid,lift),this.pointAt(u+CELL_METERS-inset,v+mid,lift))
-   :this.meshBetween(this.pointAt(u+mid,v+inset,lift),this.pointAt(u+mid,v+CELL_METERS-inset,lift));
+   ?this.meshBetween(this.pointAt(u,v+mid,lift),this.pointAt(u+CELL_METERS,v+mid,lift))
+   :this.meshBetween(this.pointAt(u+mid,v,lift),this.pointAt(u+mid,v+CELL_METERS,lift));
  }
- // The deck that fills a floored cell, sitting on the completed frame.
+ // The deck that fills a floored cell, sitting on that single layer.
  floorDeck(i,j){
   const up=this.anchor.clone().normalize();
   const mesh=new THREE.Mesh(this.deckGeometry,this.wood);
-  mesh.position.copy(this.pointAt(i*CELL_METERS+CELL_METERS/2,j*CELL_METERS+CELL_METERS/2,LOG_HEIGHT*2+.05));
+  mesh.position.copy(this.pointAt(i*CELL_METERS+CELL_METERS/2,j*CELL_METERS+CELL_METERS/2,LOG_HEIGHT+.04));
   mesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(this.east,up,this.north));
   return mesh;
  }
