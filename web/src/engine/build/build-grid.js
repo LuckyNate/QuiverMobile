@@ -1,24 +1,28 @@
-// Camp building grid: corner posts on a 4 m lattice, logs spanning the gaps between
-// them, and a four-log floor for every cell whose four posts stand. A gap left empty
-// is a doorway or a window, so openings need no separate mode. One storey. Pure
-// logic: no rendering, input or storage lives here.
+// Camp building grid. A 4 m cell is floored by four logs laid in a square with a
+// cross in the middle, framed by upright corner posts, and walled by stacking log
+// courses between those posts up to four metres. The floor is the material itself,
+// so it exists the moment the sixth log is down. Pure logic: no rendering or
+// storage lives here.
 export const CELL_METERS=4;
 export const POST_HEIGHT=4;
 export const LOG_HEIGHT=.28;
-export const FLOOR_LOGS=4;
+export const COURSES=Math.round(POST_HEIGHT/LOG_HEIGHT);
+export const CROSS_LOGS=2;
 
 const SIDES=['south','east','north','west'];
 
 export class BuildGrid {
  constructor(){
   this.posts=new Set();
-  this.walls=new Set();
+  this.ground=new Set();
+  this.courses=new Map();
+  this.cross=new Map();
   this.floored=new Set();
  }
  static post(i,j){return 'p:'+i+':'+j;}
- // A gap key names the two posts it spans, so the cells either side share it and a
- // wall is never paid for twice.
- static wall(i,j,side){
+ // A gap key names the two posts it spans, so the cells either side share the ground
+ // log and the wall built on it.
+ static gap(i,j,side){
   switch(side){
    case 'south':return 'w:h:'+i+':'+j;
    case 'north':return 'w:h:'+i+':'+(j+1);
@@ -26,42 +30,70 @@ export class BuildGrid {
    default:return 'w:v:'+(i+1)+':'+j;
   }
  }
+ static endsOf(key){
+  const [kind,i,j]=key.split(':').slice(1);
+  return kind==='h'?[[Number(i),Number(j)],[Number(i)+1,Number(j)]]
+   :[[Number(i),Number(j)],[Number(i),Number(j)+1]];
+ }
+ // The cells a gap edges: laying a ground log there can finish either floor.
+ static cellsOf(key){
+  const [kind,i,j]=key.split(':').slice(1);
+  return kind==='h'?[[Number(i),Number(j)-1],[Number(i),Number(j)]]
+   :[[Number(i)-1,Number(j)],[Number(i),Number(j)]];
+ }
  cornersOf(i,j){return [[i,j],[i+1,j],[i+1,j+1],[i,j+1]];}
- sidesOf(i,j){return SIDES.map(side=>({side,key:BuildGrid.wall(i,j,side)}));}
- hasPost(i,j){return this.posts.has(BuildGrid.post(i,j));}
- // Four posts make the rectangle, and the floor follows from the frame rather than
- // from the walls, so a cell can be floored before it is walled.
- framed(i,j){return this.cornersOf(i,j).every(([x,y])=>this.hasPost(x,y));}
+ sidesOf(i,j){return SIDES.map(side=>({side,key:BuildGrid.gap(i,j,side)}));}
  cellKey(i,j){return i+','+j;}
+ hasPost(i,j){return this.posts.has(BuildGrid.post(i,j));}
+ framed(i,j){return this.cornersOf(i,j).every(([x,y])=>this.hasPost(x,y));}
  isFloored(i,j){return this.floored.has(this.cellKey(i,j));}
- wallBuilt(key){return this.walls.has(key);}
- // What a tap in the middle of this cell does next: the missing post, then the
- // floor, then nothing. Infill is never automatic, because an empty gap is wanted.
+ groundLaid(key){return this.ground.has(key);}
+ layGround(key){
+  if(this.ground.has(key))return false;
+  this.ground.add(key);
+  return true;
+ }
+ crossLogs(i,j){return this.cross.get(this.cellKey(i,j))||0;}
+ addCross(i,j){
+  const key=this.cellKey(i,j),count=this.crossLogs(i,j);
+  if(count>=CROSS_LOGS)return false;
+  this.cross.set(key,count+1);
+  return true;
+ }
+ // Four ground logs and the cross are the floor; nothing else is added on top.
+ readyToFloor(i,j){
+  return this.sidesOf(i,j).every(({key})=>this.ground.has(key))&&this.crossLogs(i,j)>=CROSS_LOGS;
+ }
+ refreshFloor(i,j){
+  if(this.isFloored(i,j)||!this.readyToFloor(i,j))return false;
+  this.floored.add(this.cellKey(i,j));
+  return true;
+ }
+ coursesAt(key){return this.courses.get(key)||0;}
+ // A course rests on the posts at both ends, so they have to stand first, and the
+ // stack stops at the post height: one storey.
+ wallsReady(key){return BuildGrid.endsOf(key).every(([x,y])=>this.hasPost(x,y));}
+ addCourse(key){
+  const count=this.coursesAt(key);
+  if(count>=COURSES||!this.wallsReady(key))return false;
+  this.courses.set(key,count+1);
+  return true;
+ }
+ // What a tap in the middle of the cell asks for next: the ground square, then the
+ // cross, then the posts. Courses are laid by tapping the gap itself.
  plan(i,j){
+  const missing=this.sidesOf(i,j).find(({key})=>!this.groundLaid(key));
+  if(missing)return {kind:'ground',key:missing.key,logs:1};
+  if(this.crossLogs(i,j)<CROSS_LOGS)return {kind:'cross',i,j,logs:1};
   if(!this.framed(i,j)){
    const [x,y]=this.cornersOf(i,j).find(([cornerX,cornerY])=>!this.hasPost(cornerX,cornerY));
    return {kind:'post',i:x,j:y,logs:1};
   }
-  if(!this.isFloored(i,j))return {kind:'floor',logs:FLOOR_LOGS};
   return null;
  }
- raisePost(i,j){
-  if(this.hasPost(i,j))return false;
-  this.posts.add(BuildGrid.post(i,j));
-  return true;
- }
- layFloor(i,j){
-  if(!this.framed(i,j)||this.isFloored(i,j))return false;
-  this.floored.add(this.cellKey(i,j));
-  return true;
- }
- raiseWall(key){
-  if(this.walls.has(key))return false;
-  this.walls.add(key);
-  return true;
- }
- openWall(key){return this.walls.delete(key);}
  restorePost(i,j){this.posts.add(BuildGrid.post(i,j));}
- restoreWall(key){this.walls.add(key);}
+ restoreGround(key){this.ground.add(key);}
+ restoreCross(i,j,count=CROSS_LOGS){this.cross.set(this.cellKey(i,j),count);}
+ restoreCourse(key,count){this.courses.set(key,count);}
  restoreFloor(i,j){this.floored.add(this.cellKey(i,j));}
 }
