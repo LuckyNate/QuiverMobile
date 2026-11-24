@@ -193,13 +193,14 @@ export class TreeVisual {
   this.setVisible(entry,false);
   if(!entry.fading){
    entry.fading=true;
-   // The shared trunk material is fading for one tree only, so it gets a copy.
+   // The trunk is held at zero opacity for the whole fade and only appears once
+   // the foliage is fully opaque; it gets a material copy so only this tree fades.
    if(entry.trunk.material===this.trunkMaterial)entry.trunk.material=this.trunkMaterial.clone();
    entry.trunk.material.transparent=true;
    entry.foliage.material.transparent=true;
   }
   entry.tree.visible=true;
-  entry.trunk.material.opacity=alpha;
+  entry.trunk.material.opacity=0;
   entry.foliage.material.opacity=alpha;
  }
  endModelFade(entry){

@@ -10,10 +10,13 @@ import {TreeContact} from './tree-contact.js';
 import {TreeLifecycle} from './tree-lifecycle.js';
 import {TreePopulation} from './tree-population.js';
 
-// Past 30 m a tree is a flat sprite. The moment one crosses inside that distance
-// its model starts fading up on a clock rather than with distance, so walking past
-// a line does not snap anything on. The card stays behind it until it is solid.
-// Measured from the camera, because that is what decides how big it looks on screen.
+// Past 30 m a tree is a flat sprite. Crossing that line starts its model fading
+// up on a clock rather than with distance, and crossing back starts it fading out
+// on the same clock, so walking past a line never snaps anything on or off. The
+// card is held for the whole transition: it stays until the model is fully opaque
+// and comes back before the model starts to fade, so neither form is ever missing
+// while the other is see-through. Measured from the camera, because that is what
+// decides how big it looks on screen.
 const BILLBOARD_METERS=30;
 const MODEL_FADE_SECONDS=.75;
 
@@ -107,10 +110,16 @@ export class TreeHarvestSystem {
   for(const t of this.trees){
    const visible=withinSceneryRange(t.at,this.player.position);
    if(t.state==='standing'){
-    if(!this.renderEnabled||!visible)this.treeVisual.hide(t);
-    else{
+    if(!this.renderEnabled||!visible){
+     // A tree that was culled comes back as a card and fades in again, instead of
+     // reappearing as a model that is already solid.
+     t.modelFade=0;
+     this.treeVisual.hide(t);
+    }else{
      const metres=Math.sqrt(t.at.distanceToSquared(eye));
-     const fade=metres<=BILLBOARD_METERS?Math.min(1,(t.modelFade||0)+dt/MODEL_FADE_SECONDS):0;
+     const target=metres<=BILLBOARD_METERS?1:0;
+     const previous=t.modelFade||0,step=dt/MODEL_FADE_SECONDS;
+     const fade=previous<target?Math.min(target,previous+step):Math.max(target,previous-step);
      t.modelFade=fade;
      this.treeVisual.setModelAlpha(t,fade);
      this.treeVisual.setImposter(t,fade<1,this.camera);
