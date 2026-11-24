@@ -1,6 +1,9 @@
 // Inventory tabs, resource and tool slots, and their refresh logic.
 import {DYE_COLORS} from '../engine/dye-palette.js';
 import {TOOL_RECIPES} from '../engine/shared-world.js';
+// Recipe ingredients read as inventory keys; species drops get a proper name.
+const RESOURCE_NAMES={pineSap:'Pine Sap'};
+const resourceName=key=>RESOURCE_NAMES[key]||key;
 export const panelInventory={
  registerInventoryTab(id,label,content){
   if(this.inventoryTabs.has(id))throw new Error('Duplicate inventory tab: '+id);
@@ -39,12 +42,12 @@ export const panelInventory={
   };
   const toolsGrid=makeGrid(),resourcesGrid=makeGrid();
   for(const [id,label,tab] of [
-   ['axe','Axe','tools'],['hammer','Hammer','tools'],['scythe','Scythe','tools'],
-   ['tool-1','Empty','tools'],['tool-2','Empty','tools'],
+   ['axe','Axe','tools'],['knife','Knife','tools'],['hammer','Hammer','tools'],['scythe','Scythe','tools'],
+   ['tool-1','Empty','tools'],
    ['logs','4 m Logs','resources'],['fibers','Fibers','resources'],['sticks','Sticks','resources'],['stones','Stones','resources'],
-   ['resource-2','Empty','resources'],['resource-3','Empty','resources']
+   ['pineSap','Pine Sap','resources'],['resource-3','Empty','resources']
   ]){
-   const isTool=id==='axe'||id==='hammer'||id==='scythe';
+   const isTool=Object.hasOwn(TOOL_RECIPES,id);
    const slot=document.createElement(isTool?'button':'div');
    if(isTool){
     slot.type='button';
@@ -124,14 +127,14 @@ export const panelInventory={
     entry.slot.style.background=active?'#20558b':crafted?'#225937':ready?'#796420':'#34383c';
     entry.slot.style.color=active?'#e3f2ff':crafted?'#d6ffe0':ready?'#fff0b3':'#b2b5b7';
     entry.slot.setAttribute('aria-pressed',String(active));
-    entry.quantity.textContent=active?'Equipped':crafted?'Tap to equip':ready?'Tap to craft':Object.entries(TOOL_RECIPES[id]).map(([item,n])=>item+' '+(inventory[item]||0)+'/'+n).join(' · ');
+    entry.quantity.textContent=active?'Equipped':crafted?'Tap to equip':ready?'Tap to craft':Object.entries(TOOL_RECIPES[id]).map(([item,n])=>resourceName(item)+' '+(inventory[item]||0)+'/'+n).join(' · ');
    }
    if(id==='logs')entry.quantity.textContent='Count: '+count+' | Strength: '+averageStrength.toFixed(2);
    else if(id==='fibers'){
     const fibers=inventory.fibers||0;
     entry.quantity.textContent='Count: '+fibers+' | Quality: '+(fibers?(inventory.fiberQuality||0)/fibers:0).toFixed(2);
    }
-   else if(id==='sticks'||id==='stones')entry.quantity.textContent='Count: '+(inventory[id]||0);
+   else if(id==='sticks'||id==='stones'||id==='pineSap')entry.quantity.textContent='Count: '+(inventory[id]||0);
    else if(entry.isTool)continue;
    else if(id.startsWith('weapon-'))entry.quantity.textContent='No weapon';
    else entry.quantity.textContent='Not acquired';

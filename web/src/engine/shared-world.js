@@ -1,6 +1,8 @@
 export const GEAR_SLOTS=Object.freeze(['head','torso','arms','hands','hips','legs','feet','left-hand','right-hand']);
 export const GEAR_RECIPES=Object.freeze({}); // Future biome armor and weapon definitions.
-export const TOOL_RECIPES={axe:{sticks:1,stones:1},hammer:{sticks:1,logs:1},scythe:{stones:3,logs:1}};
+export const TOOL_RECIPES={axe:{sticks:1,stones:1},knife:{sticks:1,stones:1,fibers:2,pineSap:1},hammer:{sticks:1,logs:1},scythe:{stones:3,logs:1}};
+// Gathered resources a species or the ground can award. Species drops add here.
+export const RESOURCE_TYPES=Object.freeze(['sticks','stones','pineSap']);
 // Host-owned save record; peers will exchange snapshots/events when networking is added.
 // Simulation and rendering remain local. No server or transport is instantiated here.
 export class SharedWorld {
@@ -76,7 +78,7 @@ export class SharedWorld {
   this.save();return true;
  }
  awardResource(id,type,count=1){
-  if(!this.players.has(id)||!['sticks','stones'].includes(type)||!Number.isSafeInteger(count)||count<1)return false;
+  if(!this.players.has(id)||!RESOURCE_TYPES.includes(type)||!Number.isSafeInteger(count)||count<1)return false;
   const previous=this.getInventory(id);
   this.inventories.set(id,{...previous,[type]:(previous[type]||0)+count});
   this.events.push({version:++this.version,type:'resource',playerId:id,resource:type,count});
