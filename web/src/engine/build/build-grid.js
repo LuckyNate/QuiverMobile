@@ -1,9 +1,9 @@
-// Camp building grid: 4 m square cells on one tangent plane, each wall shared with
-// the neighbour that also uses it. A cell is a single storey: four walls, and the
-// four floor logs it earns when no wall is missing. Any wall can be left open as a
-// doorway instead of solid, and the cell still counts as a room. Pure logic: no
-// rendering, input or storage lives here.
+// Camp building grid: corner posts on a 4 m lattice, logs spanning the gaps between
+// them, and a four-log floor for every cell whose four posts stand. A gap left empty
+// is a doorway or a window, so openings need no separate mode. One storey. Pure
+// logic: no rendering, input or storage lives here.
 export const CELL_METERS=4;
+export const POST_HEIGHT=4;
 export const LOG_HEIGHT=.28;
 export const FLOOR_LOGS=4;
 
@@ -11,54 +11,57 @@ const SIDES=['south','east','north','west'];
 
 export class BuildGrid {
  constructor(){
-  this.edges=new Set();
-  this.open=new Set();
+  this.posts=new Set();
+  this.walls=new Set();
   this.floored=new Set();
  }
- // One key per wall, shared by both cells either side of it. A wall built once is
- // never charged twice when the neighbour is started.
- static edge(i,j,side,level=0){
+ static post(i,j){return 'p:'+i+':'+j;}
+ // A gap key names the two posts it spans, so the cells either side share it and a
+ // wall is never paid for twice.
+ static wall(i,j,side){
   switch(side){
-   case 'south':return 'h:'+i+':'+j+':'+level;
-   case 'north':return 'h:'+i+':'+(j+1)+':'+level;
-   case 'west':return 'v:'+i+':'+j+':'+level;
-   default:return 'v:'+(i+1)+':'+j+':'+level;
+   case 'south':return 'w:h:'+i+':'+j;
+   case 'north':return 'w:h:'+i+':'+(j+1);
+   case 'west':return 'w:v:'+i+':'+j;
+   default:return 'w:v:'+(i+1)+':'+j;
   }
  }
- sidesOf(i,j){return SIDES.map(side=>({side,key:BuildGrid.edge(i,j,side)}));}
- state(key){
-  if(this.open.has(key))return 'open';
-  return this.edges.has(key)?'built':'missing';
- }
- // An open wall is settled, not absent: a shelter with a doorway is still a room.
- enclosed(i,j){return this.sidesOf(i,j).every(({key})=>this.state(key)!=='missing');}
+ cornersOf(i,j){return [[i,j],[i+1,j],[i+1,j+1],[i,j+1]];}
+ sidesOf(i,j){return SIDES.map(side=>({side,key:BuildGrid.wall(i,j,side)}));}
+ hasPost(i,j){return this.posts.has(BuildGrid.post(i,j));}
+ // Four posts make the rectangle, and the floor follows from the frame rather than
+ // from the walls, so a cell can be floored before it is walled.
+ framed(i,j){return this.cornersOf(i,j).every(([x,y])=>this.hasPost(x,y));}
  cellKey(i,j){return i+','+j;}
  isFloored(i,j){return this.floored.has(this.cellKey(i,j));}
- // The next wall of this cell, and the floor that arrives with the last one. A cell
- // with no wall missing is finished: building is one storey, so there is nothing
- // above it.
+ wallBuilt(key){return this.walls.has(key);}
+ // What a tap in the middle of this cell does next: the missing post, then the
+ // floor, then nothing. Infill is never automatic, because an empty gap is wanted.
  plan(i,j){
-  const missing=this.sidesOf(i,j).filter(({key})=>this.state(key)==='missing');
-  if(!missing.length)return null;
-  const closing=missing.length===1&&!this.isFloored(i,j);
-  return {edge:missing[0].key,side:missing[0].side,closing,floor:closing,logs:1+(closing?FLOOR_LOGS:0)};
+  if(!this.framed(i,j)){
+   const [x,y]=this.cornersOf(i,j).find(([cornerX,cornerY])=>!this.hasPost(cornerX,cornerY));
+   return {kind:'post',i:x,j:y,logs:1};
+  }
+  if(!this.isFloored(i,j))return {kind:'floor',logs:FLOOR_LOGS};
+  return null;
  }
- build(i,j){
-  const plan=this.plan(i,j);
-  if(!plan)return null;
-  this.edges.add(plan.edge);
-  if(plan.floor)this.floored.add(this.cellKey(i,j));
-  return plan;
+ raisePost(i,j){
+  if(this.hasPost(i,j))return false;
+  this.posts.add(BuildGrid.post(i,j));
+  return true;
  }
- // A standing wall opens into a doorway and closes again with the same touch.
- toggle(key){
-  const state=this.state(key);
-  if(state==='built'){this.edges.delete(key);this.open.add(key);return 'open';}
-  if(state==='open'){this.open.delete(key);this.edges.add(key);return 'built';}
-  this.edges.add(key);
-  return 'built';
+ layFloor(i,j){
+  if(!this.framed(i,j)||this.isFloored(i,j))return false;
+  this.floored.add(this.cellKey(i,j));
+  return true;
  }
- restore(edgeKey){if(typeof edgeKey==='string')this.edges.add(edgeKey);}
- restoreOpen(edgeKey){if(typeof edgeKey==='string')this.open.add(edgeKey);}
+ raiseWall(key){
+  if(this.walls.has(key))return false;
+  this.walls.add(key);
+  return true;
+ }
+ openWall(key){return this.walls.delete(key);}
+ restorePost(i,j){this.posts.add(BuildGrid.post(i,j));}
+ restoreWall(key){this.walls.add(key);}
  restoreFloor(i,j){this.floored.add(this.cellKey(i,j));}
 }

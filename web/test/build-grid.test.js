@@ -6,55 +6,68 @@ test('a cell is four metres across',()=>{
  assert.equal(CELL_METERS,4);
 });
 
-test('a fresh cell starts on its first wall',()=>{
+test('an empty cell asks for its first post',()=>{
  const grid=new BuildGrid();
  const plan=grid.plan(0,0);
- assert.equal(plan.closing,false);
- assert.equal(plan.floor,false);
+ assert.equal(plan.kind,'post');
  assert.equal(plan.logs,1);
+ assert.equal(grid.framed(0,0),false);
 });
 
-test('the fourth wall closes the room and lays four floor logs',()=>{
+test('four posts frame the rectangle and the floor comes next',()=>{
  const grid=new BuildGrid();
- for(let n=0;n<3;n++)grid.build(0,0);
- const closing=grid.plan(0,0);
- assert.equal(closing.closing,true);
- assert.equal(closing.floor,true);
- assert.equal(closing.logs,1+FLOOR_LOGS);
- grid.build(0,0);
+ for(const [x,y] of grid.cornersOf(0,0))assert.ok(grid.raisePost(x,y));
+ assert.ok(grid.framed(0,0));
+ const plan=grid.plan(0,0);
+ assert.equal(plan.kind,'floor');
+ assert.equal(plan.logs,FLOOR_LOGS);
+ assert.ok(grid.layFloor(0,0));
  assert.ok(grid.isFloored(0,0));
- assert.ok(grid.enclosed(0,0));
 });
 
-test('a neighbouring cell shares the wall that already stands',()=>{
+test('a floor needs the frame, not the walls',()=>{
  const grid=new BuildGrid();
- for(let n=0;n<4;n++)grid.build(0,0);
- const missing=grid.sidesOf(1,0).filter(({key})=>grid.state(key)==='missing');
- assert.equal(missing.length,3);
+ for(const [x,y] of grid.cornersOf(0,0))grid.raisePost(x,y);
+ assert.equal(grid.walls.size,0);
+ assert.ok(grid.layFloor(0,0));
 });
 
-test('building is one storey: a finished cell offers nothing more',()=>{
+test('the floor is laid once',()=>{
  const grid=new BuildGrid();
- for(let n=0;n<4;n++)grid.build(0,0);
+ for(const [x,y] of grid.cornersOf(0,0))grid.raisePost(x,y);
+ assert.ok(grid.layFloor(0,0));
+ assert.equal(grid.layFloor(0,0),false);
+});
+
+test('a gap belongs to both cells either side of it',()=>{
+ const grid=new BuildGrid();
+ const east=grid.sidesOf(0,0).find(({side})=>side==='east').key;
+ const west=grid.sidesOf(1,0).find(({side})=>side==='west').key;
+ assert.equal(east,west);
+ assert.ok(grid.raiseWall(east));
+ assert.ok(grid.wallBuilt(west));
+});
+
+test('a gap can be filled and opened again, and the room keeps its floor',()=>{
+ const grid=new BuildGrid();
+ for(const [x,y] of grid.cornersOf(0,0))grid.raisePost(x,y);
+ grid.layFloor(0,0);
+ const gap=grid.sidesOf(0,0)[0].key;
+ assert.ok(grid.raiseWall(gap));
+ assert.ok(grid.openWall(gap));
+ assert.equal(grid.wallBuilt(gap),false);
+ assert.ok(grid.isFloored(0,0));
+});
+
+test('a framed and floored cell is finished: one storey, nothing above',()=>{
+ const grid=new BuildGrid();
+ for(const [x,y] of grid.cornersOf(0,0))grid.raisePost(x,y);
+ grid.layFloor(0,0);
  assert.equal(grid.plan(0,0),null);
 });
 
-test('a wall toggles between solid and an open doorway',()=>{
+test('a shared post is only raised once',()=>{
  const grid=new BuildGrid();
- grid.build(0,0);
- const key=grid.sidesOf(0,0)[0].key;
- assert.equal(grid.state(key),'built');
- assert.equal(grid.toggle(key),'open');
- assert.equal(grid.state(key),'open');
- assert.equal(grid.toggle(key),'built');
- assert.equal(grid.state(key),'built');
-});
-
-test('an open doorway still counts as a room',()=>{
- const grid=new BuildGrid();
- for(let n=0;n<4;n++)grid.build(0,0);
- const key=grid.sidesOf(0,0)[1].key;
- grid.toggle(key);
- assert.equal(grid.state(key),'open');
- assert.ok(grid.enclosed(0,0));
+ assert.ok(grid.raisePost(1,1));
+ assert.equal(grid.raisePost(1,1),false);
 });
