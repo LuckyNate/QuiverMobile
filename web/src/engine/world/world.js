@@ -30,9 +30,9 @@ const MORPH_FRACTION=.5;
 // own edges: those vertices are shared with a neighbour that is not bending, so
 // moving them would fold the surface over itself into a ridge along the seam.
 const MORPH_STRENGTH=1;
-// One tile of ground noise every 0.6 m, so the grain reads at walking distance and
-// washes into flat colour by the far LOD bands.
-const GROUND_NOISE_TILE_METERS=.6;
+// One tile of ground noise every centimetre: at that size the grain *is* the
+// ground's surface, and the mipmaps average it back to flat colour as it recedes.
+const GROUND_NOISE_TILE_METERS=.01;
 function columnDistance(up,node){
  const dot=THREE.MathUtils.clamp(up.dot(node.center),-1,1);
  return dot<=0?Math.PI*RADIUS:Math.max(0,RADIUS*Math.sqrt(1-dot*dot)-node.reach);
@@ -168,7 +168,9 @@ export class WorldTerrain {
   this.roots=roots.map(([a,b,c],face)=>node(a,b,c,0,null,rootAddress(face)));
   // The noise tint rides on the vertex colour, and the same noise drives the
   // normal, so sand, grass and rock all keep their palette and gain a surface.
-  this.noise=createGroundNoise();
+  // Seeded from the height field's own hash, so this world's grain belongs to the
+  // world seed and a different seed gets a different surface.
+  this.noise=createGroundNoise(128,this.height.hash);
   this.material=new THREE.MeshStandardMaterial({color:0xffffff,vertexColors:true,roughness:1,side:THREE.DoubleSide,flatShading:true,
    map:this.noise.tint,normalMap:this.noise.normal,normalScale:new THREE.Vector2(.35,.35)});
   this.material.color.setScalar(1.12);

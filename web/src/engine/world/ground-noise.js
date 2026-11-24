@@ -3,7 +3,8 @@ import * as THREE from 'three';
 // One white-noise field, used twice on the ground: as a tint multiplied into the
 // colour underneath it, and as the normal map that breaks up its lighting. Both
 // textures come from the same texels, so every bright speck is also a bump.
-// Seeded, not Math.random(), so the ground looks the same on every visit.
+// Seeded with the world's own hash, not Math.random(), so the grain belongs to
+// the world seed: the same seed always grows the same ground.
 function noiseField(size,seed){
  const values=new Float32Array(size*size);
  let state=seed>>>0;
@@ -25,7 +26,7 @@ function texture(bytes,size){
  return tex;
 }
 
-export function createGroundNoise(size=64,seed=0x5eed){
+export function createGroundNoise(size=128,seed=0x5eed){
  const values=noiseField(size,seed);
  // Tint: a multiplier near 1, dark enough to read as grain but never as dirt.
  // The colour underneath still decides what the ground looks like.
