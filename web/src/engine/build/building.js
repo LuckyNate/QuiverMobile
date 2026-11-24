@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {BuildGrid,CELL_METERS,POST_HEIGHT,LOG_HEIGHT,COURSES,CROSS_LOGS} from './build-grid.js';
+import {BuildGrid,CELL_METERS,POST_HEIGHT,LOG_HEIGHT,COURSES,CROSS_LOGS,WALL_SLOTS,WINDOW,DOOR} from './build-grid.js';
 
 const LOG_RADIUS=LOG_HEIGHT/2;
 const POST_REACH=.7;
@@ -72,9 +72,42 @@ export class Building {
    ?[this.pointAt(u,v,lift),this.pointAt(u+CELL_METERS,v,lift)]
    :[this.pointAt(u,v,lift),this.pointAt(u,v+CELL_METERS,lift)];
  }
- gapMesh(key,lift=LOG_HEIGHT/2){
+ // A third of the wall over a gap between two posts, short enough that an opening can
+ // leave the rest of the wall standing.
+ gapPiece(key,lift,t0,t1){
   const [from,to]=this.gapSpan(key,lift);
-  return this.meshBetween(from,to);
+  const start=from.clone().lerp(to,t0),end=from.clone().lerp(to,t1);
+  const piece=this.meshBetween(start,end);
+  piece.scale.y=start.distanceTo(end)/CELL_METERS;
+  return piece;
+ }
+ // A window sits above the sill, a door runs down to the floor, and a blown wall keeps
+ // only the beam across the top.
+ hidden(k,state){
+  if(state===WINDOW)return k>=2&&k<=3;
+  if(state===DOOR)return k<=2;
+  return false;
+ }
+ wallPieces(key){
+  const courses=this.grid.coursesAt(key),slots=this.grid.openingsAt(key),blown=this.grid.isBlown(key);
+  const pieces=[];
+  for(let k=0;k<courses;k++){
+   const lift=LOG_HEIGHT*(k+1.5);
+   for(let slot=0;slot<WALL_SLOTS;slot++){
+    if(blown?k<COURSES-1:this.hidden(k,slots[slot]))continue;
+    pieces.push(this.gapPiece(key,lift,slot/WALL_SLOTS,(slot+1)/WALL_SLOTS));
+   }
+  }
+  return pieces;
+ }
+ groundPieces(key){
+  const slots=this.grid.openingsAt(key),blown=this.grid.isBlown(key);
+  const pieces=[];
+  for(let slot=0;slot<WALL_SLOTS;slot++){
+   if(blown||slots[slot]===DOOR)continue;
+   pieces.push(this.gapPiece(key,LOG_HEIGHT/2,slot/WALL_SLOTS,(slot+1)/WALL_SLOTS));
+  }
+  return pieces;
  }
  // The two logs of the cross: one each way through the middle of the cell.
  crossMesh(i,j,index){
@@ -90,14 +123,12 @@ export class Building {
    const [,i,j]=key.split(':').map(Number);
    this.group.add(this.postMesh(i,j));
   }
-  for(const key of this.grid.ground)this.group.add(this.gapMesh(key));
+  for(const key of this.grid.ground)this.group.add(...this.groundPieces(key));
   for(const [cell,count] of this.grid.cross){
    const [i,j]=cell.split(',').map(Number);
    for(let k=0;k<count;k++)this.group.add(this.crossMesh(i,j,k));
   }
-  for(const [key,count] of this.grid.courses){
-   for(let k=0;k<count;k++)this.group.add(this.gapMesh(key,LOG_HEIGHT*(k+1.5)));
-  }
+  for(const key of this.grid.courses.keys())this.group.add(...this.wallPieces(key));
  }
  restore(){
   if(!this.bonfire.exists||!this.anchorFromFire())return;
@@ -107,6 +138,10 @@ export class Building {
    else if(state.kind==='ground'&&state.state!=='open')this.grid.restoreGround(state.key);
    else if(state.kind==='cross')this.grid.restoreCross(state.i,state.j,state.count);
    else if(state.kind==='course')this.grid.restoreCourse(state.key,Math.min(state.count??0,COURSES));
+   else if(state.kind==='openings'){
+    if(state.blown)this.grid.restoreBlown(state.key);
+    else this.grid.restoreOpenings(state.key,state.slots);
+   }
    else if(state.kind==='floor')this.grid.restoreFloor(state.i,state.j);
   }
   this.render();
@@ -182,7 +217,7 @@ export class Building {
     return;
    }
    if(!this.grid.wallsReady(gap)){this.message?.('Stand a post at both ends first');return;}
-   if(this.grid.coursesAt(gap)>=COURSES){this.message?.('That wall is at full height, and there is one storey');return;}
+   if(this.grid.coursesAt(gap)>=COURSES){this.cutAt(gap,point);return;}
    if(!this.spend(1))return;
    this.grid.addCourse(gap);
    this.shared.setEntity(PREFIX+'course:'+gap,{state:'standing',kind:'course',anchor:this.anchorId,key:gap,count:this.grid.coursesAt(gap),ownerId:this.playerId});
@@ -207,6 +242,45 @@ export class Building {
    this.message?.('Post placed');
   }
   this.render();
+ }
+ // With the axe, a finished wall is cut where it is struck: a window, then a door in
+ // that same slot, then a second door beside it. A wall between two rooms that is all
+ // doors can be blown wide open instead.
+ cutAt(key,point){
+  if(this.shared.getEquippedTool(this.playerId)!=='axe'){this.message?.('Equip the axe to cut this wall');return;}
+  const slots=this.grid.openingsAt(key);
+  if(slots.every(state=>state===DOOR)&&this.grid.isInterior(key)){this.blowAt(key);return;}
+  const slot=this.slotAt(key,point),state=slots[slot];
+  if(state===DOOR){this.message?.('That is a door already, and openings only get wider');return;}
+  const to=state===WINDOW?DOOR:WINDOW;
+  if(!this.grid.cut(key,slot,to)){this.message?.('This wall cannot take that opening');return;}
+  this.derezzSlot(key,slot,state,to);
+  this.saveOpenings(key);
+  this.message?.(to===WINDOW?'Window cut':'Window widened into a door');
+  this.render();
+ }
+ slotAt(key,point){
+  const [from,to]=this.gapSpan(key,0);
+  const along=to.clone().sub(from);
+  const t=THREE.MathUtils.clamp(point.clone().sub(from).dot(along)/Math.max(along.lengthSq(),1e-6),0,.999);
+  return Math.floor(t*WALL_SLOTS);
+ }
+ // The timber the new opening swallows derezzes where it stood.
+ derezzSlot(key,slot,from,to){
+  for(let k=0;k<COURSES;k++){
+   if(!this.hidden(k,to)||this.hidden(k,from))continue;
+   this.derezz(this.gapPiece(key,LOG_HEIGHT*(k+1.5),slot/WALL_SLOTS,(slot+1)/WALL_SLOTS));
+  }
+ }
+ blowAt(key){
+  if(!this.grid.blowOpen(key)){this.message?.('Only a wall between two rooms can be blown open');return;}
+  for(let slot=0;slot<WALL_SLOTS;slot++)this.derezzSlot(key,slot,0,DOOR);
+  this.saveOpenings(key);
+  this.message?.('Blown wide open, beam and braces left standing');
+  this.render();
+ }
+ saveOpenings(key){
+  this.shared.setEntity(PREFIX+'openings:'+key,{state:'cut',kind:'openings',anchor:this.anchorId,key,slots:this.grid.openingsAt(key).slice(),blown:this.grid.isBlown(key),ownerId:this.playerId});
  }
  targetCell(){
   const {north,east}=this.player.basis();
