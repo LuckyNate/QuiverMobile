@@ -2,15 +2,24 @@
 import {DYE_COLORS} from '../engine/dye-palette.js';
 import {TOOL_RECIPES} from '../engine/shared-world.js';
 // Recipe ingredients read as inventory keys; species drops get a proper name.
-const RESOURCE_NAMES={pineSap:'Pine Sap'};
-const resourceName=key=>RESOURCE_NAMES[key]||key;
+const RESOURCE_NAMES={logs:'4 m Logs',fibers:'Fibers',sticks:'Sticks',stones:'Stones',pineSap:'Pine Sap'};
+// Unmapped keys still read as words: birchBark -> Birch Bark.
+const resourceName=key=>RESOURCE_NAMES[key]||key.replace(/([a-z0-9])([A-Z])/g,'$1 $2').replace(/^./,c=>c.toUpperCase());
+// Inventory keys that are bookkeeping rather than something you carry in a slot.
+const NOT_A_RESOURCE=new Set(['equippedTool','craftedTools','unlockedDyes','gear','logStrength','fiberQuality']);
+const SLOT_STYLE='min-height:64px;padding:8px;border:1px solid #526477;border-radius:5px;display:flex;flex-direction:column;justify-content:center;gap:4px;background:#172430';
 export const panelInventory={
  registerInventoryTab(id,label,content){
   if(this.inventoryTabs.has(id))throw new Error('Duplicate inventory tab: '+id);
   const button=document.createElement('button');
   button.type='button';button.textContent=label;
-  button.style.cssText='padding:8px 14px;border:1px solid #526477;border-radius:4px;background:#1b3040;color:#e5edf5';
+  button.setAttribute('role','tab');
+  // Tabs sit on the strip's rule and the selected one blends into the pane below,
+  // the way a cardboard folder tab does, instead of floating as a pill.
+  button.style.cssText='position:relative;padding:8px 16px;margin-bottom:-2px;border:1px solid #2c4152;border-bottom:0;border-radius:8px 8px 0 0;background:#16232f;color:#9fb3c2;font:600 13px system-ui;cursor:pointer;touch-action:manipulation';
   button.addEventListener('click',()=>this.selectInventoryTab(id));
+  content.setAttribute('role','tabpanel');
+  content.style.cssText='padding:2px 0 6px';
   this.inventoryTabBar.append(button);
   this.inventoryTabContents.append(content);
   this.inventoryTabs.set(id,{button,content});
@@ -21,8 +30,12 @@ export const panelInventory={
   for(const [key,tab] of this.inventoryTabs){
    const active=key===id;
    tab.content.style.display=active?'block':'none';
-   tab.button.setAttribute('aria-pressed',String(active));
-   tab.button.style.background=active?'#415738':'#1b3040';
+   tab.button.setAttribute('aria-selected',String(active));
+   tab.button.style.background=active?'#101923':'#16232f';
+   tab.button.style.color=active?'#eaf4ff':'#9fb3c2';
+   tab.button.style.borderColor=active?'#526477':'#2c4152';
+   tab.button.style.borderBottomColor=active?'#101923':'#16232f';
+   tab.button.style.zIndex=active?'1':'0';
   }
   this.activeInventoryTab=id;
   this.refreshInventory();
@@ -32,7 +45,8 @@ export const panelInventory={
  makeInventory(){
   this.inventoryTabs=new Map();
   this.inventoryTabBar=document.createElement('div');
-  this.inventoryTabBar.style.cssText='display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap';
+  this.inventoryTabBar.setAttribute('role','tablist');
+  this.inventoryTabBar.style.cssText='display:flex;align-items:flex-end;flex-wrap:wrap;gap:0;margin:0 0 12px;padding:0 4px;border-bottom:2px solid #526477';
   this.inventoryTabContents=document.createElement('div');
   const toolsPane=document.createElement('div'),weaponsPane=document.createElement('div'),resourcesPane=document.createElement('div'),dyePane=document.createElement('div'),gearPane=document.createElement('div');
   const makeGrid=()=>{
@@ -40,16 +54,9 @@ export const panelInventory={
    grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px';
    return grid;
   };
-  const toolsGrid=makeGrid(),resourcesGrid=makeGrid();
-  for(const [id,label,tab] of [
-   ['axe','Axe','tools'],['knife','Knife','tools'],['hammer','Hammer','tools'],['scythe','Scythe','tools'],
-   ['tool-1','Empty','tools'],
-   ['logs','4 m Logs','resources'],['fibers','Fibers','resources'],['sticks','Sticks','resources'],['stones','Stones','resources'],
-   ['pineSap','Pine Sap','resources'],['resource-3','Empty','resources']
-  ]){
-   const isTool=Object.hasOwn(TOOL_RECIPES,id);
-   const slot=document.createElement(isTool?'button':'div');
-   if(isTool){
+  const makeSlot=(id,label,{interactive=false,tag=null,note=''}={})=>{
+   const slot=document.createElement(interactive?'button':'div');
+   if(interactive){
     slot.type='button';
     slot.addEventListener('click',()=>{
      const current=this.sharedWorld.getEquippedTool(this.playerId);
@@ -58,30 +65,33 @@ export const panelInventory={
      this.refreshInventory();
     });
    }
-   slot.style.cssText='min-height:64px;padding:8px;border:1px solid #526477;border-radius:5px;display:flex;flex-direction:column;justify-content:center;gap:4px;background:#172430';
+   slot.style.cssText=SLOT_STYLE;
    const name=document.createElement('strong');name.textContent=label;
    const quantity=document.createElement('span');quantity.style.fontSize='12px';
+   if(note)quantity.textContent=note;
    slot.append(name,quantity);
-   (tab==='tools'?toolsGrid:resourcesGrid).append(slot);
-   this.slots.set(id,{slot,name,quantity,isTool});
-  }
+   this.slots.set(id,{slot,name,quantity,isTool:interactive,tag});
+   return slot;
+  };
+  // Craftable tools are fixed slots: they exist whether or not you have one yet.
+  const toolsGrid=makeGrid();
+  for(const id of Object.keys(TOOL_RECIPES))toolsGrid.append(makeSlot(id,id[0].toUpperCase()+id.slice(1),{interactive:true}));
   toolsPane.append(toolsGrid);
   // Nothing weapon-shaped is defined yet (GEAR_RECIPES is empty), so the tab
   // holds empty slots instead of inventing items to fill them with.
   const weaponsGrid=makeGrid();
-  for(const id of ['weapon-1','weapon-2','weapon-3','weapon-4']){
-   const slot=document.createElement('div');
-   slot.style.cssText='min-height:64px;padding:8px;border:1px solid #526477;border-radius:5px;display:flex;flex-direction:column;justify-content:center;gap:4px;background:#172430';
-   const name=document.createElement('strong');name.textContent='Empty';
-   const quantity=document.createElement('span');quantity.style.fontSize='12px';quantity.textContent='No weapon';
-   slot.append(name,quantity);
-   weaponsGrid.append(slot);
-   this.slots.set(id,{slot,name,quantity,isTool:false});
-  }
+  for(const id of ['weapon-1','weapon-2','weapon-3','weapon-4'])weaponsGrid.append(makeSlot(id,'Empty',{note:'No weapon'}));
   const weaponsHint=document.createElement('p');
   weaponsHint.textContent='No weapons can be crafted yet.';
   weaponsPane.append(weaponsHint,weaponsGrid);
-  resourcesPane.append(resourcesGrid);
+  // Resources are not listed up front: every slot here is one you have picked up,
+  // created by growResources() as the inventory gains a new kind of item.
+  const resourcesHint=document.createElement('p');
+  resourcesHint.textContent='Nothing gathered yet.';
+  resourcesHint.style.cssText='margin:0 0 8px;color:#9fb3c2;font-size:12px';
+  this.resourceGrid=makeGrid();
+  this.emptyResourcesHint=resourcesHint;
+  resourcesPane.append(resourcesHint,this.resourceGrid);
   const dyeGrid=document.createElement('div');
   dyeGrid.style.cssText='display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:3px;max-width:420px';
   this.dyeSwatches=[];
@@ -106,6 +116,25 @@ export const panelInventory={
   this.selectInventoryTab('tools');
  }
 ,
+ // A new kind of resource only appears once it is actually carried; the slot then
+ // stays so counts do not jump around the grid as things are spent.
+ growResources(inventory){
+  let added=false;
+  for(const [key,value] of Object.entries(inventory)){
+   if(NOT_A_RESOURCE.has(key)||this.slots.has(key))continue;
+   if(typeof value!=='number'||value<=0)continue;
+   const slot=document.createElement('div');
+   slot.style.cssText=SLOT_STYLE;
+   const name=document.createElement('strong');name.textContent=resourceName(key);
+   const quantity=document.createElement('span');quantity.style.fontSize='12px';
+   slot.append(name,quantity);
+   this.resourceGrid.append(slot);
+   this.slots.set(key,{slot,name,quantity,isTool:false,tag:key});
+   added=true;
+  }
+  if(added&&this.emptyResourcesHint)this.emptyResourcesHint.style.display='none';
+ }
+,
  refreshInventory(){
   const inventory=this.sharedWorld.getInventory(this.playerId);
   const count=inventory.logs||0;
@@ -119,6 +148,7 @@ export const panelInventory={
    swatch.title=available?color:'Undiscovered dye';
   }
   this.refreshGear();
+  this.growResources(inventory);
   const equipped=this.sharedWorld.getEquippedTool(this.playerId);
   for(const [id,entry] of this.slots){
    if(entry.isTool){
@@ -129,15 +159,13 @@ export const panelInventory={
     entry.slot.setAttribute('aria-pressed',String(active));
     entry.quantity.textContent=active?'Equipped':crafted?'Tap to equip':ready?'Tap to craft':Object.entries(TOOL_RECIPES[id]).map(([item,n])=>resourceName(item)+' '+(inventory[item]||0)+'/'+n).join(' · ');
    }
-   if(id==='logs')entry.quantity.textContent='Count: '+count+' | Strength: '+averageStrength.toFixed(2);
-   else if(id==='fibers'){
+   else if(entry.tag==='logs')entry.quantity.textContent='Count: '+count+' | Strength: '+averageStrength.toFixed(2);
+   else if(entry.tag==='fibers'){
     const fibers=inventory.fibers||0;
     entry.quantity.textContent='Count: '+fibers+' | Quality: '+(fibers?(inventory.fiberQuality||0)/fibers:0).toFixed(2);
    }
-   else if(id==='sticks'||id==='stones'||id==='pineSap')entry.quantity.textContent='Count: '+(inventory[id]||0);
-   else if(entry.isTool)continue;
-   else if(id.startsWith('weapon-'))entry.quantity.textContent='No weapon';
-   else entry.quantity.textContent='Not acquired';
+   else if(entry.tag)entry.quantity.textContent='Count: '+(inventory[entry.tag]||0);
+   else if(!entry.quantity.textContent)entry.quantity.textContent='No weapon';
   }
  }
 
