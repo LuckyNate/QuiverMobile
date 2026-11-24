@@ -120,6 +120,8 @@ export class ResourceHandler extends TreeHarvestSystem {
   for(const zone of this.zones)zone.update(this.player.position,streamRadius);
   super.update(dt,body);
   this.gatherTapTarget(body);
+  // The equipped tool is drawn in the hand; swapping is a no-op unless it changed.
+  this.player.setTool(this.shared?.getEquippedTool(this.playerId)||null);
   this.grass.update(dt,body,this.shared?.getEquippedTool(this.playerId));
   this.ground.update(dt,body);
   this.boars.update();
