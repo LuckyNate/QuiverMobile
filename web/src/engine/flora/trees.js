@@ -21,6 +21,10 @@ const BILLBOARD_METERS=35;
 const MODEL_FADE_SECONDS=.75;
 // The model stands 5.5 m tall, so a tree's size in metres is a multiple of it.
 const TREE_MODEL_HEIGHT=5.5;
+// Sizes follow a normal curve: 3 m to 10 m is six standard deviations wide, so most
+// pines stand near 6.5 m and the extremes are rare rather than evenly spread.
+const TREE_HEIGHT_MEAN=6.5;
+const TREE_HEIGHT_SIGMA=(10-3)/6;
 
 // All player/world mutations use stable IDs. Only Meadows is populated now.
 export class TreeHarvestSystem {
@@ -80,8 +84,12 @@ export class TreeHarvestSystem {
   this.root.add(tree);
   // Seeded from the tree's stable id, not from chunk/serial: the streaming layer
   // passes a cell object and serial 0, which hashed to the same value for every
-  // tree and made a whole wood one height. Large pines: 10 m up to 18 m.
-  const height=10+8*this.hash(this.seedOf(String(id)));
+  // tree and made a whole wood one height. Two hashes feed Box-Muller so the size
+  // lands on the bell curve instead of a flat band, and is clamped to 3 m - 10 m.
+  const seed=this.seedOf(String(id));
+  const u1=Math.max(this.hash(seed),1e-9),u2=this.hash(seed+104729);
+  const gaussian=Math.sqrt(-2*Math.log(u1))*Math.cos(6.283185307179586*u2);
+  const height=Math.min(10,Math.max(3,TREE_HEIGHT_MEAN+TREE_HEIGHT_SIGMA*gaussian));
   const scale=height/TREE_MODEL_HEIGHT;
   tree.scale.setScalar(scale);
   const saved=this.shared?.getEntity(id);
