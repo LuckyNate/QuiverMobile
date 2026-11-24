@@ -139,6 +139,7 @@ export const gameRuntime={
     this.playerSystem.cancelDestination();
    }
    this.bonfire.update(this.elapsed);
+   this.building.update();
    // Far clipping is world-scaled; near clip stays at one meter.
    this.water.update(this.scene,this.camera,this.renderer,this.elapsed);
    // The immutable planet is queryable immediately. Player motion never rebuilds it.

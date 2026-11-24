@@ -6,8 +6,8 @@ const HOLD_MS=450;
 // Tap resources or terrain to walk using the normal player physics path, and
 // remember a spot to build a camp bonfire when the player arrives.
 export class TapController {
- constructor({canvas,camera,height,radius,harvesting,sharedWorld,playerSystem,bonfire,message,isActive,setBonfireCandidate}){
-  Object.assign(this,{canvas,camera,height,radius,harvesting,sharedWorld,playerSystem,bonfire,message,isActive,setBonfireCandidate});
+ constructor({canvas,camera,height,radius,harvesting,sharedWorld,playerSystem,bonfire,building,message,isActive,setBonfireCandidate}){
+  Object.assign(this,{canvas,camera,height,radius,harvesting,sharedWorld,playerSystem,bonfire,building,message,isActive,setBonfireCandidate});
   this.hammerPress=null;
   this.raycaster=new THREE.Raycaster();
   this.ndc=new THREE.Vector2();
@@ -75,6 +75,13 @@ export class TapController {
  }
  tap(screenX,screenY){
   if(!this.isActive())return;
+  // In build mode the ground itself is the target: a tap lays the next log in the
+  // cell under the finger instead of walking or harvesting.
+  if(this.building?.mode){
+   const ground=this.groundAt(screenX,screenY);
+   if(ground)this.building.tapAt(ground);
+   return;
+  }
   const {height,radius,harvesting,sharedWorld,bonfire}=this;
   const picked=this.pick(screenX,screenY);
   const targetId=picked?.id??null,targetType=picked?.type??null;
@@ -86,24 +93,8 @@ export class TapController {
   if(targetType&&targetType!=='ground')harvesting.tapNow(targetType,targetId);
   harvesting.ground.select(targetType==='ground'?targetId:null);
   if(!destination){
-   // Intersect a conservative shell, then iteratively refine to true terrain height.
-   const ray=this.raycaster.ray;
-   const sphere=new THREE.Sphere(new THREE.Vector3(),radius);
-   const hit=ray.intersectSphere(sphere,new THREE.Vector3());
-   if(!hit)return;
-   let travel=hit.distanceTo(ray.origin);
-   for(let i=0;i<7;i++){
-    const point=ray.at(travel,new THREE.Vector3());
-    const up=point.clone().normalize(),surfaceRadius=height.radius(up,radius);
-    const error=point.length()-surfaceRadius;
-    const slope=ray.direction.dot(up);
-    if(Math.abs(slope)<.08)break;
-    travel-=error/slope;
-    if(travel<0)return;
-   }
-   const point=ray.at(travel,new THREE.Vector3());
-   if(Math.abs(point.length()-height.radius(point.clone().normalize(),radius))>3)return;
-   destination=point;
+   destination=this.groundAt(screenX,screenY);
+   if(!destination)return;
   }
   if(!targetId&&sharedWorld.getEquippedTool('local-owner')==='hammer'&&!bonfire.exists&&
    (sharedWorld.getInventory('local-owner').logs||0)>=12){
@@ -111,12 +102,36 @@ export class TapController {
   }else this.setBonfireCandidate(null);
   this.playerSystem.setDestination(destination);
  }
+ // The terrain point under a touch: intersect a conservative shell, then refine
+ // against the analytic surface until the ray meets the ground.
+ groundAt(screenX,screenY){
+  const bounds=this.canvas.getBoundingClientRect();
+  this.ndc.set((screenX-bounds.left)/bounds.width*2-1,1-(screenY-bounds.top)/bounds.height*2);
+  this.raycaster.setFromCamera(this.ndc,this.camera);
+  const ray=this.raycaster.ray;
+  const sphere=new THREE.Sphere(new THREE.Vector3(),this.radius);
+  const hit=ray.intersectSphere(sphere,new THREE.Vector3());
+  if(!hit)return null;
+  let travel=hit.distanceTo(ray.origin);
+  for(let i=0;i<7;i++){
+   const point=ray.at(travel,new THREE.Vector3());
+   const up=point.clone().normalize(),surfaceRadius=this.height.radius(up,this.radius);
+   const error=point.length()-surfaceRadius;
+   const slope=ray.direction.dot(up);
+   if(Math.abs(slope)<.08)break;
+   travel-=error/slope;
+   if(travel<0)return null;
+  }
+  const point=ray.at(travel,new THREE.Vector3());
+  if(Math.abs(point.length()-this.height.radius(point.clone().normalize(),this.radius))>3)return null;
+  return point;
+ }
  // Long press with the hammer: a campfire is planted where the player stands, on
  // the analytic surface rather than at the capsule centre. Once a fire exists the
  // same press opens the build menu.
  hold(){
   const {bonfire,sharedWorld,playerSystem,height,radius}=this;
-  if(bonfire.exists)return this.onBuildMenu?.();
+  if(bonfire.exists)return this.building?.toggle();
   const direction=playerSystem.position.clone().normalize();
   const ground=direction.clone().multiplyScalar(height.radius(direction,radius)+.02);
   if(bonfire.build(ground))return;
