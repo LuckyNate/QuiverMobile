@@ -238,8 +238,9 @@ export class ResourceHandler extends TreeHarvestSystem {
    const creature=this.creatures.get(target.id);
    if(!creature){this.clearTapGather();return;}
    if(creature.dead){
-    // A knife on the carcass takes it apart; anything else leaves it lying there.
-    if(tool!=='knife')return;
+    // A knife on the carcass takes it apart; anything else leaves it lying there,
+    // and a tap made with the wrong tool is spent rather than kept for later.
+    if(tool!=='knife'){this.clearTapGather();return;}
     if(creature.at.distanceTo(at)>1.6)return;
     this.creatures.harvest(creature.id,this.playerId);
     this.clearTapGather();
