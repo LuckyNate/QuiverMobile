@@ -1,15 +1,10 @@
 import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {withinSceneryRange} from '../render/scenery-visibility.js';
+import {seededUnit} from '../world/seeded-hash.js';
 
 // Meadows boars are scenery: one goofy cylinder pig per seeded spawn, no
 // behaviour beyond standing on the ground at a deterministic angle and size.
-function seeded(id,salt){
- let h=2166136261;
- for(const c of String(id)+salt)h=Math.imul(h^c.charCodeAt(0),16777619);
- h=Math.imul(h^(h>>>16),2246822507);h^=h>>>13;
- return (h>>>0)/4294967296;
-}
 function paint(geometry,hex){
  const color=new THREE.Color(hex);
  const count=geometry.getAttribute('position').count;
@@ -93,7 +88,7 @@ export class BoarVisual {
   if(this.items.has(id))return false;
   const batch=this.batch();
   const item={id,position:position.clone(),batch,index:batch.entries.length,
-   yaw:seeded(id,'yaw')*Math.PI*2,size:.85+seeded(id,'size')*.3,visible:true};
+   yaw:seededUnit(id,'yaw')*Math.PI*2,size:.85+seededUnit(id,'size')*.3,fade:1,visible:true};
   batch.entries.push(item);
   batch.mesh.count=batch.entries.length;
   this.transform(item);
@@ -106,10 +101,27 @@ export class BoarVisual {
   this.spin.setFromAxisAngle(this.axis,item.yaw);
   this.dummy.quaternion.copy(this.upright).multiply(this.spin);
   this.dummy.position.copy(item.position);
-  this.dummy.scale.setScalar(item.visible?item.size:0);
+  this.dummy.scale.setScalar(item.visible?item.size*item.fade:0);
   this.dummy.updateMatrix();
   item.batch.mesh.setMatrixAt(item.index,this.dummy.matrix);
   item.batch.mesh.instanceMatrix.needsUpdate=true;
+ }
+ // Behaviour owns where a boar stands and which way it faces; the art only draws it.
+ place(id,position,yaw){
+  const item=this.items.get(id);
+  if(!item)return false;
+  item.position.copy(position);
+  item.yaw=yaw;
+  this.transform(item);
+  return true;
+ }
+ setFade(id,fade){
+  const item=this.items.get(id);
+  if(!item)return;
+  const next=Math.max(0,Math.min(1,fade));
+  if(item.fade===next)return;
+  item.fade=next;
+  this.transform(item);
  }
  unload(id){
   const item=this.items.get(id);
