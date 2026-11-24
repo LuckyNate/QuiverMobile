@@ -13,7 +13,7 @@ export const BOAR=Object.freeze({
  // The snout, not the body, has to reach you: it walks up and bumps to bite.
  reach:1.15,bump:.2,damage:1,swingSeconds:1.8,alertSeconds:.25,fallSeconds:.5,
  // What a knife takes off the carcass, in inventory units.
- loot:{bacon:1,hide:1,tusks:2}
+ loot:{rawBacon:1,hide:1,tusks:2}
 });
 
 export class Boar extends Creature {

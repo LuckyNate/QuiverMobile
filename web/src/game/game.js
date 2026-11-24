@@ -58,10 +58,10 @@ export class Game {
   this.sharedWorld=new SharedWorld({ownerId:'local-owner',seed:TERRAIN_SEED});
   this.sharedWorld.join('local-owner',this.player);
   this.survival=new Survival();
-  // A creature's hit points are 1% of the health meter each; the conversion lives
-  // at this boundary so combat and survival keep their own units.
+  // A creature's hit takes health points off the player's own pool; the conversion
+  // lives at this boundary so combat and survival keep their own units.
   this.harvesting=new ResourceHandler(this.scene,this.playerSystem,this.height,RADIUS,{terrain:this.terrain,shared:this.sharedWorld,playerId:'local-owner',camera:this.camera,
-   onPlayerDamage:hit=>this.survival.damage(hit/100)});
+   onPlayerDamage:hit=>this.survival.hurt(hit)});
   this.panels=new GamePanels({app,canvas:this.canvas,controls:this.playerSystem.controls,sharedWorld:this.sharedWorld,playerId:'local-owner'});
   this.panels.updateSurvival(this.survival.needs());
   this.bonfire=new Bonfire({scene:this.scene,shared:this.sharedWorld,player:this.playerSystem,playerId:'local-owner',camera:this.camera,app});

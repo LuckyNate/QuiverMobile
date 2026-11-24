@@ -38,8 +38,8 @@ test('a knife on the carcass yields bacon, hide and tusks',()=>{
  const {system,awards,kill}=fixture();
  kill();
  assert.deepEqual(system.get(ID).state,'dead');
- assert.deepEqual(system.harvest(ID),{bacon:1,hide:1,tusks:2});
- assert.deepEqual(awards,[['bacon',1],['hide',1],['tusks',2]]);
+ assert.deepEqual(system.harvest(ID),{rawBacon:1,hide:1,tusks:2});
+ assert.deepEqual(awards,[['rawBacon',1],['hide',1],['tusks',2]]);
  assert.equal(system.has(ID),false);      // now the slot is free to respawn
  assert.equal(system.harvest(ID),null);   // and it only gives once
  assert.equal(awards.length,3);

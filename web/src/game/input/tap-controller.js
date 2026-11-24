@@ -36,6 +36,8 @@ export class TapController {
    }
   };
   for(const t of harvesting.trees)consider(t.at,'tree',t.id,t.state==='standing'&&t.tree.visible);
+  // Boars are tap targets too, dead ones included: a carcass still answers a knife.
+  for(const c of harvesting.creatures.creatures())consider(c.at,'boar',c.id,true);
   for(const c of harvesting.grass.clumps.values())consider(c.position,'grass',c.id,c.state==='standing'&&c.group.visible);
   for(const item of harvesting.ground.items.values())consider(item.position,'ground',item.id,item.state==='standing'&&item.group.visible);
   harvesting.ground.select(targetType==='ground'?targetId:null);

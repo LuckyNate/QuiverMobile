@@ -1,3 +1,5 @@
+// The player's health pool in hit points: a level 1 hit takes one of these.
+export const PLAYER_HEALTH=10;
 // Survival needs. Each is 1 fully sated, 0 empty, and drifts at a fixed rate.
 // Health is the one meter combat writes; the rest are display-only and nothing
 // kills the player when a meter empties, because death and respawn rules are
@@ -22,11 +24,16 @@ export class Survival{
    this.values[need.id]=clamp(this.values[need.id]-need.perSecond*dt,0,1);
   }
  }
- // Damage is a fraction of the health meter: a creature's six points cost 6%.
+ // Damage is a fraction of the health meter.
  damage(amount){
   const hit=Math.max(0,Number(amount)||0);
   this.values.health=clamp(this.values.health-hit,0,1);
   return this.values.health;
+ }
+ // Combat damage arrives in hit points out of PLAYER_HEALTH, the same unit a
+ // creature's health uses, so a level 1 bite costs a tenth of the meter.
+ hurt(points){
+  return this.damage(Math.max(0,Number(points)||0)/PLAYER_HEALTH*100);
  }
  // Lowest first, so the most urgent need is the one at the front of the stack.
  needs(){
