@@ -15,10 +15,11 @@ import {WORLD_SETUP,BIOME_SETUP} from '../world/world-config.js';
 import {TouchRegistry} from './interaction.js';
 import {TREE_HARVEST} from '../flora/tree.js';
 import {InstanceStore} from '../population/instance-store.js';
+import {Springs} from '../flora/springs.js';
 
 // How close the avatar has to stand for a tap to reach what it landed on. A tree
 // states its own reach and tool beside its resource contract, in flora/tree.js.
-const GRASS_REACH=1.8,CARCASS_REACH=1.6;
+const GRASS_REACH=1.8,CARCASS_REACH=1.6,SPRING_REACH=2.2;
 
 // What a touch means, per kind. Walking stays the input layer's business; this
 // says what a kind offers once the avatar is standing on it with the right thing
@@ -36,6 +37,13 @@ function touchRules(host){
   find:id=>host.grass.clumps.get(id),at:clump=>clump.position,
   offers:[{verb:'cut',tool:'scythe',reach:GRASS_REACH,applies:clump=>clump.state==='standing',
    run:clump=>host.grass.cut(clump,host.playerId)}]
+ });
+ // Water is not harvested, it is used where it stands: the offer takes nothing
+ // and hands back only whether the drink happened.
+ touch.register('spring',{
+  find:id=>host.springs.pools.get(id),at:pool=>pool.position,
+  offers:[{verb:'drink',tool:null,reach:SPRING_REACH,applies:pool=>pool.state==='standing',
+   run:pool=>host.drink(pool.id)}]
  });
  touch.register('boar',{
   find:id=>host.creatures.get(id),at:creature=>creature.at,
@@ -65,7 +73,7 @@ function densityProfiles(setup){
 // Biomes request inhabitants near the avatar. This owns the live spawn bridge;
 // TreeHarvestSystem keeps its existing visuals, contact, collection and Box3D adapter.
 export class ResourceHandler extends TreeHarvestSystem {
- constructor(scene,player,height,radius,{terrain,shared=null,playerId='local-owner',camera=null,onPlayerDamage=null}={}){
+ constructor(scene,player,height,radius,{terrain,shared=null,playerId='local-owner',camera=null,onPlayerDamage=null,onDrink=null}={}){
   super(scene,player,height,radius,{shared,playerId,camera,autoPopulate:false});
   if(!terrain?.roots?.length)throw new Error('ResourceHandler requires read-only D20 biome roots');
   this.chunks=[]; // Disable the old four-cell Meadows-only population loop.
@@ -74,6 +82,10 @@ export class ResourceHandler extends TreeHarvestSystem {
   this.grass=new TallGrassField({root:this.root,shared,player,playerId});
   this.grass.onDiscovery=()=>this.onDyeDiscovery?.();
   this.ground=new GroundResources({root:this.root,shared,player,playerId});
+  this.springs=new Springs({root:this.root,shared,player,playerId});
+  // Drinking is survival's business, not the world's: the handler only reports
+  // that a pool was used, the way it reports a boar's bite.
+  this.onDrink=onDrink;
   // Enemies live in their own system: species modules own behaviour and combat,
   // while the spawn registry only knows this is a creature kind.
   this.creatures=new CreatureSystem({root:this.root,shared,player,playerId,height,radius,camera,
@@ -112,11 +124,19 @@ export class ResourceHandler extends TreeHarvestSystem {
    alive:id=>Boolean(this.grass.clumps.get(id)),
    busy:id=>['falling','flying'].includes(this.grass.clumps.get(id)?.state)
   }});
-  for(const type of ['stick','stone'])this.spawns.register({type,category:'resource',respawnSeconds:20,adapter:{
+  // Dandies are picked up by the same bare-handed pipeline as sticks and stones.
+  for(const type of ['stick','stone','dandy'])this.spawns.register({type,category:'resource',respawnSeconds:20,adapter:{
    spawn:(id,position)=>this.ground.spawn(type,id,position),
    unload:id=>this.ground.unload(id),
    alive:id=>this.ground.items.has(id),
    busy:id=>this.ground.isBusy(id)
+  }});
+  // A spring is drunk, never taken, so it has no respawn delay and lives in the
+  // narrow band of dry ground just above sea level: water is found at the shore.
+  this.spawns.register({type:'spring',category:'resource',respawnSeconds:Infinity,minElevation:-.8,maxElevation:1.6,adapter:{
+   spawn:(id,position)=>this.springs.spawn(id,position),
+   unload:id=>this.springs.unload(id),
+   alive:id=>this.springs.pools.has(id)
   }});
   this.spawns.register({type:'boar',category:'creature',respawnSeconds:60,adapter:{
    spawn:(id,position)=>this.creatures.spawn('boar',id,position),
@@ -277,6 +297,13 @@ export class ResourceHandler extends TreeHarvestSystem {
   return touch.act(type,id,{tool,weapon:this.creatures.combat.weapon(tool),
    position:this.player.position,playerId:this.playerId});
  }
+ // Water is drunk where it is found: nothing is taken from the pool, so there is
+ // no yield and no state change. Only the thirst meter moves, on the other side
+ // of the same boundary that turns a bite into health loss.
+ drink(id){
+  if(!this.springs.pools.has(id))return false;
+  return this.onDrink?.()??false;
+ }
  // Pressing an animal with the bow in hand draws the string. Beyond the bow's
  // range it is not raised at all, so there is nothing to release.
  drawBow(id,now=Date.now()){
@@ -314,6 +341,7 @@ export class ResourceHandler extends TreeHarvestSystem {
   this.player.setTool(this.shared?.getEquippedTool(this.playerId)||null);
   this.grass.update(dt,body,this.shared?.getEquippedTool(this.playerId));
   this.ground.update(dt,body);
+  this.springs.update(dt);
   this.creatures.update(dt,{tool:this.shared?.getEquippedTool(this.playerId)||null});
   this.arrows.update(dt);
   if(this.bowDraw){
