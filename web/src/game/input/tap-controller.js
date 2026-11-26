@@ -53,8 +53,9 @@ export class TapController {
   this.ndc.set((screenX-bounds.left)/bounds.width*2-1,1-(screenY-bounds.top)/bounds.height*2);
   this.raycaster.setFromCamera(this.ndc,camera);
   let picked=null,best=Infinity;
-  // Trees, grass, boars, loose items, springs and the fire all answer to the same
-  // touch: the nearest one to the finger is what the touch is aimed at.
+  // Trees, grass, boars, loose items and the fire all answer to the same touch:
+  // the nearest one to the finger is what the touch is aimed at. Water is not in
+  // this list because the sea is a surface, not a thing to project.
   const consider=(position,type,id,visible)=>{
    if(!visible)return;
    const projected=position.clone().project(camera);
@@ -70,7 +71,6 @@ export class TapController {
   for(const c of harvesting.creatures.creatures())consider(c.at,'boar',c.id,true);
   for(const c of harvesting.grass.clumps.values())consider(c.position,'grass',c.id,c.state==='standing'&&c.group.visible);
   for(const item of harvesting.ground.items.values())consider(item.position,'ground',item.id,item.state==='standing'&&item.group.visible);
-  for(const pool of harvesting.springs.pools.values())consider(pool.position,'spring',pool.id,pool.state==='standing'&&pool.group.visible);
   // The camp fire is a target too, but only while it is burning: a cold pile of
   // logs is not a cook fire, so a tap on it just walks you there.
   if(harvesting.fire?.burning)consider(harvesting.fire.root.position,'fire','fire',true);
@@ -107,6 +107,9 @@ export class TapController {
    destination=this.groundAt(screenX,screenY);
    if(!destination)return;
   }
+  // The sea is not a thing to aim at, it is the ground under it: a tap on water
+  // with the pot in hand dips it, and you stay where you are.
+  if(!targetId&&harvesting.fillPotAt(destination))return;
   if(!targetId&&sharedWorld.getEquippedTool('local-owner')==='hammer'&&!bonfire.exists&&
    (sharedWorld.getInventory('local-owner').logs||0)>=12){
    this.setBonfireCandidate(destination.clone());

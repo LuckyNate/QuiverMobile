@@ -15,11 +15,12 @@ import {WORLD_SETUP,BIOME_SETUP} from '../world/world-config.js';
 import {TouchRegistry} from './interaction.js';
 import {TREE_HARVEST} from '../flora/tree.js';
 import {InstanceStore} from '../population/instance-store.js';
-import {Springs} from '../flora/springs.js';
 
 // How close the avatar has to stand for a tap to reach what it landed on. A tree
 // states its own reach and tool beside its resource contract, in flora/tree.js.
-const GRASS_REACH=1.8,CARCASS_REACH=1.6,SPRING_REACH=2.2,COOK_REACH=2.4;
+const GRASS_REACH=1.8,CARCASS_REACH=1.6,COOK_REACH=2.4;
+// How far from the sea an avatar may stand and still dip the pot in it.
+const WATER_REACH=1.6;
 
 // What a touch means, per kind. Walking stays the input layer's business; this
 // says what a kind offers once the avatar is standing on it with the right thing
@@ -37,13 +38,6 @@ function touchRules(host){
   find:id=>host.grass.clumps.get(id),at:clump=>clump.position,
   offers:[{verb:'cut',tool:'scythe',reach:GRASS_REACH,applies:clump=>clump.state==='standing',
    run:clump=>host.grass.cut(clump,host.playerId)}]
- });
- // A spring is not harvested either: it fills the pot with water that still has to
- // be boiled, so no tap here offers a drink.
- touch.register('spring',{
-  find:id=>host.springs.pools.get(id),at:pool=>pool.position,
-  offers:[{verb:'fill',tool:'pot',reach:SPRING_REACH,applies:pool=>pool.state==='standing',
-   run:()=>host.kitchen?.fill()??false}]
  });
  // The camp fire is the kitchen. Which vessel is in hand decides the verb: the pot
  // boils, the cup drinks what was boiled, the bowl cooks soup and eats it.
@@ -97,11 +91,13 @@ export class ResourceHandler extends TreeHarvestSystem {
   this.grass=new TallGrassField({root:this.root,shared,player,playerId});
   this.grass.onDiscovery=()=>this.onDyeDiscovery?.();
   this.ground=new GroundResources({root:this.root,shared,player,playerId});
-  this.springs=new Springs({root:this.root,shared,player,playerId});
-  // Attached by the game once the camp fire and the kitchen exist: the world
-  // offers the verbs, the kitchen decides what they do to the pack and the meters.
+  // Attached by the game once the camp fire, the sea and the kitchen exist: the
+  // world offers the verbs, the kitchen decides what they do to the pack and the
+  // meters. Water is gathered from the sea that is already in the world, so the
+  // handler needs a reading of it rather than a spawned object.
   this.fire=null;
   this.kitchen=null;
+  this.water=null;
   // Enemies live in their own system: species modules own behaviour and combat,
   // while the spawn registry only knows this is a creature kind.
   this.creatures=new CreatureSystem({root:this.root,shared,player,playerId,height,radius,camera,
@@ -146,13 +142,6 @@ export class ResourceHandler extends TreeHarvestSystem {
    unload:id=>this.ground.unload(id),
    alive:id=>this.ground.items.has(id),
    busy:id=>this.ground.isBusy(id)
-  }});
-  // A spring is drunk, never taken, so it has no respawn delay and lives in the
-  // narrow band of dry ground just above sea level: water is found at the shore.
-  this.spawns.register({type:'spring',category:'resource',respawnSeconds:Infinity,minElevation:-.8,maxElevation:1.6,adapter:{
-   spawn:(id,position)=>this.springs.spawn(id,position),
-   unload:id=>this.springs.unload(id),
-   alive:id=>this.springs.pools.has(id)
   }});
   this.spawns.register({type:'boar',category:'creature',respawnSeconds:60,adapter:{
    spawn:(id,position)=>this.creatures.spawn('boar',id,position),
@@ -313,6 +302,17 @@ export class ResourceHandler extends TreeHarvestSystem {
   return touch.act(type,id,{tool,weapon:this.creatures.combat.weapon(tool),
    position:this.player.position,playerId:this.playerId});
  }
+ // Water is gathered where the world already keeps it. A tap that lands under the
+ // sea surface fills the pot, so long as the avatar is standing at the water with
+ // the pot in hand.
+ fillPotAt(point){
+  if(!this.water||!point)return false;
+  const surface=this.water.radius;
+  if(point.length()>surface)return false;
+  if(this.player.position.length()>surface+WATER_REACH)return false;
+  if(this.shared?.getEquippedTool(this.playerId)!=='pot')return false;
+  return this.kitchen?.fill()??false;
+ }
  // Pressing an animal with the bow in hand draws the string. Beyond the bow's
  // range it is not raised at all, so there is nothing to release.
  drawBow(id,now=Date.now()){
@@ -350,7 +350,6 @@ export class ResourceHandler extends TreeHarvestSystem {
   this.player.setTool(this.shared?.getEquippedTool(this.playerId)||null);
   this.grass.update(dt,body,this.shared?.getEquippedTool(this.playerId));
   this.ground.update(dt,body);
-  this.springs.update(dt);
   this.creatures.update(dt,{tool:this.shared?.getEquippedTool(this.playerId)||null});
   this.arrows.update(dt);
   if(this.bowDraw){
