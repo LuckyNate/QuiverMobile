@@ -51,7 +51,9 @@ export class Bonfire {
   if((inv.logs||0)<12)return false;
   if(!this.shared.spendLogs(this.playerId,12))return false;
   this.positionAt(position.toArray());
-  this.endAt=0;
+  // Building a fire lights it. The twelve logs are the camp, and the first hour of
+  // cooking comes with them rather than needing a log added before it will burn.
+  this.endAt=Date.now()+HOUR;
   this.persist();
   // Standing beside the new camp becomes the respawn spot.
   this.rest.saveAt(this.player.position);
