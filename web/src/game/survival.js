@@ -1,5 +1,8 @@
 // The player's health pool in hit points: a level 1 hit takes one of these.
 export const PLAYER_HEALTH=10;
+// One drink from a spring. There is no canteen, so water is taken where it is
+// found and the whole mouthful goes straight into the thirst meter.
+export const DRINK_RESTORES=.34;
 // Survival needs. Each is 1 fully sated, 0 empty, and drifts at a fixed rate.
 // Health is the one meter combat writes; the rest are display-only and nothing
 // kills the player when a meter empties, because death and respawn rules are
@@ -34,6 +37,13 @@ export class Survival{
  // creature's health uses, so a level 1 bite costs a tenth of the meter.
  hurt(points){
   return this.damage(Math.max(0,Number(points)||0)/PLAYER_HEALTH*100);
+ }
+ // A mouthful of water: thirst comes back and nothing else changes. Returns how
+ // much the meter actually took, so a full player is not told they drank.
+ drink(amount=DRINK_RESTORES){
+  const before=this.values.thirst;
+  this.values.thirst=clamp(before+Math.max(0,Number(amount)||0),0,1);
+  return this.values.thirst-before;
  }
  // Lowest first, so the most urgent need is the one at the front of the stack.
  needs(){
