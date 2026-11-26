@@ -37,6 +37,9 @@ export class Bonfire {
   else this.root.visible=false;
   this.rest=new CampRest({shared,player,playerId});
  }
+ // A built fire only cooks while it still has fuel in it: the pile of logs is the
+ // camp, and the burning hour is what makes it a cook fire.
+ get burning(){return this.exists&&this.endAt>Date.now();}
  positionAt(position){
   this.root.position.fromArray(position);
   this.root.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),this.root.position.clone().normalize());

@@ -7,7 +7,9 @@ const RESOURCE_NAMES={logs:'4 m Logs',fibers:'Fibers',sticks:'Sticks',stones:'St
 // Unmapped keys still read as words: birchBark -> Birch Bark.
 const resourceName=key=>RESOURCE_NAMES[key]||key.replace(/([a-z0-9])([A-Z])/g,'$1 $2').replace(/^./,c=>c.toUpperCase());
 // Inventory keys that are bookkeeping rather than something you carry in a slot.
-const NOT_A_RESOURCE=new Set(['equippedTool','craftedTools','unlockedDyes','gear','logStrength','fiberQuality','arrows']);
+const NOT_A_RESOURCE=new Set(['equippedTool','craftedTools','unlockedDyes','gear','logStrength','fiberQuality','arrows','potWater','soup']);
+// The pot and the bowl carry something, so their slot says what is in them.
+const POT_STATE={empty:'Empty pot',raw:'Raw water',clean:'Clean water'};
 const SLOT_STYLE='min-height:84px;padding:8px;border:1px solid #526477;border-radius:5px;display:flex;flex-direction:column;justify-content:center;gap:4px;background:#172430';
 const label=id=>id[0].toUpperCase()+id.slice(1);
 export const panelInventory={
@@ -173,6 +175,9 @@ export const panelInventory={
     entry.name.style.display=icon?'none':'block';
     entry.quantity.style.display=icon?'none':'block';
     entry.quantity.textContent=active?'Equipped':crafted?'Tap to equip':ready?'Tap to craft':Object.entries(TOOL_RECIPES[id]).map(([item,n])=>resourceName(item)+' '+(inventory[item]||0)+'/'+n).join(' · ');
+    const held=active?'Equipped':'Tap to equip';
+    if(id==='pot')entry.quantity.textContent=held+' · '+POT_STATE[inventory.potWater||'empty'];
+    if(id==='bowl')entry.quantity.textContent=held+' · '+((inventory.soup||0)>0?'Soup: '+inventory.soup:'Empty');
     const title=entry.name.textContent+(active?' — equipped':crafted?' — tap to equip':'');
     entry.slot.title=title;
     entry.slot.setAttribute('aria-label',title);
