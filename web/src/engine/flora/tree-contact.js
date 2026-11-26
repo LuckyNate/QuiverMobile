@@ -2,6 +2,8 @@ import * as THREE from 'three';
 
 // Axe-only player contacts against every current tree mesh component.
 // The existing Box3D capsule remains the moving body; terrain is untouched.
+// Contact pushes the avatar back and never fells anything: the chop belongs to a
+// tap with the axe in reach, so bumping a trunk cannot harvest it.
 export class TreeContact {
  constructor({getTool,onHit,onContact,interaction}){this.getTool=getTool;this.onHit=onHit;this.onContact=onContact;this.interaction=interaction;}
  update(trees,body,dt){
@@ -72,7 +74,7 @@ export class TreeContact {
    t.bumpCooldown=.25;
    t.contactLatched=true;
    this.onContact?.(t,hitPart);
-   this.onHit(t,hitPart);
+   this.onHit?.(t,hitPart);
   }
  }
 }

@@ -33,7 +33,7 @@ export const TREE_CROWN_METERS=1.35;
 export class TreeHarvestSystem {
  constructor(scene,player,height,radius,{shared=null,playerId='local-owner',camera=null,autoPopulate=true}={}){
   Object.assign(this,{scene,player,height,radius,shared,playerId,camera});
-  this.trees=[];this.objects=new WorldObjectManager();this.wood=0;this.attackClock=0;this.logLength=4;
+  this.trees=[];this.objects=new WorldObjectManager();this.wood=0;this.logLength=4;
   this.renderEnabled=true;
   this.root=new THREE.Group();scene.add(this.root);
   this.origin=player.position.clone().normalize();
@@ -52,14 +52,7 @@ export class TreeHarvestSystem {
   this.interactions=new InteractionSystem();
   this.contact=new TreeContact({interaction:this.interactions,
    onContact:()=>this.player.visual.flashResourceContact(),
-   getTool:()=>this.shared?.getEquippedTool(this.playerId)||null,
-   onHit:t=>{
-    if(this.attackClock>0)return;
-    this.attackClock=.6;this.player.showAnimation('Axe Attack');
-    // One chop fells a tree, whether it came from a bump or a screen tap.
-    t.hits++;
-    this.fell(t,this.playerId);
-   }
+   getTool:()=>this.shared?.getEquippedTool(this.playerId)||null
   });
   if(autoPopulate)this.populate();
  }
@@ -124,9 +117,13 @@ export class TreeHarvestSystem {
   }
   return true;
  }
- // Touching a standing trunk or branch pushes back; with the axe equipped, impact chops.
+ // Touching a standing trunk or branch pushes back and nothing more. A pine falls
+ // to a tap with the axe in reach, never to walking into it, so crossing a wood
+ // with the axe drawn cannot clear it by accident.
  bump(body,dt){this.contact.update(this.trees,body,dt);}
   fell(t,harvesterId){
+  // The chop is the tap: swing only when this avatar is the one felling it.
+  if(harvesterId===this.playerId){this.player.showAnimation('Axe Attack');t.hits++;}
   this.treeVisual.activate(t);
   t.state='falling';t.object.state='falling';t.progress=0;t.ownerId=harvesterId;
   this.shared?.setEntity(t.id,{state:'felled',ownerId:harvesterId,chunk:t.chunk,serial:t.serial});
@@ -159,7 +156,6 @@ export class TreeHarvestSystem {
    if(t.state==='flying')t.trunk.visible=this.renderEnabled&&withinSceneryRange(t.trunk.position,this.player.position);
   }
   this.treeVisual.updateBillboards(this.camera);
-  this.attackClock=Math.max(0,this.attackClock-dt);
   this.bump(body,dt);
   this.lifecycle.update(this.trees,dt);
   this.treePopulation.respawn();
