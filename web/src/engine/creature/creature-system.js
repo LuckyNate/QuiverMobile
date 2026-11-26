@@ -41,7 +41,9 @@ export class CreatureSystem {
   this.visuals[type].spawn(id,position);
   this.live.set(id,creature);
   this.physics?.addCreatureBody(creature);
-  return true;
+  // The instance, not a bare true: the host remembers what was made, so a boar
+  // and a pine are found again by id the same way.
+  return creature;
  }
  unload(id){
   const creature=this.live.get(id);

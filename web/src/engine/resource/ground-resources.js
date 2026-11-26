@@ -31,7 +31,8 @@ export class GroundResources {
   batch.entries.push(item);batch.mesh.count=batch.entries.length;
   this.updateInstance(item);
   this.items.set(id,item);
-  return true;
+  // The instance, not a bare true: the host remembers what was made.
+  return item;
  }
  select(id){this.targetId=this.items.get(id)?.state==='standing'?id:null;}
  clearSelection(){this.targetId=null;}

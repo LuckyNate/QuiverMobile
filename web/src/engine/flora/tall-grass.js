@@ -25,7 +25,8 @@ export class TallGrassField {
    state:'standing',progress:0,owner:null
   });
   this.clumps.set(id,clump);
-  return true;
+  // The instance, not a bare true: the host remembers what was made.
+  return clump;
  }
  unload(id){
   const c=this.clumps.get(id);if(!c)return;

@@ -14,6 +14,7 @@ import {BOW,planShot} from '../combat/arrow.js';
 import {WORLD_SETUP,BIOME_SETUP} from '../world/world-config.js';
 import {TouchRegistry} from './interaction.js';
 import {TREE_HARVEST} from '../flora/tree.js';
+import {InstanceStore} from '../population/instance-store.js';
 
 // How close the avatar has to stand for a tap to reach what it landed on. A tree
 // states its own reach and tool beside its resource contract, in flora/tree.js.
@@ -68,8 +69,7 @@ export class ResourceHandler extends TreeHarvestSystem {
   super(scene,player,height,radius,{shared,playerId,camera,autoPopulate:false});
   if(!terrain?.roots?.length)throw new Error('ResourceHandler requires read-only D20 biome roots');
   this.chunks=[]; // Disable the old four-cell Meadows-only population loop.
-  this.entryById=new Map();
-  this.typeById=new Map();
+  this.instances=new InstanceStore();
   this.spawns=new SpawnRegistry();
   this.grass=new TallGrassField({root:this.root,shared,player,playerId});
   this.grass.onDiscovery=()=>this.onDyeDiscovery?.();
@@ -94,8 +94,9 @@ export class ResourceHandler extends TreeHarvestSystem {
   this.spawns.register({type:'tree',category:'resource',respawnSeconds:8,adapter:{
    spawn:(id,position,context)=>{
     // A collected tree keeps its entry until the cell is evicted; retire it so the
-    // same seeded slot can stand again.
-    if(this.findTree(id)?.state==='collected')this.unloadTree(id);
+    // same seeded slot can stand again. The record goes with it, or the store would
+    // still answer for the felled tree and the slot could never refill.
+    if(this.findTree(id)?.state==='collected'){this.unloadTree(id);this.instances.drop(id);}
     return this.spawnTree(id,position,context?.cellKey);
    },
    unload:id=>this.unloadTree(id),
@@ -146,17 +147,22 @@ export class ResourceHandler extends TreeHarvestSystem {
   return kinds;
  }
  canSpawn(type){return this.spawns.canSpawn(type);}
- inTransition(id){return this.spawns.isBusy(this.typeById.get(id),id);}
+ inTransition(id){return this.spawns.isBusy(this.instances.typeOf(id),id);}
+ // The kind makes and destroys; this only remembers what it made, so a resource,
+ // a creature and an enemy are all found again by the same id the same way.
  spawn(type,id,position,context){
-  const spawned=this.spawns.spawn(type,id,position,context);
-  if(spawned)this.typeById.set(id,type);
-  return spawned;
+  const instance=this.spawns.spawn(type,id,position,context);
+  if(!instance)return false;
+  // A seeded slot may still hold a record from an earlier life.
+  this.instances.drop(id);
+  this.instances.put(type,id,instance);
+  return true;
  }
  unload(id){
-  const type=this.typeById.get(id);
+  const type=this.instances.typeOf(id);
   if(!type)return;
   this.spawns.unload(type,id);
-  this.typeById.delete(id);
+  this.instances.drop(id);
  }
  // The live half of the zone's contract. Deadlines are written to the shared
  // world, so a cell that comes back into range remembers what is still regrowing.
@@ -180,12 +186,10 @@ export class ResourceHandler extends TreeHarvestSystem {
   return this.spawn(type,id,position,context);
  }
  spawnTree(id,position,chunk){
-  if(this.entryById.has(id))return false;
+  if(this.instances.of('tree',id))return false;
   const record=this.shared?.getEntity(id);
   if(record&&record.state!=='standing')return false;
-  const entry=this.makeTree(chunk,0,this.spacedPosition(id,position),id);
-  this.entryById.set(id,entry);
-  return true;
+  return this.makeTree(chunk,0,this.spacedPosition(id,position),id);
  }
  // Does a trunk at this spot clear every pine already standing? One crown's radius
  // plus the other's is the closest the two may come; the shave keeps exact contact
@@ -250,12 +254,11 @@ export class ResourceHandler extends TreeHarvestSystem {
   if(at.distanceToSquared(position)>1e-12)ground(at);
   return at;
  }
- findTree(id){return this.entryById.get(id)||null;}
+ findTree(id){return this.instances.of('tree',id);}
  unloadTree(id){
-  const entry=this.entryById.get(id);
+  const entry=this.instances.of('tree',id);
   if(!entry)return;
   if(entry.state==='falling'||entry.state==='fading'||entry.state==='flying')return;
-  this.entryById.delete(id);
   this.objects.despawn(id);
   this.trees.splice(this.trees.indexOf(entry),1);
   this.treeVisual.remove(entry);
