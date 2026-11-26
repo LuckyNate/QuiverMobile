@@ -12,9 +12,44 @@ import {HealthPips} from '../creature/health-pip.js';
 import {ArrowSystem} from '../combat/arrows.js';
 import {BOW,planShot} from '../combat/arrow.js';
 import {WORLD_SETUP,BIOME_SETUP} from '../world/world-config.js';
+import {TouchRegistry} from './interaction.js';
 
 // How close the avatar has to stand for a tap to reach what it landed on.
 const TREE_REACH=2.4,GRASS_REACH=1.8,CARCASS_REACH=1.6;
+
+// What a touch means, per kind. Walking stays the input layer's business; this
+// says what a kind offers once the avatar is standing on it with the right thing
+// in hand. Built from the host, not stored in a constructor, so any host with
+// these methods answers to the same rules — and an enemy registers here beside a
+// tree, by the same rule, instead of adding a branch to the touch handler.
+function touchRules(host){
+ const touch=new TouchRegistry();
+ touch.register('tree',{
+  find:id=>host.findTree(id),at:tree=>tree.at,
+  offers:[{verb:'fell',tool:'axe',reach:TREE_REACH,applies:tree=>tree.state==='standing',
+   run:tree=>host.fell(tree,host.playerId)}]
+ });
+ touch.register('grass',{
+  find:id=>host.grass.clumps.get(id),at:clump=>clump.position,
+  offers:[{verb:'cut',tool:'scythe',reach:GRASS_REACH,applies:clump=>clump.state==='standing',
+   run:clump=>host.grass.cut(clump,host.playerId)}]
+ });
+ touch.register('boar',{
+  find:id=>host.creatures.get(id),at:creature=>creature.at,
+  offers:[
+   // A carcass needs the knife already in hand and the avatar standing at it.
+   {verb:'skin',tool:'knife',reach:CARCASS_REACH,applies:creature=>creature.dead,
+    run:creature=>host.creatures.harvest(creature.id,host.playerId)},
+   // A living boar takes one hit from whatever weapon is in hand and in reach.
+   // The bow never does: it only looses an arrow when the string is let go, so
+   // with nothing melee in hand this offer reaches nothing.
+   {verb:'attack',tool:null,applies:creature=>!creature.dead,
+    reach:({weapon})=>weapon&&!weapon.ranged?weapon.reach:0,
+    run:(creature,{tool})=>host.creatures.strike(creature.id,tool)}
+  ]
+ });
+ return touch;
+}
 
 // One density profile per face. The biome table is the only place that says how
 // many of a type a cell holds, resources and creatures alike.
@@ -226,43 +261,16 @@ export class ResourceHandler extends TreeHarvestSystem {
   this.treeVisual.release(entry.trunk,entry.foliage);
   entry.foliage.material.dispose();
  }
- // A touch acts on the spot. This is the whole of touch interaction: the tap does
- // its work right now, with the tool in hand, if the avatar is already close
- // enough; otherwise it does nothing and the tap only walks you toward it.
- // Nothing is stored between taps, so no later walk or tool swap can set off an
- // action the player did not just ask for. It returns whether it acted.
+ // A touch acts on the spot. Each kind's own offers say what is possible; this
+ // only asks with what is in hand and how close the avatar stands, so nothing
+ // here names a type. False means the tap only walks you toward the target, and
+ // the next tap acts — nothing is stored between taps, so no later walk or tool
+ // swap can set off an action the player did not just ask for.
  tapNow(type,id){
-  const at=this.player.position;
+  const touch=(this.touch??=touchRules(this));
   const tool=this.shared?.getEquippedTool(this.playerId)||null;
-  if(type==='tree'){
-   const tree=this.findTree(id);
-   if(!tree||tree.state!=='standing'||tool!=='axe')return false;
-   if(tree.at.distanceTo(at)>TREE_REACH)return false;
-   this.fell(tree,this.playerId);
-   return true;
-  }
-  if(type==='grass'){
-   const clump=this.grass.clumps.get(id);
-   if(!clump||clump.state!=='standing'||tool!=='scythe')return false;
-   if(clump.position.distanceTo(at)>GRASS_REACH)return false;
-   this.grass.cut(clump,this.playerId);
-   return true;
-  }
-  if(type!=='boar')return false;
-  const creature=this.creatures.get(id);
-  if(!creature)return false;
-  if(creature.dead){
-   // A carcass needs the knife already in hand and the avatar standing at it.
-   if(tool!=='knife'||creature.at.distanceTo(at)>CARCASS_REACH)return false;
-   this.creatures.harvest(creature.id,this.playerId);
-   return true;
-  }
-  // A living boar takes one hit from whatever weapon is in hand and in reach.
-  // The bow never does: it only looses an arrow when the string is let go.
-  const weapon=this.creatures.combat.weapon(tool);
-  if(!weapon||weapon.ranged||creature.at.distanceTo(at)>weapon.reach)return false;
-  this.creatures.strike(creature.id,tool);
-  return true;
+  return touch.act(type,id,{tool,weapon:this.creatures.combat.weapon(tool),
+   position:this.player.position,playerId:this.playerId});
  }
  // Pressing an animal with the bow in hand draws the string. Beyond the bow's
  // range it is not raised at all, so there is nothing to release.
