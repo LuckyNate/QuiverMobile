@@ -19,7 +19,7 @@ import {Springs} from '../flora/springs.js';
 
 // How close the avatar has to stand for a tap to reach what it landed on. A tree
 // states its own reach and tool beside its resource contract, in flora/tree.js.
-const GRASS_REACH=1.8,CARCASS_REACH=1.6,SPRING_REACH=2.2;
+const GRASS_REACH=1.8,CARCASS_REACH=1.6,SPRING_REACH=2.2,COOK_REACH=2.4;
 
 // What a touch means, per kind. Walking stays the input layer's business; this
 // says what a kind offers once the avatar is standing on it with the right thing
@@ -38,12 +38,27 @@ function touchRules(host){
   offers:[{verb:'cut',tool:'scythe',reach:GRASS_REACH,applies:clump=>clump.state==='standing',
    run:clump=>host.grass.cut(clump,host.playerId)}]
  });
- // Water is not harvested, it is used where it stands: the offer takes nothing
- // and hands back only whether the drink happened.
+ // A spring is not harvested either: it fills the pot with water that still has to
+ // be boiled, so no tap here offers a drink.
  touch.register('spring',{
   find:id=>host.springs.pools.get(id),at:pool=>pool.position,
-  offers:[{verb:'drink',tool:null,reach:SPRING_REACH,applies:pool=>pool.state==='standing',
-   run:pool=>host.drink(pool.id)}]
+  offers:[{verb:'fill',tool:'pot',reach:SPRING_REACH,applies:pool=>pool.state==='standing',
+   run:()=>host.kitchen?.fill()??false}]
+ });
+ // The camp fire is the kitchen. Which vessel is in hand decides the verb: the pot
+ // boils, the cup drinks what was boiled, the bowl cooks soup and eats it.
+ touch.register('fire',{
+  find:()=>host.fire?.burning?host.fire:null,at:fire=>fire.root.position,
+  offers:[
+   {verb:'drink',tool:'cup',reach:COOK_REACH,applies:()=>Boolean(host.kitchen?.canDrink()),
+    run:()=>host.kitchen.drink()},
+   {verb:'boil',tool:'pot',reach:COOK_REACH,applies:()=>Boolean(host.kitchen?.canBoil()),
+    run:()=>host.kitchen.boil()},
+   {verb:'eat',tool:'bowl',reach:COOK_REACH,applies:()=>Boolean(host.kitchen?.canEat()),
+    run:()=>host.kitchen.eat()},
+   {verb:'cook',tool:'bowl',reach:COOK_REACH,applies:()=>Boolean(host.kitchen?.canCookSoup()),
+    run:()=>host.kitchen.cookSoup()}
+  ]
  });
  touch.register('boar',{
   find:id=>host.creatures.get(id),at:creature=>creature.at,
@@ -73,7 +88,7 @@ function densityProfiles(setup){
 // Biomes request inhabitants near the avatar. This owns the live spawn bridge;
 // TreeHarvestSystem keeps its existing visuals, contact, collection and Box3D adapter.
 export class ResourceHandler extends TreeHarvestSystem {
- constructor(scene,player,height,radius,{terrain,shared=null,playerId='local-owner',camera=null,onPlayerDamage=null,onDrink=null}={}){
+ constructor(scene,player,height,radius,{terrain,shared=null,playerId='local-owner',camera=null,onPlayerDamage=null}={}){
   super(scene,player,height,radius,{shared,playerId,camera,autoPopulate:false});
   if(!terrain?.roots?.length)throw new Error('ResourceHandler requires read-only D20 biome roots');
   this.chunks=[]; // Disable the old four-cell Meadows-only population loop.
@@ -83,9 +98,10 @@ export class ResourceHandler extends TreeHarvestSystem {
   this.grass.onDiscovery=()=>this.onDyeDiscovery?.();
   this.ground=new GroundResources({root:this.root,shared,player,playerId});
   this.springs=new Springs({root:this.root,shared,player,playerId});
-  // Drinking is survival's business, not the world's: the handler only reports
-  // that a pool was used, the way it reports a boar's bite.
-  this.onDrink=onDrink;
+  // Attached by the game once the camp fire and the kitchen exist: the world
+  // offers the verbs, the kitchen decides what they do to the pack and the meters.
+  this.fire=null;
+  this.kitchen=null;
   // Enemies live in their own system: species modules own behaviour and combat,
   // while the spawn registry only knows this is a creature kind.
   this.creatures=new CreatureSystem({root:this.root,shared,player,playerId,height,radius,camera,
@@ -296,13 +312,6 @@ export class ResourceHandler extends TreeHarvestSystem {
   const tool=this.shared?.getEquippedTool(this.playerId)||null;
   return touch.act(type,id,{tool,weapon:this.creatures.combat.weapon(tool),
    position:this.player.position,playerId:this.playerId});
- }
- // Water is drunk where it is found: nothing is taken from the pool, so there is
- // no yield and no state change. Only the thirst meter moves, on the other side
- // of the same boundary that turns a bite into health loss.
- drink(id){
-  if(!this.springs.pools.has(id))return false;
-  return this.onDrink?.()??false;
  }
  // Pressing an animal with the bow in hand draws the string. Beyond the bow's
  // range it is not raised at all, so there is nothing to release.
