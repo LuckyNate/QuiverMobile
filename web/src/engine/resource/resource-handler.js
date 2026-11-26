@@ -13,9 +13,11 @@ import {ArrowSystem} from '../combat/arrows.js';
 import {BOW,planShot} from '../combat/arrow.js';
 import {WORLD_SETUP,BIOME_SETUP} from '../world/world-config.js';
 import {TouchRegistry} from './interaction.js';
+import {TREE_HARVEST} from '../flora/tree.js';
 
-// How close the avatar has to stand for a tap to reach what it landed on.
-const TREE_REACH=2.4,GRASS_REACH=1.8,CARCASS_REACH=1.6;
+// How close the avatar has to stand for a tap to reach what it landed on. A tree
+// states its own reach and tool beside its resource contract, in flora/tree.js.
+const GRASS_REACH=1.8,CARCASS_REACH=1.6;
 
 // What a touch means, per kind. Walking stays the input layer's business; this
 // says what a kind offers once the avatar is standing on it with the right thing
@@ -26,7 +28,7 @@ function touchRules(host){
  const touch=new TouchRegistry();
  touch.register('tree',{
   find:id=>host.findTree(id),at:tree=>tree.at,
-  offers:[{verb:'fell',tool:'axe',reach:TREE_REACH,applies:tree=>tree.state==='standing',
+  offers:[{...TREE_HARVEST,applies:tree=>tree.state==='standing',
    run:tree=>host.fell(tree,host.playerId)}]
  });
  touch.register('grass',{
