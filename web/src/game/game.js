@@ -8,6 +8,7 @@ import {WorldWater} from '../engine/world/water.js';
 import {ResourceHandler} from '../engine/resource/resource-handler.js';
 import {SharedWorld} from '../engine/entity/shared-world.js';
 import {Bonfire} from '../engine/camp/bonfire.js';
+import {Kitchen} from '../engine/camp/kitchen.js';
 import {Building} from '../engine/build/building.js';
 import {GamePanels} from '../ui/game-panels.js';
 import {Survival} from './survival.js';
@@ -62,17 +63,17 @@ export class Game {
   // A creature's hit takes health points off the player's own pool; the conversion
   // lives at this boundary so combat and survival keep their own units.
   this.harvesting=new ResourceHandler(this.scene,this.playerSystem,this.height,RADIUS,{terrain:this.terrain,shared:this.sharedWorld,playerId:'local-owner',camera:this.camera,
-   onPlayerDamage:hit=>this.survival.hurt(hit),
-   // The same boundary as damage, in the other direction: the world says a pool
-   // was used, survival decides what that does to the thirst meter.
-   onDrink:()=>{
-    const restored=this.survival.drink();
-    if(restored>0)this.panels.print('You drink from the spring.');
-    return restored>0;
-   }});
+   onPlayerDamage:hit=>this.survival.hurt(hit)});
   this.panels=new GamePanels({app,canvas:this.canvas,controls:this.playerSystem.controls,sharedWorld:this.sharedWorld,playerId:'local-owner'});
   this.panels.updateSurvival(this.survival.needs());
   this.bonfire=new Bonfire({scene:this.scene,shared:this.sharedWorld,player:this.playerSystem,playerId:'local-owner',camera:this.camera,app});
+  // Cooking belongs to the fire: the world offers the verbs, the kitchen owns the
+  // pot and the bowl, and the meters move across the same boundary as damage.
+  this.kitchen=new Kitchen({shared:this.sharedWorld,playerId:'local-owner',
+   onThirst:()=>this.survival.drink(),onHunger:()=>this.survival.eat(),
+   message:text=>this.panels.print(text)});
+  this.harvesting.kitchen=this.kitchen;
+  this.harvesting.fire=this.bonfire;
   // Building lives on the camp the fire permits: cells, shared walls and floors.
   this.building=new Building({scene:this.scene,shared:this.sharedWorld,player:this.playerSystem,height:this.height,radius:RADIUS,
    bonfire:this.bonfire,playerId:'local-owner',message:text=>this.panels.print(text)});

@@ -53,8 +53,8 @@ export class TapController {
   this.ndc.set((screenX-bounds.left)/bounds.width*2-1,1-(screenY-bounds.top)/bounds.height*2);
   this.raycaster.setFromCamera(this.ndc,camera);
   let picked=null,best=Infinity;
-  // Trees, grass, boars, loose items and springs all answer to the same touch: the
-  // nearest one to the finger is what the touch is aimed at.
+  // Trees, grass, boars, loose items, springs and the fire all answer to the same
+  // touch: the nearest one to the finger is what the touch is aimed at.
   const consider=(position,type,id,visible)=>{
    if(!visible)return;
    const projected=position.clone().project(camera);
@@ -71,6 +71,9 @@ export class TapController {
   for(const c of harvesting.grass.clumps.values())consider(c.position,'grass',c.id,c.state==='standing'&&c.group.visible);
   for(const item of harvesting.ground.items.values())consider(item.position,'ground',item.id,item.state==='standing'&&item.group.visible);
   for(const pool of harvesting.springs.pools.values())consider(pool.position,'spring',pool.id,pool.state==='standing'&&pool.group.visible);
+  // The camp fire is a target too, but only while it is burning: a cold pile of
+  // logs is not a cook fire, so a tap on it just walks you there.
+  if(harvesting.fire?.burning)consider(harvesting.fire.root.position,'fire','fire',true);
   return picked;
  }
  // A press claims the touch only when the bow can draw at that animal.
