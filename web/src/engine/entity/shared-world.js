@@ -1,6 +1,12 @@
 export const GEAR_SLOTS=Object.freeze(['head','torso','arms','hands','hips','legs','feet','left-hand','right-hand']);
 export const GEAR_RECIPES=Object.freeze({}); // Future biome armor and weapon definitions.
-export const TOOL_RECIPES={axe:{sticks:1,stones:1},knife:{sticks:1,stones:1,fibers:2,pineSap:1},hammer:{sticks:1,logs:1},scythe:{stones:3,logs:1},torch:{sticks:1,fibers:2},club:{sticks:2,logs:1},bow:{sticks:3,fibers:4}};
+// The cookware costs nothing because nobody crafts it: every camp starts with it.
+// It is listed here so it can be equipped and drawn like any other tool.
+export const TOOL_RECIPES={axe:{sticks:1,stones:1},knife:{sticks:1,stones:1,fibers:2,pineSap:1},hammer:{sticks:1,logs:1},scythe:{stones:3,logs:1},torch:{sticks:1,fibers:2},club:{sticks:2,logs:1},bow:{sticks:3,fibers:4},cup:{},pot:{},bowl:{}};
+// Granted on arrival, and again to any save that predates them: a player without a
+// pot cannot carry water and without a fire cannot drink, so the vessels are not
+// something to be found.
+export const STARTING_TOOLS=Object.freeze(['cup','pot','bowl']);
 // Hand tools that belong in the weapons tab rather than the tools tab.
 export const WEAPON_TOOLS=Object.freeze(['club','bow']);
 // Arrows are ammunition, not a tool: crafted in bundles and carried as a count.
@@ -25,7 +31,13 @@ export class SharedWorld {
    }
   }catch{}
  }
- join(id,position){this.players.set(id,{id,position,logs:this.inventories.get(id)?.logs||0});}
+ join(id,position){
+  this.players.set(id,{id,position,logs:this.inventories.get(id)?.logs||0});
+  const inventory=this.getInventory(id);
+  const crafted=new Set(inventory.craftedTools||[]);
+  const missing=STARTING_TOOLS.filter(tool=>!crafted.has(tool));
+  if(missing.length)this.inventories.set(id,{...inventory,craftedTools:[...crafted,...missing]});
+ }
  getInventory(id){return this.inventories.get(id)||{logs:0,equippedTool:null};}
  canCraftGear(id,slot){
   const candidate=GEAR_RECIPES[slot];
@@ -95,6 +107,13 @@ export class SharedWorld {
   this.inventories.set(id,next);
   this.events.push({version:++this.version,type:'arrows-crafted',playerId:id,count});
   if(this.events.length>256)this.events.shift();
+  this.save();return true;
+ }
+ // A generic writer for state a system owns beyond counted resources: what the pot
+ // holds, soup in the bowl. Tools and logs have their own rules and never come here.
+ updateInventory(id,patch){
+  if(!this.players.has(id)||!patch||typeof patch!=='object')return false;
+  this.inventories.set(id,{...this.getInventory(id),...patch});
   this.save();return true;
  }
  awardResource(id,type,count=1){
