@@ -41,12 +41,16 @@ export const panelSurvival={
   for(const need of needs){
    let meter=this.survivalMeters.get(need.id);
    if(!meter){meter=this.makeSurvivalMeter(need);this.survivalMeters.set(need.id,meter);}
-   const value=Math.max(0,Math.min(1,need.value));
-   // A full coloured circle that shrinks with the need, down to a small dot.
-   const side=Math.max(MIN_PIP,INNER*value);
+   // A meter can be run past its brim by a better dish; the circle is already full
+   // at 1, so the extra reads as a bright ring instead.
+   const value=Math.max(0,need.value);
+   const side=Math.max(MIN_PIP,INNER*Math.min(1,value));
    meter.pip.style.width=side.toFixed(1)+'px';
    meter.pip.style.height=side.toFixed(1)+'px';
    meter.pip.style.background='rgba('+need.colour+',1)';
+   meter.el.style.boxShadow=value>1
+    ?'inset 0 0 0 2px rgba('+need.colour+',1), 0 0 6px rgba('+need.colour+',.9)'
+    :'inset 0 0 0 1px rgba(229,237,245,.18)';
    meter.face.textContent=need.label;
    meter.el.setAttribute('aria-label',need.id+' '+Math.round(value*100)+'%');
   }

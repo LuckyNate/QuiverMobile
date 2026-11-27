@@ -12,6 +12,11 @@ export const SOUP_RESTORES=4;
 // While a meter is not empty its buff holds: a fed player hits half again as hard, a
 // watered one moves half again as fast. It runs out with the meter, not on a timer.
 export const BUFF_MULTIPLIER=1.5;
+// A plain drink or a lean meal only ever fills a meter to its brim. Something better
+// can be poured in past it, up to this much: the extra is real stored meter that
+// drains away at the same rate, so a player who never lets a meter run dry carries a
+// bigger one for as long as the top-up lasts.
+export const OVERFILL=1.2;
 // Survival needs, each measured in points out of its own capacity and drifting at a
 // fixed rate. Hunger and thirst are the two that carry buffs. Health is the one meter
 // combat writes. Nothing kills the player when a meter empties, because death and
@@ -38,9 +43,11 @@ export class Survival {
   }
  }
  capacity(id){return this.capacities[id]??METER_CAPACITY;}
+ // Drift never squashes an overflow: the meter holds what was poured into it and
+ // drains from there, which is what makes a better dish last longer.
  update(dt){
   for(const need of NEEDS){
-   this.values[need.id]=clamp(this.values[need.id]-need.perSecond*dt,0,need.capacity);
+   this.values[need.id]=clamp(this.values[need.id]-need.perSecond*dt,0,need.capacity*OVERFILL);
   }
  }
  // Damage is in hit points, out of the health meter's capacity.
@@ -53,24 +60,31 @@ export class Survival {
  hurt(points){
   return this.damage(points);
  }
- // A drink of boiled water: thirst comes back and nothing else changes. Returns how
- // many points the meter actually took, so a full player is not told they drank.
- drink(amount=DRINK_RESTORES){
-  const before=this.values.thirst;
-  this.values.thirst=clamp(before+Math.max(0,Number(amount)||0),0,this.capacity('thirst'));
-  return this.values.thirst-before;
+ // A drink: thirst comes back and nothing else changes. Plain water stops at the
+ // brim; a richer drink may go past it. Returns how many points the meter actually
+ // took, so a full player is not told they drank.
+ drink(amount=DRINK_RESTORES,rich=false){
+  return this.fill('thirst',amount,rich);
  }
- // A bowl of soup: hunger comes back and nothing else changes.
- eat(amount=SOUP_RESTORES){
-  const before=this.values.hunger;
-  this.values.hunger=clamp(before+Math.max(0,Number(amount)||0),0,this.capacity('hunger'));
-  return this.values.hunger-before;
+ // A meal: hunger comes back and nothing else changes. A plain one stops at the
+ // brim, a better one may go past it.
+ eat(amount=SOUP_RESTORES,rich=false){
+  return this.fill('hunger',amount,rich);
+ }
+ // Filling a meter. Nothing ever takes points away here: a plain drink poured into a
+ // meter already run past its brim leaves the overflow where it is.
+ fill(id,amount,rich){
+  const before=this.values[id];
+  const ceiling=this.capacity(id)*(rich?OVERFILL:1);
+  this.values[id]=Math.max(before,Math.min(before+Math.max(0,Number(amount)||0),ceiling));
+  return this.values[id]-before;
  }
  // The buffs. A meter is either empty or it is not; there is no half strength.
  get damageBuff(){return this.values.hunger>0?BUFF_MULTIPLIER:1;}
  get speedBuff(){return this.values.thirst>0?BUFF_MULTIPLIER:1;}
- // Normalised for the meters: every need reads 0..1 however full its capacity is.
- // Lowest first, so the most urgent need is the one at the front of the stack.
+ // Normalised for the meters: every need reads against its own capacity, so a meter
+ // run past its brim reads above 1. Lowest first, so the most urgent need is the one
+ // at the front of the stack.
  needs(){
   return NEEDS
    .map(need=>({id:need.id,label:need.label,colour:need.colour,capacity:need.capacity,
