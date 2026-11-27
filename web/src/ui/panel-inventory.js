@@ -7,7 +7,7 @@ const RESOURCE_NAMES={logs:'4 m Logs',fibers:'Fibers',sticks:'Sticks',stones:'St
 // Unmapped keys still read as words: birchBark -> Birch Bark.
 const resourceName=key=>RESOURCE_NAMES[key]||key.replace(/([a-z0-9])([A-Z])/g,'$1 $2').replace(/^./,c=>c.toUpperCase());
 // Inventory keys that are bookkeeping rather than something you carry in a slot.
-const NOT_A_RESOURCE=new Set(['equippedTool','craftedTools','unlockedDyes','gear','logStrength','fiberQuality','arrows','pot']);
+const NOT_A_RESOURCE=new Set(['equippedTool','craftedTools','unlockedDyes','gear','logStrength','fiberQuality','arrows','pot','potServings']);
 // The pot carries its contents, so its slot says what is in it: the water is salt
 // until the fire has boiled it, and then it is a meal.
 const POT_STATE={empty:'Empty pot',raw:'Salt water',clean:'Clean water',soup:'Soup'};
@@ -209,7 +209,9 @@ export const panelInventory={
     entry.quantity.style.display=icon?'none':'block';
     entry.quantity.textContent=active?'Equipped':crafted?'Tap to equip':ready?'Tap to craft':Object.entries(TOOL_RECIPES[id]).map(([item,n])=>resourceName(item)+' '+(inventory[item]||0)+'/'+n).join(' · ');
     const held=active?'Equipped':'Tap to equip';
+    const servings=inventory.pot==='soup'?inventory.potServings||0:0;
     if(id==='pot')entry.quantity.textContent=held+' · '+POT_STATE[inventory.pot||'empty'];
+    if(id==='bowl')entry.quantity.textContent=held+' · '+(servings>0?'Soup: '+servings+' servings':'Empty');
     const title=entry.name.textContent+(active?' — equipped':crafted?' — tap to equip':'');
     entry.slot.title=title;
     entry.slot.setAttribute('aria-label',title);
@@ -228,7 +230,10 @@ export const panelInventory={
     entry.slot.style.display=contents?'flex':'none';
     showPicture(entry,contents?toolIcon(contents==='raw'?'saltWater':contents==='clean'?'cleanWater':'soup'):null);
     entry.name.textContent=POT_STATE[contents]||'Empty pot';
-    entry.quantity.textContent=contents==='raw'?'Boil it on a fire':contents?'Tap to take it in hand':'';
+    const servings=contents==='soup'?(inventory.potServings||0):0;
+    entry.quantity.textContent=contents==='raw'?'Boil it on a fire'
+     :contents==='soup'?'Servings: '+servings+' · tap to take it in hand'
+     :contents?'Tap to take it in hand':'';
    }
    else if(entry.tag==='logs')entry.quantity.textContent='Count: '+count+' | Strength: '+averageStrength.toFixed(2);
    else if(entry.tag==='fibers'){
