@@ -74,6 +74,9 @@ export class Game {
    message:text=>this.panels.print(text)});
   this.harvesting.kitchen=this.kitchen;
   this.harvesting.fire=this.bonfire;
+  // The pot is filled from the sea that is already in the world, so the handler
+  // needs the water's radius rather than a spawned source.
+  this.harvesting.water=this.water;
   // Building lives on the camp the fire permits: cells, shared walls and floors.
   this.building=new Building({scene:this.scene,shared:this.sharedWorld,player:this.playerSystem,height:this.height,radius:RADIUS,
    bonfire:this.bonfire,playerId:'local-owner',message:text=>this.panels.print(text)});
