@@ -2,11 +2,11 @@ export const GEAR_SLOTS=Object.freeze(['head','torso','arms','hands','hips','leg
 export const GEAR_RECIPES=Object.freeze({}); // Future biome armor and weapon definitions.
 // The cookware costs nothing because nobody crafts it: every camp starts with it.
 // It is listed here so it can be equipped and drawn like any other tool.
-export const TOOL_RECIPES={axe:{sticks:1,stones:1},knife:{sticks:1,stones:1,fibers:2,pineSap:1},hammer:{sticks:1,logs:1},scythe:{stones:3,logs:1},torch:{sticks:1,fibers:2},club:{sticks:2,logs:1},bow:{sticks:3,fibers:4},cup:{},pot:{},bowl:{}};
+export const TOOL_RECIPES={axe:{sticks:1,stones:1},knife:{sticks:1,stones:1,fibers:2,pineSap:1},hammer:{sticks:1,logs:1},scythe:{stones:3,logs:1},torch:{sticks:1,fibers:2},club:{sticks:2,logs:1},bow:{sticks:3,fibers:4},cup:{},pot:{},pan:{},bowl:{}};
 // Granted on arrival, and again to any save that predates them: a player without a
-// pot cannot carry water and without a fire cannot drink, so the vessels are not
-// something to be found.
-export const STARTING_TOOLS=Object.freeze(['cup','pot','bowl']);
+// pot cannot carry water, without a pan cannot cook meat, and without a fire cannot
+// drink, so the vessels are not something to be found.
+export const STARTING_TOOLS=Object.freeze(['cup','pot','pan','bowl']);
 // Hand tools that belong in the weapons tab rather than the tools tab.
 export const WEAPON_TOOLS=Object.freeze(['club','bow']);
 // Arrows are ammunition, not a tool: crafted in bundles and carried as a count.
