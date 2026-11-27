@@ -112,17 +112,27 @@ export const panelInventory={
   resourcesPane.append(resourcesHint,this.resourceGrid);
   // What the vessels are carrying is carried too, so it is listed here beside the
   // things you pick up. An empty pot and an empty bowl show no slot at all.
-  const carriedSlot=(id,title)=>{
-   const slot=document.createElement('div');
-   slot.style.cssText=SLOT_STYLE;slot.style.display='none';
+  const carriedSlot=(id,title,vessel)=>{
+   const slot=document.createElement('button');
+   slot.type='button';
+   slot.style.cssText=SLOT_STYLE+'cursor:pointer;touch-action:manipulation';
+   slot.style.display='none';
+   // Tapping what a vessel holds takes that vessel in hand: the bucket of clean
+   // water is taken up the same way any other carried thing would be.
+   slot.addEventListener('click',()=>{
+    if(!this.sharedWorld.hasTool(this.playerId,vessel))return;
+    const current=this.sharedWorld.getEquippedTool(this.playerId);
+    this.sharedWorld.setEquippedTool(this.playerId,current===vessel?null:vessel);
+    this.refreshInventory();
+   });
    const name=document.createElement('strong');name.textContent=title;
    const quantity=document.createElement('span');quantity.style.fontSize='12px';
    slot.append(name,quantity);
    this.resourceGrid.append(slot);
    this.slots.set(id,{slot,name,quantity,isTool:false,tag:id});
   };
-  carriedSlot('potWater','Pot');
-  carriedSlot('soup','Bowl');
+  carriedSlot('potWater','Pot','pot');
+  carriedSlot('soup','Bowl','bowl');
   const dyeGrid=document.createElement('div');
   dyeGrid.style.cssText='display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:3px;max-width:420px';
   this.dyeSwatches=[];
@@ -219,14 +229,14 @@ export const panelInventory={
     entry.slot.style.display=water?'flex':'none';
     showPicture(entry,water?toolIcon(clean?'cleanWater':'saltWater'):null);
     entry.name.textContent=clean?'Clean water':'Salt water';
-    entry.quantity.textContent=clean?'Drink it':'Boil it on a fire';
+    entry.quantity.textContent=clean?'Tap to take it in hand':'Boil it on a fire';
    }
    else if(entry.tag==='soup'){
     const soups=inventory.soup||0;
     entry.slot.style.display=soups>0?'flex':'none';
     showPicture(entry,toolIcon('soup'));
     entry.name.textContent='Soup';
-    entry.quantity.textContent=soups>1?'Bowls: '+soups:'Eat it';
+    entry.quantity.textContent=soups>1?'Bowls: '+soups:'Tap to eat';
    }
    else if(entry.tag==='logs')entry.quantity.textContent='Count: '+count+' | Strength: '+averageStrength.toFixed(2);
    else if(entry.tag==='fibers'){
