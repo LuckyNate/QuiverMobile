@@ -79,6 +79,27 @@ export function buildGrilled(){
  return group;
 }
 
+// A skewer: a stick with a grip, thin enough to read as one stick and long enough to
+// hold a piece of meat over a fire.
+export function buildSkewer(){
+ const group=new THREE.Group();
+ const shaft=new THREE.Mesh(new THREE.CylinderGeometry(.012,.014,.5,5),material(0x8a6438));
+ shaft.position.y=.26;
+ const grip=new THREE.Mesh(new THREE.CylinderGeometry(.018,.018,.09,6),material(0x5f4425));
+ grip.position.y=.06;
+ group.add(shaft,grip);
+ return group;
+}
+
+// The skewer with meat on it, for the inventory picture.
+export function buildSkewered(){
+ const group=buildSkewer();
+ const meat=new THREE.Mesh(new THREE.BoxGeometry(.11,.09,.09),material(0x8c4a2f));
+ meat.position.y=.33;
+ group.add(meat);
+ return group;
+}
+
 // A bowl: a wide shallow dish, so it is not mistaken for the cup in the hand.
 export function buildBowl(){
  const group=new THREE.Group();
