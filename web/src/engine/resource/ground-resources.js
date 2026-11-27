@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {withinSceneryRange} from '../render/scenery-visibility.js';
+import {DANDY_YELLOW_DYE} from '../avatar/dye-palette.js';
 
 // A colour baked into a geometry, so parts of different colours share one mesh.
 function paint(geometry,hex){
@@ -33,12 +34,13 @@ export class GroundResources {
   stickGeometry.rotateZ(Math.PI/2);
   const stoneGeometry=new THREE.DodecahedronGeometry(.22,0);
   // One table for everything bare hands can pick off the ground: what it looks
-  // like, how high it rides over the surface, and which bag slot it fills. A new
-  // pickup is one entry here and one line in the handler, not a new pipeline.
+  // like, how high it rides over the surface, which bag slot it fills, and the dye
+  // its colour is once you have held one. A new pickup is one entry here and one
+  // line in the handler, not a new pipeline.
   this.styles={
    stick:{geometry:stickGeometry,material:new THREE.MeshStandardMaterial({color:0x795230,roughness:1}),lift:.09,award:'sticks'},
    stone:{geometry:stoneGeometry,material:new THREE.MeshStandardMaterial({color:0x828484,roughness:1}),lift:.2,award:'stones'},
-   dandy:{geometry:flowerGeometry(),material:new THREE.MeshStandardMaterial({vertexColors:true,roughness:.85}),lift:.1,award:'dandies'}
+   dandy:{geometry:flowerGeometry(),material:new THREE.MeshStandardMaterial({vertexColors:true,roughness:.85}),lift:.1,award:'dandies',dye:DANDY_YELLOW_DYE}
   };
   this.batches=new Map();this.dummy=new THREE.Object3D();
  }
@@ -58,7 +60,7 @@ export class GroundResources {
    this.root.add(mesh);batch={mesh,entries:[],capacity};batches.push(batch);
   }
   const item={id,type,position:position.clone(),batch,index:batch.entries.length,group:{visible:true},state:'standing',progress:0,
-   geometry:style.geometry,material:style.material,lift:style.lift,award:style.award};
+   geometry:style.geometry,material:style.material,lift:style.lift,award:style.award,dye:style.dye};
   batch.entries.push(item);batch.mesh.count=batch.entries.length;
   this.updateInstance(item);
   this.items.set(id,item);
@@ -97,6 +99,16 @@ export class GroundResources {
   this.items.delete(id);
   if(this.targetId===id)this.clearSelection();
  }
+ // What arriving at a pickup does: it fills its bag slot, and the first one of a
+ // kind teaches its colour — the yellow comes from the dandies the same way the
+ // green comes from the grass.
+ collect(item){
+  this.shared?.awardResource(this.playerId,item.award,1);
+  if(!this.shared||item.dye==null)return;
+  if(this.shared.getUnlockedDyes(this.playerId).includes(item.dye))return;
+  this.shared.unlockDye(this.playerId,item.dye);
+  this.onDiscovery?.(item.dye);
+ }
  update(dt,body){
   const avatar=body?.getPosition();if(!avatar)return;
   const avatarPoint=new THREE.Vector3(avatar.x,avatar.y,avatar.z);
@@ -119,7 +131,7 @@ export class GroundResources {
     item.group.position.addScaledVector(delta,Math.min(1,dt*22/Math.max(.001,distance)));
     item.group.scale.setScalar(Math.max(.05,Math.min(1,distance/3)));
     if(distance<.4){
-     this.shared?.awardResource(this.playerId,item.award,1);
+     this.collect(item);
      this.root.remove(item.group);this.items.delete(item.id);
     }
    }

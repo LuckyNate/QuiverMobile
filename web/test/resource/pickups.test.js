@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {GroundResources} from '../../src/engine/resource/ground-resources.js';
+import {DANDY_YELLOW_DYE,dyeColor} from '../../src/engine/avatar/dye-palette.js';
 
 // The pickups only need a root, a player position and an id source; none of them
 // touch the renderer, so the real classes run under node.
@@ -41,6 +42,34 @@ test('a type with no pickup style is refused rather than half-made',()=>{
  assert.equal(ground.spawn('turnip','t',at(1,0,0)),false);
  assert.equal(ground.items.size,0);
  assert.equal(root.children.length,0);
+});
+
+test('the first dandy picked is the yellow dye',()=>{
+ const bag={dandies:0,sticks:0},dyes=new Set();
+ const shared={
+  getEntity:()=>undefined,setEntity:()=>{},
+  awardResource:(id,type,count)=>{bag[type]+=count;},
+  getUnlockedDyes:()=>[...dyes],
+  unlockDye:(id,color)=>{dyes.add(color);return true;}
+ };
+ const {ground}=makeGround(shared);
+ const taught=[];
+ ground.onDiscovery=color=>taught.push(color);
+ // The swatch is a yellow, not a stray index into the palette.
+ assert.equal(dyeColor(DANDY_YELLOW_DYE),'#ffc13d');
+ ground.collect(ground.spawn('dandy','d1',at(1,.2,0)));
+ assert.equal(bag.dandies,1,'the dandy still fills its slot');
+ assert.deepEqual([...dyes],[DANDY_YELLOW_DYE]);
+ assert.deepEqual(taught,[DANDY_YELLOW_DYE]);
+ // A second dandy is just a dandy: the colour is already known.
+ ground.collect(ground.spawn('dandy','d2',at(2,.2,0)));
+ assert.equal(bag.dandies,2);
+ assert.deepEqual(taught,[DANDY_YELLOW_DYE]);
+ // Sticks and stones carry no colour of their own.
+ ground.collect(ground.spawn('stick','s',at(3,0,0)));
+ assert.equal(bag.sticks,1);
+ assert.equal(dyes.size,1);
+ assert.deepEqual(taught,[DANDY_YELLOW_DYE]);
 });
 
 test('a picked dandy stays picked while the world remembers it collected',()=>{
