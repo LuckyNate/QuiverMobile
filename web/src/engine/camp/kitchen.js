@@ -3,27 +3,27 @@
 // asked before any of this runs. These rules only need the pack and the vessels in
 // it, so they are testable without a renderer, a scene or a fire.
 //
-// Three things cook. The pot carries salt water, boils it clean, and holds the dishes
+// Two vessels cook. The pot carries salt water, boils it clean, and holds the dishes
 // made with it — salad, soup, tea. The pan fries meat and holds nothing else, so a
-// steak and a stew never have to share a pot. The skewer is a stick of meat: one
-// piece, cooked over the fire and eaten off the stick. Each holds one thing at a
-// time, served out in portions, and what it holds sits in the inventory beside
-// everything else carried. Raw water is never drunk, the cup drinks water and tea,
-// and the bowl eats a meal. What a vessel can do is offered over the vessel itself.
-export const VESSELS=Object.freeze(['pot','pan','skewer']);
+// steak and a stew never have to share a pot. Each holds one thing at a time, served
+// out in portions, and what it holds sits in the inventory beside everything else
+// carried. Raw water is never drunk, the cup drinks water and tea, and the bowl eats
+// a meal. What a vessel can do is offered over the vessel itself.
+//
+// A skewer is not a vessel. It is a stick threaded with one piece of meat and held in
+// the fire: what comes off it goes into the pack as food, and the stick is spent doing
+// it, so the next one has to be whittled.
+export const VESSELS=Object.freeze(['pot','pan']);
 // Everything a vessel can be holding. Raw and clean water are the pot's alone.
-export const POT_STATES=Object.freeze(['raw','clean','soup','salad','tea','grilled','skewered']);
-// What is a serving rather than a raw thing. Tea is served the same way but drunk
-// from a cup, and a skewer is eaten off the stick instead of out of a bowl.
-export const EATEN_STATES=Object.freeze(['soup','salad','grilled','skewered']);
+export const POT_STATES=Object.freeze(['raw','clean','soup','salad','tea','grilled']);
+// What is eaten from a bowl. Tea is the same kind of serving but drunk from a cup.
+export const EATEN_STATES=Object.freeze(['soup','salad','grilled']);
 // Sitting at a fire with salt water in the pot is the whole of boiling: the fire
 // does the work over this long, and nobody has to tap anything to make it happen.
 export const BOIL_SECONDS=45;
 // A full vessel holds this many servings of what is in it, water or dish. The vessel
-// is where it keeps; a cup drinks a serving and a bowl eats one, one at a time. A
-// skewer is the exception: it holds the one piece it was threaded with.
+// is where it keeps; a cup drinks a serving and a bowl eats one, one at a time.
 export const SERVINGS_PER_POT=2;
-const servingsFor=vessel=>vessel==='skewer'?1:SERVINGS_PER_POT;
 // How long a vessel stays in the hand after it has been used. It is a beat, not a
 // rule: the hand keeps the cup or the bowl just long enough to be seen putting it
 // away, which is where the animation goes later.
@@ -48,9 +48,10 @@ export const RECIPES=Object.freeze([
  // The pan is for meat. It takes no water, so it goes straight onto the fire, and
  // what comes out of it is rich: fat carries a belly further than dandies do.
  {id:'grilled',name:'Grilled meat',vessel:'pan',needs:{rawBacon:1},base:null,restores:4,rich:true},
- // A skewer is a stick of meat: one piece, held over the fire, and eaten off the
- // stick, which is why it needs no bowl.
- {id:'skewered',name:'Meat skewer',vessel:'skewer',needs:{rawBacon:1},base:null,restores:4,rich:true}
+ // A skewer is a stick, not a vessel. Threading a meat on it and holding it in the
+ // fire gives back a skewer of cooked meat to carry, and spends the stick: it is the
+ // one thing cooked that is not kept in what it was cooked in.
+ {id:'skewered',name:'Meat skewer',vessel:'skewer',needs:{rawBacon:1},base:null,gives:'skewered',restores:4,rich:true}
 ]);
 const recipeFor=id=>RECIPES.find(recipe=>recipe.id===id)||null;
 // A dish can be an ingredient as well as a meal, which is how the pan's meat ends up
@@ -208,28 +209,41 @@ export class Kitchen {
   // The water the dish was made in, or the empty vessel it went into, becomes the
   // dish itself, served out of the same vessel. Written last, so a vessel that gave
   // up its last serving still ends up holding what was just made in it.
-  patch[vessel]=recipe.id;patch[vessel+'Servings']=servingsFor(vessel);
+  // A skewer is the exception: what it makes is carried rather than served out, and
+  // the stick itself is spent, so a camp whittles a new one for the next piece.
+  if(recipe.gives){patch[recipe.gives]=(inventory[recipe.gives]||0)+1;patch.craftedTools=(inventory.craftedTools||[]).filter(tool=>tool!==vessel);}
+  else{patch[vessel]=recipe.id;patch[vessel+'Servings']=SERVINGS_PER_POT;}
   this.write(patch);
+  if(recipe.gives&&this.shared.getEquippedTool(this.playerId)===vessel)this.shared.setEquippedTool(this.playerId,null);
   // The dish stays in its vessel, which is where it keeps, and the vessel is put
   // away after the beat like any other used one.
   this.say('You make '+recipe.name.toLowerCase()+'.');
   return true;
  }
- // A bowl is what a meal is eaten from, one serving at a time out of its vessel. The
- // skewer is the exception: it is eaten off the stick it was cooked on.
- canEat(){return this.servings>0&&(this.mealVessel==='skewer'||this.has('bowl'));}
+ // A bowl is what a meal is eaten from, one serving at a time out of its vessel.
+ canEat(){return this.servings>0&&this.has('bowl');}
  eat(){
   const vessel=this.mealVessel;
   const meal=this.meal;
   if(!this.canEat())return false;
   const left=this.servings-1;
-  const where=vessel==='skewer'?'on the skewer':'in the '+vessel;
   // The last serving empties the vessel; until then the rest keeps in it.
   this.write(left>0?{[vessel+'Servings']:left}:{[vessel]:null,[vessel+'Servings']:0});
   this.afterUse();
   this.onHunger?.(meal.restores,Boolean(meal.rich));
-  this.say(left>0?'You eat a bowl of '+meal.name.toLowerCase()+'. '+left+' left '+where+'.'
+  this.say(left>0?'You eat a bowl of '+meal.name.toLowerCase()+'. '+left+' left in the '+vessel+'.'
    :'You eat the last of the '+meal.name.toLowerCase()+'.');
+  return true;
+ }
+ // Food cooked on a stick is carried, not served, so it is eaten out of the pack: no
+ // bowl to take up, no vessel to empty. One stick, one meal.
+ canEatCarried(){return (this.inventory.skewered||0)>0;}
+ eatCarried(){
+  const meal=recipeFor('skewered');
+  if(!this.canEatCarried())return false;
+  this.write({skewered:(this.inventory.skewered||1)-1});
+  this.onHunger?.(meal.restores,Boolean(meal.rich));
+  this.say('You eat the meat off the stick.');
   return true;
  }
 }

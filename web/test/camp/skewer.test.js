@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {SharedWorld} from '../../src/engine/entity/shared-world.js';
 import {Kitchen} from '../../src/engine/camp/kitchen.js';
 
-// The skewer is the one vessel nobody is given: it is two sticks and a knife's work
-// of whittling, so these tests start from an empty camp and make one.
+// The skewer is the one thing cooked with that is not a vessel: it is two sticks, it
+// lists the meats in the pack, and it is spent cooking one of them.
 function memoryStorage(){
  const data=new Map();
  return {getItem:key=>data.get(key)??null,setItem:(key,value)=>data.set(key,value)};
@@ -31,20 +31,26 @@ test('a skewer is made of two sticks and a camp is not given one',()=>{
  assert.equal(shared.hasTool('p','skewer'),true);
 });
 
-test('meat on a skewer is cooked at a fire and eaten off the stick',()=>{
- const {shared,kitchen,eaten}=setup();
- stock(shared,{rawBacon:1,craftedTools:['pot','pan','skewer']});
+test('a skewer lists the meats in the pack and is spent cooking one',()=>{
+ const {shared,kitchen}=setup();
+ stock(shared,{rawBacon:2,craftedTools:['pot','pan','skewer']});
+ shared.setEquippedTool('p','skewer');
+ // Nothing is offered away from the fire; at one, the meats in the pack are the menu.
  assert.deepEqual(kitchen.recipes(false,'skewer'),[],'a skewer needs the fire');
  assert.deepEqual(kitchen.recipes(true,'skewer').map(recipe=>recipe.id),['skewered']);
  assert.deepEqual(kitchen.recipes(true,'pot'),[],'meat does not go in the pot');
  assert.equal(kitchen.cook('skewered'),true);
- assert.equal(shared.getInventory('p').skewer,'skewered');
- assert.equal(kitchen.servingsOf('skewer'),1,'a skewer holds the one piece on it');
- // No bowl in the pack: the stick is what it is eaten off.
+ const inventory=shared.getInventory('p');
+ assert.equal(inventory.rawBacon,1,'the meat went onto the stick');
+ assert.equal(inventory.skewered,1,'cooked meat is carried, not served out of anything');
+ assert.equal(inventory.skewer,undefined,'a skewer holds nothing: it is spent');
+ assert.equal(shared.hasTool('p','skewer'),false,'the stick is gone');
+ assert.equal(shared.getEquippedTool('p'),null,'and it leaves the hand with it');
+ // It is eaten from the pack, with no bowl and no vessel to empty.
  assert.equal(shared.hasTool('p','bowl'),false);
- assert.equal(kitchen.canEat(),true,'a skewer needs no bowl');
- assert.equal(kitchen.eat(),true);
- assert.deepEqual(eaten.points,[['hunger',4,true]],'skewered meat is as rich as grilled');
- assert.equal(shared.getInventory('p').skewer,null,'the stick is empty again');
- assert.equal(kitchen.eat(),false,'and there is nothing left on it');
+ assert.equal(kitchen.canEat(),false,'a carried skewer is not a bowl of anything');
+ assert.equal(kitchen.eatCarried(),true);
+ assert.deepEqual(kitchen.recipes(true,'skewer'),[],'one skewer is one piece of meat');
+ assert.equal(shared.getInventory('p').skewered,0,'and the meat is gone with it');
+ assert.equal(kitchen.eatCarried(),false,'nothing left to eat');
 });
