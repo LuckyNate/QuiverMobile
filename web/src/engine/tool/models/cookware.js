@@ -52,6 +52,33 @@ export function buildSoup(){return filled(buildPot(),0x9a6b3c,.112,.232);}
 export function buildSalad(){return filled(buildPot(),0x5f9b3a,.112,.232);}
 export function buildTea(){return filled(buildPot(),0xb4832f,.112,.242);}
 
+// A pan: a shallow iron dish with a handle out to one side, so it is never mistaken
+// for the bowl in the hand or the pot in the other.
+export function buildPan(){
+ const group=new THREE.Group();
+ const body=new THREE.Mesh(new THREE.CylinderGeometry(.14,.125,.045,14,1,true),material(DARK_CLAY));
+ body.position.y=.13;
+ const base=new THREE.Mesh(new THREE.CircleGeometry(.125,14),material(DARK_CLAY));
+ base.rotation.x=-Math.PI/2;
+ base.position.y=.108;
+ const rim=new THREE.Mesh(new THREE.TorusGeometry(.14,.008,6,16),material(CLAY));
+ rim.rotation.x=Math.PI/2;
+ rim.position.y=.152;
+ const handle=new THREE.Mesh(new THREE.BoxGeometry(.16,.022,.03),material(CLAY));
+ handle.position.set(.21,.14,0);
+ group.add(body,base,rim,handle);
+ return group;
+}
+
+// The pan with meat in it, for the inventory picture.
+export function buildGrilled(){
+ const group=buildPan();
+ const meat=new THREE.Mesh(new THREE.BoxGeometry(.17,.028,.13),material(0x8c4a2f));
+ meat.position.y=.137;
+ group.add(meat);
+ return group;
+}
+
 // A bowl: a wide shallow dish, so it is not mistaken for the cup in the hand.
 export function buildBowl(){
  const group=new THREE.Group();

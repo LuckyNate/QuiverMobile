@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 
-// What the vessel in the hand can do, offered over it: the pot is cooked in and
-// shows how long it has on the fire, the cup drinks a serving of clean water or
-// tea, the bowl eats a serving of a meal. Only what is possible right now is
+// What the vessel in the hand can do, offered over it: the pot and the pan are
+// cooked in and show what they are holding, the cup drinks a serving of clean water
+// or tea, the bowl eats a serving of a meal. Only what is possible right now is
 // offered, so the cook button never opens onto an empty list of recipes.
 const BUTTON_STYLE='pointer-events:auto;padding:8px 14px;background:#20313f;color:#eaf4ff;border:1px solid #4899e8;border-radius:16px;font:600 13px system-ui;touch-action:manipulation';
 const NOTE_STYLE='pointer-events:none;padding:4px 8px;background:#0c1620cc;color:#cfe6f7;border-radius:10px;font:600 12px system-ui;white-space:nowrap';
@@ -65,10 +65,12 @@ export class VesselActions {
   // A cup drinks a serving of clean water or tea, a bowl eats a serving of a meal.
   if(equipped==='cup')return kitchen.canDrink()?[{label:'Drink',run:()=>kitchen.drink()}]:[];
   if(equipped==='bowl')return kitchen.canEat()?[{label:'Eat',run:()=>kitchen.eat()}]:[];
-  if(equipped!=='pot')return [];
-  // Cooking needs the fire under the pot; a dish that needs no cooking is offered
+  // The pot and the pan are what things are made in, and each offers only its own:
+  // the pot its water dishes, the pan its meat.
+  if(equipped!=='pot'&&equipped!=='pan')return [];
+  // Cooking needs the fire under the vessel; a dish that needs no cooking is offered
   // anywhere, so the first meal can be made before the first log is cut.
-  const recipes=kitchen.recipes(this.atFire());
+  const recipes=kitchen.recipes(this.atFire(),equipped);
   return recipes.length?[{label:'Cook',run:()=>this.openRecipes(recipes)}]:[];
  }
  // The one thing the vessel is waiting for, when it is not something to press.
@@ -80,13 +82,14 @@ export class VesselActions {
    return kitchen.waterServings>0?'Clean water · '+kitchen.waterServings+' in the pot':'';
   }
   if(equipped==='bowl')return kitchen.servings>0?kitchen.mealName+' · '+kitchen.servings:'';
-  if(equipped!=='pot')return '';
-  if(kitchen.boiling)return 'Boiling · '+Math.ceil(kitchen.boilLeft())+'s';
-  if(kitchen.pot==='raw')return 'Boil it on a fire';
-  if(kitchen.pot==='clean')return 'Clean water · '+kitchen.waterServings+' · drink from a cup';
-  if(!kitchen.meal)return 'Empty · a salad needs only dandies';
-  const servings=kitchen.meal.drink?kitchen.teaServings:kitchen.servings;
-  return kitchen.mealName+' · '+servings+(kitchen.meal.drink?' · drink from a cup':' · eat from a bowl');
+  if(equipped!=='pot'&&equipped!=='pan')return '';
+  const contents=kitchen.contentsOf(equipped);
+  if(equipped==='pot'&&kitchen.boiling)return 'Boiling · '+Math.ceil(kitchen.boilLeft())+'s';
+  if(contents==='raw')return 'Boil it on a fire';
+  if(contents==='clean')return 'Clean water · '+kitchen.waterServings+' · drink from a cup';
+  const dish=kitchen.dishIn(equipped);
+  if(!dish)return equipped==='pan'?'Empty · meat fries here':'Empty · a salad needs only dandies';
+  return dish.name+' · '+kitchen.servingsOf(equipped)+(dish.drink?' · drink from a cup':' · eat from a bowl');
  }
  // Only the recipes the pack can cover are listed; with nothing to cook there is
  // nothing to open.
