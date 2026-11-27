@@ -2,7 +2,8 @@ export const GEAR_SLOTS=Object.freeze(['head','torso','arms','hands','hips','leg
 export const GEAR_RECIPES=Object.freeze({}); // Future biome armor and weapon definitions.
 // The cookware costs nothing because nobody crafts it: every camp starts with it.
 // It is listed here so it can be equipped and drawn like any other tool. The skewer
-// is the exception: it is two sticks and nobody hands one to a new camp.
+// is the exception: it is two sticks, nobody hands one to a new camp, and cooking on
+// it spends it.
 export const TOOL_RECIPES={axe:{sticks:1,stones:1},knife:{sticks:1,stones:1,fibers:2,pineSap:1},hammer:{sticks:1,logs:1},scythe:{stones:3,logs:1},torch:{sticks:1,fibers:2},club:{sticks:2,logs:1},bow:{sticks:3,fibers:4},skewer:{sticks:2},cup:{},pot:{},pan:{},bowl:{}};
 // Granted on arrival, and again to any save that predates them: a player without a
 // pot cannot carry water, without a pan cannot cook meat, and without a fire cannot
@@ -14,7 +15,7 @@ export const WEAPON_TOOLS=Object.freeze(['club','bow']);
 export const ARROW_RECIPE=Object.freeze({sticks:1,stones:1,fibers:1});
 export const ARROWS_PER_CRAFT=5;
 // Gathered resources a species or the ground can award. Species drops add here.
-export const RESOURCE_TYPES=Object.freeze(['sticks','stones','dandies','pineSap','rawBacon','hide','tusks']);
+export const RESOURCE_TYPES=Object.freeze(['sticks','stones','dandies','pineSap','rawBacon','hide','tusks','skewered']);
 // Host-owned save record; peers will exchange snapshots/events when networking is added.
 // Simulation and rendering remain local. No server or transport is instantiated here.
 export class SharedWorld {
