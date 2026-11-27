@@ -139,6 +139,9 @@ export const gameRuntime={
     this.playerSystem.cancelDestination();
    }
    this.bonfire.update(this.elapsed);
+   // The fire does the cooking: sitting within its reach with the pot starts the
+   // boil, and the kitchen's own clock finishes it. No tap is involved.
+   this.kitchen.update(Date.now(),{atFire:this.bonfire.cookable});
    this.building.update();
    // Far clipping is world-scaled; near clip stays at one meter.
    this.water.update(this.scene,this.camera,this.renderer,this.elapsed);

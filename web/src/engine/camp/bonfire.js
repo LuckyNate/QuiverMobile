@@ -4,6 +4,9 @@ import {CampRest} from './camp-rest.js';
 
 const HOUR=3600000;
 const MAX_FUEL=720*HOUR;
+// How close the avatar has to sit for the fire to be a cook fire. The fire owns
+// this the way a tree owns its own reach.
+const COOK_REACH=2.4;
 
 // Permanent twelve-log camp bonfire, with a separate, persistent real-time fuel reserve.
 export class Bonfire {
@@ -40,6 +43,8 @@ export class Bonfire {
  // A built fire only cooks while it still has fuel in it: the pile of logs is the
  // camp, and the burning hour is what makes it a cook fire.
  get burning(){return this.exists&&this.endAt>Date.now();}
+ // Close enough to sit at, and still burning: the two things cooking needs.
+ get cookable(){return this.burning&&this.player.position.distanceTo(this.root.position)<COOK_REACH;}
  positionAt(position){
   this.root.position.fromArray(position);
   this.root.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),this.root.position.clone().normalize());
