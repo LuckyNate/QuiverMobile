@@ -21,7 +21,7 @@ export const USE_DELAY_MS=700;
 // What can be cooked in the pot. A recipe says what it takes beyond clean water;
 // the kitchen only ever offers the ones the pack can actually cover.
 export const RECIPES=Object.freeze([
- {id:'soup',name:'Dandelion soup',needs:{dandies:1,rawBacon:1}}
+ {id:'soup',name:'Dandy soup',needs:{dandies:1,rawBacon:1}}
 ]);
 export class Kitchen {
  constructor({shared,playerId='local-owner',onThirst=null,onHunger=null,message=null,boilSeconds=BOIL_SECONDS,useDelayMs=USE_DELAY_MS}={}){

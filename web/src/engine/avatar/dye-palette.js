@@ -15,7 +15,7 @@ export const DYE_COLORS=Object.freeze(DYE_ROWS.flat());
 export const MEADOWS_GREEN_DYE=4*8+2; // Meadows green, fixed palette swatch.
 // The yellow the dandies are: their heads are painted this colour, so picking one
 // is what puts it in the palette.
-export const DANDY_YELLOW_DYE=3*8+4; // Dandelion yellow, fixed palette swatch.
+export const DANDY_YELLOW_DYE=3*8+4; // Dandy yellow, fixed palette swatch.
 export function dyeColor(id){return Number.isInteger(id)&&id>=0&&id<64?DYE_COLORS[id]:null;}
 export function dyeUV(id){if(!dyeColor(id))return null;return {u:(id%8+.5)/8,v:(7-Math.floor(id/8)+.5)/8};}
 // DataTexture row zero is bottom in UV space. Flip the row order to match the UI top row.
