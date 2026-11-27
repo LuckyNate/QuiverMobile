@@ -3,22 +3,21 @@ import {DYE_COLORS} from '../engine/avatar/dye-palette.js';
 import {TOOL_RECIPES,WEAPON_TOOLS} from '../engine/entity/shared-world.js';
 import {toolIcon} from './tool-icon.js';
 // Recipe ingredients read as inventory keys; species drops get a proper name.
-const RESOURCE_NAMES={logs:'4 m Logs',fibers:'Fibers',sticks:'Sticks',stones:'Stones',pineSap:'Pine Sap'};
+const RESOURCE_NAMES={logs:'4 m Logs',fibers:'Fibers',sticks:'Sticks',stones:'Stones',pineSap:'Pine Sap',rawBacon:'Raw Bacon',skewered:'Meat Skewer'};
 // Unmapped keys still read as words: birchBark -> Birch Bark.
 const resourceName=key=>RESOURCE_NAMES[key]||key.replace(/([a-z0-9])([A-Z])/g,'$1 $2').replace(/^./,c=>c.toUpperCase());
 // Inventory keys that are bookkeeping rather than something you carry in a slot.
-const NOT_A_RESOURCE=new Set(['equippedTool','craftedTools','unlockedDyes','gear','logStrength','fiberQuality','arrows','pot','potServings','pan','panServings','skewer','skewerServings']);
+const NOT_A_RESOURCE=new Set(['equippedTool','craftedTools','unlockedDyes','gear','logStrength','fiberQuality','arrows','pot','potServings','pan','panServings']);
 // The vessels carry their contents, so their slots say what is in them: the water is
 // salt until the fire has boiled it, and then it is a dish.
-const POT_STATE={empty:'Empty pot',raw:'Salt water',clean:'Clean water',soup:'Dandy soup',salad:'Dandy salad',tea:'Dandy tea',grilled:'Grilled meat',skewered:'Meat skewer'};
-// What is eaten from a bowl; tea is served the same way but drunk from a cup, and a
-// skewer is eaten off the stick.
-const EATEN_STATES=new Set(['soup','salad','grilled','skewered']);
+const POT_STATE={empty:'Empty pot',raw:'Salt water',clean:'Clean water',soup:'Dandy soup',salad:'Dandy salad',tea:'Dandy tea',grilled:'Grilled meat'};
+// What is eaten from a bowl; tea is served the same way but drunk from a cup.
+const EATEN_STATES=new Set(['soup','salad','grilled']);
 // The picture of the pot with its contents: the same vessel, coloured by what is
 // in it. Anything not listed here is a dish and has a picture of its own.
 const POT_PICTURE={raw:'saltWater',clean:'cleanWater'};
 // The carried-content slot of each vessel, and the vessel it shows.
-const CONTENTS_SLOT={potContents:'pot',panContents:'pan',skewerContents:'skewer'};
+const CONTENTS_SLOT={potContents:'pot',panContents:'pan'};
 const SLOT_STYLE='min-height:84px;padding:8px;border:1px solid #526477;border-radius:5px;display:flex;flex-direction:column;justify-content:center;gap:4px;background:#172430';
 // A carried-item picture sits above its own words: the slot is the bucket, and the
 // name and state stay readable under it rather than being replaced by the drawing.
@@ -148,7 +147,6 @@ export const panelInventory={
   // The vessels' own slots are the tools above; these are what they are carrying.
   carriedSlot('potContents','Pot','pot');
   carriedSlot('panContents','Pan','pan');
-  carriedSlot('skewerContents','Skewer','skewer');
   const dyeGrid=document.createElement('div');
   dyeGrid.style.cssText='display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:3px;max-width:420px';
   this.dyeSwatches=[];
@@ -192,8 +190,15 @@ export const panelInventory={
   for(const [key,value] of Object.entries(inventory)){
    if(NOT_A_RESOURCE.has(key)||this.slots.has(key))continue;
    if(typeof value!=='number'||value<=0)continue;
-   const slot=document.createElement('div');
+   // Food cooked on a stick is carried rather than served, so its slot is what eats
+   // it: no bowl to take up for one piece of meat.
+   const slot=document.createElement(key==='skewered'?'button':'div');
    slot.style.cssText=SLOT_STYLE;
+   if(key==='skewered'){
+    slot.type='button';
+    slot.style.cursor='pointer';slot.style.touchAction='manipulation';
+    slot.addEventListener('click',()=>{this.kitchen?.eatCarried();this.refreshInventory();});
+   }
    const name=document.createElement('strong');name.textContent=resourceName(key);
    const quantity=document.createElement('span');quantity.style.fontSize='12px';
    slot.append(name,quantity);
@@ -246,7 +251,6 @@ export const panelInventory={
     const tea=inventory.pot==='tea'?pours:0;
     if(id==='pot')entry.quantity.textContent=held+' · '+POT_STATE[inventory.pot||'empty'];
     if(id==='pan')entry.quantity.textContent=held+' · '+(POT_STATE[inventory.pan]||'Empty pan');
-    if(id==='skewer')entry.quantity.textContent=held+' · '+(POT_STATE[inventory.skewer]||'Empty skewer');
     if(id==='cup')entry.quantity.textContent=held+' · '+(tea>0?'Tea: '+tea+' servings':water>0?'Water: '+water+' servings':'Nothing to drink');
     if(id==='bowl')entry.quantity.textContent=held+' · '+(servings>0?POT_STATE[inventory[eaten]]+': '+servings+' servings':'Nothing to eat');
     const title=entry.name.textContent+(active?' — equipped':crafted?' — tap to equip':'');
@@ -272,6 +276,7 @@ export const panelInventory={
     entry.quantity.textContent=contents==='raw'?'Boil it on a fire'
      :contents?'Servings: '+servings+' · tap to equip':'';
    }
+   else if(entry.tag==='skewered')entry.quantity.textContent='Count: '+(inventory.skewered||0)+((inventory.skewered||0)>0?' · tap to eat':'');
    else if(entry.tag==='logs')entry.quantity.textContent='Count: '+count+' | Strength: '+averageStrength.toFixed(2);
    else if(entry.tag==='fibers'){
     const fibers=inventory.fibers||0;
