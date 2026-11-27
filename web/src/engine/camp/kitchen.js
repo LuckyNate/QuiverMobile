@@ -10,6 +10,11 @@ export const POT_STATES=Object.freeze(['raw','clean']);
 // Sitting at a fire with salt water in the pot is the whole of boiling: the fire
 // does the work over this long, and nobody has to tap anything to make it happen.
 export const BOIL_SECONDS=45;
+// What the fire can make. A recipe says what it takes beyond clean water in the
+// pot; the kitchen only ever offers the ones the pack can actually cover.
+export const RECIPES=Object.freeze([
+ {id:'soup',name:'Dandelion soup',vessel:'bowl',needs:{dandies:1,rawBacon:1},makes:'soup'}
+]);
 export class Kitchen {
  constructor({shared,playerId='local-owner',onThirst=null,onHunger=null,message=null,boilSeconds=BOIL_SECONDS}={}){
   if(!shared)throw new TypeError('Kitchen requires the shared world');
@@ -59,24 +64,38 @@ export class Kitchen {
   if(this.shared.getEquippedTool(this.playerId)!=='pot')return false;
   return this.boil(now);
  }
- canDrink(){return this.pot==='clean'&&this.has('cup');}
+ // The pot is the cup: what was boiled is drunk from what it was boiled in, which
+ // is why the water leaving the hand was the point of the boil.
+ canDrink(){return this.pot==='clean';}
  drink(){
   if(!this.canDrink())return false;
   this.write({potWater:null});
+  // The empty pot has nothing left to offer, so it leaves the hand with the water.
+  this.shared.setEquippedTool(this.playerId,null);
   this.onThirst?.();
   this.say('You drink the boiled water.');
   return true;
  }
  // Soup takes clean water, dandies and meat, and a bowl to serve it in.
- canCookSoup(){
+ canMake(recipe){
+  if(!recipe||this.pot!=='clean'||!this.has(recipe.vessel))return false;
   const inventory=this.inventory;
-  return this.pot==='clean'&&this.has('bowl')&&(inventory.dandies||0)>=1&&(inventory.rawBacon||0)>=1;
+  return Object.entries(recipe.needs).every(([item,count])=>(inventory[item]||0)>=count);
  }
- cookSoup(){
-  if(!this.canCookSoup())return false;
+ // Only what can be cooked right now is offered: an option the pack cannot cover
+ // is not an option.
+ recipes(){return RECIPES.filter(recipe=>this.canMake(recipe));}
+ cook(id){
+  const recipe=RECIPES.find(entry=>entry.id===id);
+  if(!this.canMake(recipe))return false;
   const inventory=this.inventory;
-  this.write({potWater:null,dandies:inventory.dandies-1,rawBacon:inventory.rawBacon-1,soup:this.soup+1});
-  this.say('You make dandelion soup.');
+  const patch={potWater:null};
+  for(const [item,count] of Object.entries(recipe.needs))patch[item]=(inventory[item]||0)-count;
+  patch[recipe.makes]=this.soup+1;
+  this.write(patch);
+  // The pot is empty again, so it leaves the hand with the water gone.
+  this.shared.setEquippedTool(this.playerId,null);
+  this.say('You make '+recipe.name.toLowerCase()+'.');
   return true;
  }
  canEat(){return this.soup>0&&this.has('bowl');}
