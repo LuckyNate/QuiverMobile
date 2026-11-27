@@ -17,9 +17,10 @@ function setup(){
  shared.setEquippedTool('p','pot');
  const eaten={thirst:0,hunger:0,points:[],said:[]};
  const kitchen=new Kitchen({shared,playerId:'p',
-  // What the kitchen tells the meters, and how much of it.
-  onThirst:points=>{eaten.thirst++;eaten.points.push(['thirst',points??null]);},
-  onHunger:points=>{eaten.hunger++;eaten.points.push(['hunger',points??null]);},
+  // What the kitchen tells the meters, how much of it, and whether it may go past
+  // the brim.
+  onThirst:(points,rich)=>{eaten.thirst++;eaten.points.push(['thirst',points??null,Boolean(rich)]);},
+  onHunger:(points,rich)=>{eaten.hunger++;eaten.points.push(['hunger',points??null,Boolean(rich)]);},
   message:text=>eaten.said.push(text)});
  return {shared,kitchen,eaten,storage};
 }
@@ -100,7 +101,7 @@ test('a dandy salad is the first meal, made with no fire at all',()=>{
  assert.equal(kitchen.servings,2);
  assert.equal(kitchen.canDrink(),false,'a salad is not drunk');
  assert.equal(kitchen.eat(),true);
- assert.deepEqual(eaten.points,[['hunger',2]],'a salad is worth two points of hunger');
+ assert.deepEqual(eaten.points,[['hunger',2,false]],'a lean salad fills to the brim and no further');
  assert.equal(kitchen.servings,1,'the rest keeps in the pot');
 });
 
@@ -119,7 +120,7 @@ test('dandy tea is drunk from the cup and is worth more than water',()=>{
  shared.setEquippedTool('p','cup');
  assert.equal(kitchen.drink(),true);
  assert.equal(kitchen.teaServings,1);
- assert.deepEqual(eaten.points,[['thirst',4]],'tea puts back its own points');
+ assert.deepEqual(eaten.points,[['thirst',4,true]],'tea puts back its own points, past the brim');
  assert.equal(shared.getEquippedTool('p'),'cup','the cup stays for the beat');
  shared.setEquippedTool('p','cup');
  assert.equal(kitchen.drink(),true);
@@ -146,6 +147,7 @@ test('the meal is cooked into the pot and eaten from it',()=>{
  assert.equal(kitchen.pot,'soup');
  assert.equal(shared.getInventory('p').potServings,1,'one serving eaten, one left');
  assert.equal(eaten.hunger,1);
+ assert.deepEqual(eaten.points,[['hunger',4,true]],'soup is a rich meal: it fills past the brim');
  assert.equal(kitchen.eat(),true);
  assert.equal(kitchen.pot,null,'the last serving empties the pot');
  assert.equal(eaten.hunger,2);
