@@ -7,10 +7,15 @@
 // boiling. Raw water is never drunk. A cup drinks, a bowl cooks and eats, so the
 // vessel in the hand is what decides what tapping the fire means.
 export const POT_STATES=Object.freeze(['raw','clean']);
+// Sitting at a fire with salt water in the pot is the whole of boiling: the fire
+// does the work over this long, and nobody has to tap anything to make it happen.
+export const BOIL_SECONDS=45;
 export class Kitchen {
- constructor({shared,playerId='local-owner',onThirst=null,onHunger=null,message=null}={}){
+ constructor({shared,playerId='local-owner',onThirst=null,onHunger=null,message=null,boilSeconds=BOIL_SECONDS}={}){
   if(!shared)throw new TypeError('Kitchen requires the shared world');
-  Object.assign(this,{shared,playerId,onThirst,onHunger,message});
+  Object.assign(this,{shared,playerId,onThirst,onHunger,message,boilSeconds});
+  // When this moment passes the water is clean; null means nothing is on the fire.
+  this.boilUntil=null;
  }
  get inventory(){return this.shared.getInventory(this.playerId);}
  get pot(){const water=this.inventory.potWater;return POT_STATES.includes(water)?water:null;}
@@ -26,13 +31,33 @@ export class Kitchen {
   this.say('You fill the pot with salt water.');
   return true;
  }
- // A fire: boiling is the only way raw water becomes fit to drink.
+ // A fire: boiling is the only way raw water becomes fit to drink. Standing in
+ // reach of a burning fire with the pot in hand starts it, and the clock finishes
+ // it — the player sits down and waits, which is what cooking is.
+ boilLeft(now=Date.now()){return this.boilUntil?Math.max(0,(this.boilUntil-now)/1000):0;}
+ get boiling(){return Boolean(this.boilUntil);}
+ // The fire has to be lit for any of this; the reach is the fire's own business.
  canBoil(){return this.pot==='raw';}
- boil(){
-  if(!this.canBoil())return false;
-  this.write({potWater:'clean'});
-  this.say('The water boils and clears.');
+ boil(now=Date.now()){
+  if(!this.canBoil()||this.boilUntil)return false;
+  this.boilUntil=now+this.boilSeconds*1000;
+  this.say('You set the pot on the fire.');
   return true;
+ }
+ update(now=Date.now(),{atFire=false}={}){
+  if(this.boilUntil){
+   if(now<this.boilUntil)return false;
+   this.boilUntil=null;
+   this.write({potWater:'clean'});
+   // Clean water is the end of the pot's job, so it leaves the hand: the next
+   // question is what to do with the water, not what to be holding.
+   this.shared.setEquippedTool(this.playerId,null);
+   this.say('The water boils and clears.');
+   return true;
+  }
+  if(!atFire)return false;
+  if(this.shared.getEquippedTool(this.playerId)!=='pot')return false;
+  return this.boil(now);
  }
  canDrink(){return this.pot==='clean'&&this.has('cup');}
  drink(){
