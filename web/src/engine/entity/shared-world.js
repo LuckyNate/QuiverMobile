@@ -1,8 +1,9 @@
 export const GEAR_SLOTS=Object.freeze(['head','torso','arms','hands','hips','legs','feet','left-hand','right-hand']);
 export const GEAR_RECIPES=Object.freeze({}); // Future biome armor and weapon definitions.
 // The cookware costs nothing because nobody crafts it: every camp starts with it.
-// It is listed here so it can be equipped and drawn like any other tool.
-export const TOOL_RECIPES={axe:{sticks:1,stones:1},knife:{sticks:1,stones:1,fibers:2,pineSap:1},hammer:{sticks:1,logs:1},scythe:{stones:3,logs:1},torch:{sticks:1,fibers:2},club:{sticks:2,logs:1},bow:{sticks:3,fibers:4},cup:{},pot:{},pan:{},bowl:{}};
+// It is listed here so it can be equipped and drawn like any other tool. The skewer
+// is the exception: it is two sticks and nobody hands one to a new camp.
+export const TOOL_RECIPES={axe:{sticks:1,stones:1},knife:{sticks:1,stones:1,fibers:2,pineSap:1},hammer:{sticks:1,logs:1},scythe:{stones:3,logs:1},torch:{sticks:1,fibers:2},club:{sticks:2,logs:1},bow:{sticks:3,fibers:4},skewer:{sticks:2},cup:{},pot:{},pan:{},bowl:{}};
 // Granted on arrival, and again to any save that predates them: a player without a
 // pot cannot carry water, without a pan cannot cook meat, and without a fire cannot
 // drink, so the vessels are not something to be found.
