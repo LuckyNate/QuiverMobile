@@ -39,6 +39,7 @@ test('a fire boils the pot on its own clock and the clean pot leaves the hand',(
  assert.equal(kitchen.pot,null);
  kitchen.fill();
  assert.equal(kitchen.pot,'raw');
+ assert.equal(shared.getInventory('p').pot,'raw','the pot carries its own contents');
  assert.equal(kitchen.update(1000,{atFire:false}),false,'no fire, no boil');
  assert.equal(kitchen.boiling,false);
  assert.equal(kitchen.update(1000,{atFire:true}),true,'standing at the fire starts it');
@@ -71,35 +72,36 @@ test('only the recipes the pack can cover are offered',()=>{
  kitchen.fill();
  assert.deepEqual(kitchen.recipes(),[],'raw water is not soup');
  sitAtFire(kitchen);
- assert.deepEqual(kitchen.recipes(),[],'no meat, no options');
+ assert.equal(kitchen.recipes().length,0,'no meat, no options');
  stock(shared,{rawBacon:1});
  assert.deepEqual(kitchen.recipes().map(recipe=>recipe.id),['soup']);
- stock(shared,{craftedTools:['pot','cup']});
- assert.deepEqual(kitchen.recipes(),[],'no bowl, no soup');
- stock(shared,{craftedTools:['pot','cup','bowl']});
- assert.equal(kitchen.recipes().length,1);
+ kitchen.drink();
+ assert.deepEqual(kitchen.recipes(),[],'an empty pot has nothing to cook in');
 });
 
-test('cooking spends the water and the ingredients into the bowl',()=>{
+test('the meal is cooked into the pot and eaten from it',()=>{
  const {shared,kitchen,eaten}=setup();
  stock(shared,{dandies:2,rawBacon:1});
  kitchen.fill();
  sitAtFire(kitchen);
+ // Boiling took the pot out of the hand, so it is taken up again to cook in.
+ shared.setEquippedTool('p','pot');
  assert.equal(kitchen.cook('soup'),true);
  const inventory=shared.getInventory('p');
- assert.deepEqual({dandies:inventory.dandies,rawBacon:inventory.rawBacon,soup:kitchen.soup,pot:kitchen.pot},
-  {dandies:1,rawBacon:0,soup:1,pot:null});
- assert.equal(shared.getEquippedTool('p'),null,'the empty pot leaves the hand');
+ assert.deepEqual({pot:inventory.pot,dandies:inventory.dandies,rawBacon:inventory.rawBacon},
+  {pot:'soup',dandies:1,rawBacon:0});
+ assert.equal(shared.getEquippedTool('p'),'pot','the meal stays in the pot in hand');
+ assert.equal(kitchen.canDrink(),false,'soup is not drunk');
  assert.equal(kitchen.cook('soup'),false,'no water left to cook with');
  assert.equal(kitchen.eat(),true);
- assert.equal(kitchen.soup,0);
+ assert.equal(kitchen.pot,null);
  assert.equal(eaten.hunger,1);
- assert.equal(kitchen.eat(),false,'an empty bowl is not eaten');
+ assert.equal(shared.getEquippedTool('p'),null,'the empty pot leaves the hand');
+ assert.equal(kitchen.eat(),false,'an empty pot is not eaten from');
 });
 
 test('clean water is drunk straight from the pot',()=>{
  const {shared,kitchen,eaten}=setup();
- stock(shared,{craftedTools:['pot']});
  kitchen.fill();
  sitAtFire(kitchen);
  assert.equal(kitchen.canDrink(),true,'no cup needed: the pot is the cup');
@@ -117,7 +119,7 @@ test('a pot left on the fire is not boiled twice',()=>{
  assert.equal(kitchen.update(1000,{atFire:true}),false,'already on the fire');
  kitchen.update(1000+BOIL_SECONDS*1000,{atFire:true});
  assert.equal(kitchen.pot,'clean');
- assert.equal(kitchen.update(1000+BOIL_SECONDS*2000,{atFire:true}),false,'nothing left to boil');
+ assert.equal(kitchen.update(1000+BOIL_SECONDS,{atFire:true}),false,'nothing left to boil');
 });
 
 test('what is in the pot survives a reload',()=>{

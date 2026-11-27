@@ -1,19 +1,20 @@
-// Cooking: what the camp's vessels hold and what they can make. The fire itself
-// is not here — whether there is a burning fire to cook on is the world's
-// question, asked before any of this runs. These rules only need the pack and the
-// vessels in it, so they are testable without a renderer, a scene or a fire.
+// Cooking: what the pot holds and what can be made in it. The fire itself is not
+// here — whether there is a burning fire to cook on is the world's question, asked
+// before any of this runs. These rules only need the pack and the pot in it, so
+// they are testable without a renderer, a scene or a fire.
 //
-// The pot is the only thing that carries water: salt from the sea, clean after
-// boiling. Raw water is never drunk, and the pot is what drinks it once boiled.
-// What the vessel in the hand can do is offered over the vessel itself.
-export const POT_STATES=Object.freeze(['raw','clean']);
+// The pot is the only vessel: it carries salt water, then boiled water, then the
+// meal cooked in it, one thing at a time, and what it holds sits in the inventory
+// beside everything else carried. Raw water is never drunk, and the pot is what
+// drinks it once boiled. What the pot can do is offered over the pot itself.
+export const POT_STATES=Object.freeze(['raw','clean','soup']);
 // Sitting at a fire with salt water in the pot is the whole of boiling: the fire
 // does the work over this long, and nobody has to tap anything to make it happen.
 export const BOIL_SECONDS=45;
-// What the fire can make. A recipe says what it takes beyond clean water in the
-// pot; the kitchen only ever offers the ones the pack can actually cover.
+// What can be cooked in the pot. A recipe says what it takes beyond clean water;
+// the kitchen only ever offers the ones the pack can actually cover.
 export const RECIPES=Object.freeze([
- {id:'soup',name:'Dandelion soup',vessel:'bowl',needs:{dandies:1,rawBacon:1},makes:'soup'}
+ {id:'soup',name:'Dandelion soup',needs:{dandies:1,rawBacon:1}}
 ]);
 export class Kitchen {
  constructor({shared,playerId='local-owner',onThirst=null,onHunger=null,message=null,boilSeconds=BOIL_SECONDS}={}){
@@ -23,8 +24,8 @@ export class Kitchen {
   this.boilUntil=null;
  }
  get inventory(){return this.shared.getInventory(this.playerId);}
- get pot(){const water=this.inventory.potWater;return POT_STATES.includes(water)?water:null;}
- get soup(){const count=this.inventory.soup;return Number.isSafeInteger(count)&&count>0?count:0;}
+ // What is in the pot: 'raw', 'clean', 'soup', or null when it is empty.
+ get pot(){const contents=this.inventory.pot;return POT_STATES.includes(contents)?contents:null;}
  has(tool){return this.shared.hasTool(this.playerId,tool);}
  write(patch){return this.shared.updateInventory(this.playerId,patch);}
  say(text){this.message?.(text);}
@@ -32,7 +33,7 @@ export class Kitchen {
  canFill(){return this.pot===null&&this.has('pot');}
  fill(){
   if(!this.canFill())return false;
-  this.write({potWater:'raw'});
+  this.write({pot:'raw'});
   this.say('You fill the pot with salt water.');
   return true;
  }
@@ -53,7 +54,7 @@ export class Kitchen {
   if(this.boilUntil){
    if(now<this.boilUntil)return false;
    this.boilUntil=null;
-   this.write({potWater:'clean'});
+   this.write({pot:'clean'});
    // Clean water is the end of the pot's job, so it leaves the hand: the next
    // question is what to do with the water, not what to be holding.
    this.shared.setEquippedTool(this.playerId,null);
@@ -69,16 +70,15 @@ export class Kitchen {
  canDrink(){return this.pot==='clean';}
  drink(){
   if(!this.canDrink())return false;
-  this.write({potWater:null});
+  this.write({pot:null});
   // The empty pot has nothing left to offer, so it leaves the hand with the water.
   this.shared.setEquippedTool(this.playerId,null);
   this.onThirst?.();
   this.say('You drink the boiled water.');
   return true;
  }
- // Soup takes clean water, dandies and meat, and a bowl to serve it in.
  canMake(recipe){
-  if(!recipe||this.pot!=='clean'||!this.has(recipe.vessel))return false;
+  if(!recipe||this.pot!=='clean')return false;
   const inventory=this.inventory;
   return Object.entries(recipe.needs).every(([item,count])=>(inventory[item]||0)>=count);
  }
@@ -89,19 +89,20 @@ export class Kitchen {
   const recipe=RECIPES.find(entry=>entry.id===id);
   if(!this.canMake(recipe))return false;
   const inventory=this.inventory;
-  const patch={potWater:null};
+  const patch={pot:'soup'};
   for(const [item,count] of Object.entries(recipe.needs))patch[item]=(inventory[item]||0)-count;
-  patch[recipe.makes]=this.soup+1;
   this.write(patch);
-  // The pot is empty again, so it leaves the hand with the water gone.
-  this.shared.setEquippedTool(this.playerId,null);
+  // The meal stays in the pot, which is already in the hand, so it goes straight
+  // from cooking to eating without being put down.
   this.say('You make '+recipe.name.toLowerCase()+'.');
   return true;
  }
- canEat(){return this.soup>0&&this.has('bowl');}
+ // The meal is eaten from the pot it was cooked in.
+ canEat(){return this.pot==='soup';}
  eat(){
   if(!this.canEat())return false;
-  this.write({soup:this.soup-1});
+  this.write({pot:null});
+  this.shared.setEquippedTool(this.playerId,null);
   this.onHunger?.();
   this.say('You eat the soup.');
   return true;
