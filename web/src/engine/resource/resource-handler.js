@@ -79,6 +79,8 @@ export class ResourceHandler extends TreeHarvestSystem {
   this.grass=new TallGrassField({root:this.root,shared,player,playerId});
   this.grass.onDiscovery=()=>this.onDyeDiscovery?.();
   this.ground=new GroundResources({root:this.root,shared,player,playerId});
+  // A pickup can teach a colour too: the dandies are the yellow dye.
+  this.ground.onDiscovery=()=>this.onDyeDiscovery?.();
   // Attached by the game once the camp fire, the sea and the kitchen exist: the
   // kitchen owns what the vessels hold and the fire owns whether it is burning.
   // Water is gathered from the sea that is already in the world, so the handler
