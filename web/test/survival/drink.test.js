@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {Survival,DRINK_RESTORES,SOUP_RESTORES,METER_CAPACITY,BUFF_MULTIPLIER} from '../../src/game/survival.js';
+import {Survival,DRINK_RESTORES,SOUP_RESTORES,METER_CAPACITY,BUFF_MULTIPLIER,OVERFILL} from '../../src/game/survival.js';
 
 const close=(a,b)=>Math.abs(a-b)<1e-6;
 
@@ -36,6 +36,40 @@ test('a bowl puts hunger back and touches nothing else',()=>{
  assert.ok(close(survival.eat(),SOUP_RESTORES));
  assert.ok(close(survival.values.hunger,1+SOUP_RESTORES));
  for(const id of ['health','thirst','warmth','stamina'])assert.equal(survival.values[id],before[id]);
+});
+
+test('a plain drink fills to the brim, a rich one goes past it',()=>{
+ const survival=new Survival();
+ survival.values.thirst=METER_CAPACITY-1;
+ assert.ok(close(survival.drink(4),1),'plain water stops at the brim');
+ assert.ok(close(survival.values.thirst,METER_CAPACITY));
+ assert.ok(close(survival.drink(4,true),METER_CAPACITY*OVERFILL-METER_CAPACITY),'tea pours past it');
+ assert.ok(close(survival.values.thirst,METER_CAPACITY*OVERFILL),'up to one hundred and twenty');
+ assert.equal(survival.drink(4,true),0,'a brim at one twenty takes no more');
+});
+
+test('the overflow is real meter: it drains from the top and a plain drink leaves it',()=>{
+ const survival=new Survival();
+ survival.values.thirst=METER_CAPACITY*OVERFILL;
+ assert.equal(survival.drink(),0,'a plain drink does not cut the overflow');
+ assert.ok(close(survival.values.thirst,METER_CAPACITY*OVERFILL),'still up at one twenty');
+ assert.equal(survival.drink(2,true),0,'and nothing more goes in');
+ survival.update(60);
+ assert.ok(close(survival.values.thirst,METER_CAPACITY*OVERFILL-1),'a point a minute comes off the top');
+ assert.equal(survival.speedBuff,BUFF_MULTIPLIER,'still watered');
+});
+
+test('a better meal fills hunger past the brim, a lean one does not',()=>{
+ const survival=new Survival();
+ survival.values.hunger=METER_CAPACITY-1;
+ assert.ok(close(survival.eat(4),1),'a salad stops at the brim');
+ assert.ok(close(survival.values.hunger,METER_CAPACITY));
+ assert.ok(close(survival.eat(4,true),METER_CAPACITY*OVERFILL-METER_CAPACITY),'soup pours past it');
+ assert.ok(close(survival.values.hunger,METER_CAPACITY*OVERFILL));
+ // A belly run past its brim holds there while the rest of the world drifts.
+ survival.update(60);
+ assert.ok(close(survival.values.hunger,METER_CAPACITY*OVERFILL-.5),'half a point a minute comes off the top');
+ assert.equal(survival.damageBuff,BUFF_MULTIPLIER,'still fed');
 });
 
 test('hunger lasts twice as long as thirst',()=>{
@@ -76,4 +110,7 @@ test('the meters read as fractions of their own capacity',()=>{
  survival.values.health=5;
  assert.equal(read('health'),.5);
  assert.ok(read('thirst')>0&&read('thirst')<1);
+ // A meter run past its brim reads past one, so the UI can show the surplus.
+ survival.values.thirst=METER_CAPACITY*OVERFILL;
+ assert.ok(close(read('thirst'),OVERFILL));
 });
