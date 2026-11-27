@@ -14,10 +14,17 @@ export const WEAPONS=Object.freeze({
 });
 
 export class Combat {
- constructor({weapons=WEAPONS}={}){this.weapons=weapons;this.clocks=new Map();}
+ constructor({weapons=WEAPONS}={}){
+  this.weapons=weapons;
+  this.clocks=new Map();
+  // What the actor's own condition does to its damage. A weapon still says what it
+  // does; a fed player hits half again as hard, which is a multiplier on the
+  // player, not a different sword.
+  this.scale=1;
+ }
  weapon(name){return this.weapons[name]||null;}
- // Health one hit takes with that weapon. Levels are the whole scale for now.
- damage(name){const spec=this.weapon(name);return spec?spec.level:0;}
+ // Health one hit takes with that weapon, under the actor's current condition.
+ damage(name){const spec=this.weapon(name);return spec?spec.level*this.scale:0;}
  // Milliseconds before that actor may swing the same weapon again.
  readyIn(actorId,weapon,now){
   const spec=this.weapon(weapon);
@@ -39,7 +46,7 @@ export class Combat {
   const spec=this.weapon(weapon);
   if(!spec||this.readyIn(actorId,weapon,now)>0)return {swing:false,damage:0,killed:false};
   this.clocks.set(actorId,now);
-  const {damage,killed}=this.hit(target,spec.level);
+  const {damage,killed}=this.hit(target,this.damage(weapon));
   return {swing:true,damage,killed};
  }
 }
