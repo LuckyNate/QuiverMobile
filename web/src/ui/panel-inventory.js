@@ -74,8 +74,14 @@ export const panelInventory={
     slot.type='button';
     slot.addEventListener('click',onClick||(()=>{
      const current=this.sharedWorld.getEquippedTool(this.playerId);
-     if(this.sharedWorld.hasTool(this.playerId,id))this.sharedWorld.setEquippedTool(this.playerId,current===id?null:id);
-     else this.sharedWorld.craftTool(this.playerId,id);
+     if(current===id)this.sharedWorld.setEquippedTool(this.playerId,null);
+     else if(this.sharedWorld.hasTool(this.playerId,id)){
+      // A vessel only comes to hand when it has something to do; tapping it with
+      // nothing to serve says so instead of leaving an idle thing in the fist.
+      const problem=this.vesselProblem(id);
+      if(problem){this.print?.(problem);return;}
+      this.sharedWorld.setEquippedTool(this.playerId,id);
+     }else this.sharedWorld.craftTool(this.playerId,id);
      this.refreshInventory();
     }));
    }
@@ -157,6 +163,17 @@ export const panelInventory={
   this.selectInventoryTab('tools');
  }
 ,
+ // A vessel only comes to hand when it has something to do: the cup needs clean
+ // water in the pot, the bowl needs a meal. The pot is the carrier itself, so it
+ // always comes, and anything that is not a vessel is never refused.
+ vesselProblem(vessel){
+  const kitchen=this.kitchen;
+  if(!kitchen)return null;
+  if(vessel==='cup'&&kitchen.waterServings===0)return 'Nothing clean to drink — boil salt water first.';
+  if(vessel==='bowl'&&kitchen.servings===0)return 'Nothing cooked to eat — there is no soup in the pot.';
+  return null;
+ }
+,
  // A new kind of resource only appears once it is actually carried; the slot then
  // stays so counts do not jump around the grid as things are spent.
  growResources(inventory){
@@ -210,8 +227,10 @@ export const panelInventory={
     entry.quantity.textContent=active?'Equipped':crafted?'Tap to equip':ready?'Tap to craft':Object.entries(TOOL_RECIPES[id]).map(([item,n])=>resourceName(item)+' '+(inventory[item]||0)+'/'+n).join(' · ');
     const held=active?'Equipped':'Tap to equip';
     const servings=inventory.pot==='soup'?inventory.potServings||0:0;
+    const water=inventory.pot==='clean'?inventory.potServings||0:0;
     if(id==='pot')entry.quantity.textContent=held+' · '+POT_STATE[inventory.pot||'empty'];
-    if(id==='bowl')entry.quantity.textContent=held+' · '+(servings>0?'Soup: '+servings+' servings':'Empty');
+    if(id==='cup')entry.quantity.textContent=held+' · '+(water>0?'Water: '+water+' servings':'No water');
+    if(id==='bowl')entry.quantity.textContent=held+' · '+(servings>0?'Soup: '+servings+' servings':'Nothing to eat');
     const title=entry.name.textContent+(active?' — equipped':crafted?' — tap to equip':'');
     entry.slot.title=title;
     entry.slot.setAttribute('aria-label',title);
@@ -230,10 +249,9 @@ export const panelInventory={
     entry.slot.style.display=contents?'flex':'none';
     showPicture(entry,contents?toolIcon(contents==='raw'?'saltWater':contents==='clean'?'cleanWater':'soup'):null);
     entry.name.textContent=POT_STATE[contents]||'Empty pot';
-    const servings=contents==='soup'?(inventory.potServings||0):0;
+    const servings=contents&&contents!=='raw'?(inventory.potServings||0):0;
     entry.quantity.textContent=contents==='raw'?'Boil it on a fire'
-     :contents==='soup'?'Servings: '+servings+' · tap to take it in hand'
-     :contents?'Tap to take it in hand':'';
+     :contents?'Servings: '+servings+' · tap to equip':'';
    }
    else if(entry.tag==='logs')entry.quantity.textContent='Count: '+count+' | Strength: '+averageStrength.toFixed(2);
    else if(entry.tag==='fibers'){
