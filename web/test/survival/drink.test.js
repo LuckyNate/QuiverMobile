@@ -61,3 +61,19 @@ test('a meter that is not empty keeps its buff, an empty one loses it',()=>{
  survival.values.hunger=.5;
  assert.equal(survival.damageBuff,BUFF_MULTIPLIER,'half a point of hunger is still fed');
 });
+
+test('damage is in hit points out of ten',()=>{
+ const survival=new Survival();
+ assert.equal(survival.hurt(3),7);
+ assert.equal(survival.hurt(100),0);
+ assert.equal(survival.values.health,0);
+});
+
+test('the meters read as fractions of their own capacity',()=>{
+ const survival=new Survival();
+ const read=id=>survival.needs().find(need=>need.id===id).value;
+ assert.equal(read('health'),1);
+ survival.values.health=5;
+ assert.equal(read('health'),.5);
+ assert.ok(read('thirst')>0&&read('thirst')<1);
+});
