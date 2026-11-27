@@ -18,7 +18,7 @@ import {InstanceStore} from '../population/instance-store.js';
 
 // How close the avatar has to stand for a tap to reach what it landed on. A tree
 // states its own reach and tool beside its resource contract, in flora/tree.js.
-const GRASS_REACH=1.8,CARCASS_REACH=1.6,COOK_REACH=2.4;
+const GRASS_REACH=1.8,CARCASS_REACH=1.6;
 // How far from the sea an avatar may stand and still dip the pot in it.
 const WATER_REACH=1.6;
 
@@ -39,21 +39,9 @@ function touchRules(host){
   offers:[{verb:'cut',tool:'scythe',reach:GRASS_REACH,applies:clump=>clump.state==='standing',
    run:clump=>host.grass.cut(clump,host.playerId)}]
  });
- // The camp fire is the kitchen. Which vessel is in hand decides the verb: the pot
- // boils, the cup drinks what was boiled, the bowl cooks soup and eats it.
- touch.register('fire',{
-  find:()=>host.fire?.burning?host.fire:null,at:fire=>fire.root.position,
-  offers:[
-   {verb:'drink',tool:'cup',reach:COOK_REACH,applies:()=>Boolean(host.kitchen?.canDrink()),
-    run:()=>host.kitchen.drink()},
-   {verb:'boil',tool:'pot',reach:COOK_REACH,applies:()=>Boolean(host.kitchen?.canBoil()),
-    run:()=>host.kitchen.boil()},
-   {verb:'eat',tool:'bowl',reach:COOK_REACH,applies:()=>Boolean(host.kitchen?.canEat()),
-    run:()=>host.kitchen.eat()},
-   {verb:'cook',tool:'bowl',reach:COOK_REACH,applies:()=>Boolean(host.kitchen?.canCookSoup()),
-    run:()=>host.kitchen.cookSoup()}
-  ]
- });
+ // The camp fire is not touched: a burning fire does its work on its own clock
+ // while the avatar sits at it, and what the vessel in hand can do is offered
+ // over the vessel itself rather than over the fire.
  touch.register('boar',{
   find:id=>host.creatures.get(id),at:creature=>creature.at,
   offers:[
@@ -92,9 +80,9 @@ export class ResourceHandler extends TreeHarvestSystem {
   this.grass.onDiscovery=()=>this.onDyeDiscovery?.();
   this.ground=new GroundResources({root:this.root,shared,player,playerId});
   // Attached by the game once the camp fire, the sea and the kitchen exist: the
-  // world offers the verbs, the kitchen decides what they do to the pack and the
-  // meters. Water is gathered from the sea that is already in the world, so the
-  // handler needs a reading of it rather than a spawned object.
+  // kitchen owns what the vessels hold and the fire owns whether it is burning.
+  // Water is gathered from the sea that is already in the world, so the handler
+  // needs a reading of it rather than a spawned object.
   this.fire=null;
   this.kitchen=null;
   this.water=null;
