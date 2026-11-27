@@ -40,7 +40,7 @@ test('pot water goes sea-raw, fire-clean, cup-drunk',()=>{
  assert.equal(kitchen.drink(),true);
  assert.equal(kitchen.pot,null);
  assert.equal(eaten.thirst,1);
- assert.deepEqual(eaten.said,['You fill the pot with water.','The water boils and clears.','You drink the boiled water.']);
+ assert.deepEqual(eaten.said,['You fill the pot with salt water.','The water boils and clears.','You drink the boiled water.']);
 });
 
 test('a pot that already holds water is not filled again',()=>{
