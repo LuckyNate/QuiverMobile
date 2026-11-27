@@ -50,9 +50,8 @@ export function terrainLodAtHorizontalDistance(meters,maxLod=WORLD_SCALE.maxTerr
 // A fraction is a chance per cell: boar:0.7 is one boar in seven cells of ten.
 // `resources` are harvestable, `creatures` are living inhabitants: both are seeded,
 // streamed and id-stamped by the same population system. Empty {} spawns none.
-// A dandy is a bare-handed pickup beside sticks and stones. A spring is a pool of
-// drinking water placed in the band of dry ground just above sea level, so water
-// is found by walking down to a shore rather than anywhere at all.
+// A dandy is a bare-handed pickup beside sticks and stones. Water is not in this
+// table: the sea is already in the world and the pot is dipped into it.
 // `tolerance` is how many of a cell's target may be missing before it replenishes;
 // the cell then refills to its target. The respawn delay is per type, not per face.
 export const STARTER_BIOME_FACE=6;
@@ -63,8 +62,8 @@ const biomeDefinitions=[
  {name:'Face 03',groundColor:0x9bca68,resources:{}},
  {name:'Face 04',groundColor:0x58ad80,resources:{}},
  {name:'Face 05',groundColor:0x59bba9,resources:{}},
- {name:'Meadows',groundColor:null,resources:{tree:18,grass:36,stick:12,stone:8,dandy:22,spring:2},creatures:{boar:0.7},
-  tolerance:{tree:2,grass:6,stick:4,stone:2,dandy:5,spring:1,boar:1}},
+ {name:'Meadows',groundColor:null,resources:{tree:18,grass:36,stick:12,stone:8,dandy:22},creatures:{boar:0.7},
+  tolerance:{tree:2,grass:6,stick:4,stone:2,dandy:5,boar:1}},
  {name:'Face 07',groundColor:0x579fcd,resources:{}},
  {name:'Face 08',groundColor:0x6477ca,resources:{}},
  {name:'Face 09',groundColor:0x956ac8,resources:{}},

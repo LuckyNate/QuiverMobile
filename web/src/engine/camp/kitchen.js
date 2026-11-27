@@ -3,7 +3,7 @@
 // question, asked before any of this runs. These rules only need the pack and the
 // vessels in it, so they are testable without a renderer, a scene or a fire.
 //
-// The pot is the only thing that carries water: raw from a spring, clean after
+// The pot is the only thing that carries water: raw from the sea, clean after
 // boiling. Raw water is never drunk. A cup drinks, a bowl cooks and eats, so the
 // vessel in the hand is what decides what tapping the fire means.
 export const POT_STATES=Object.freeze(['raw','clean']);
@@ -18,12 +18,12 @@ export class Kitchen {
  has(tool){return this.shared.hasTool(this.playerId,tool);}
  write(patch){return this.shared.updateInventory(this.playerId,patch);}
  say(text){this.message?.(text);}
- // A spring: the pot goes in empty and comes out holding raw water.
+ // The water: the pot goes in empty and comes out holding raw water.
  canFill(){return this.pot===null&&this.has('pot');}
  fill(){
   if(!this.canFill())return false;
   this.write({potWater:'raw'});
-  this.say('You fill the pot with spring water.');
+  this.say('You fill the pot with water.');
   return true;
  }
  // A fire: boiling is the only way raw water becomes fit to drink.
