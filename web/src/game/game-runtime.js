@@ -122,12 +122,16 @@ export const gameRuntime={
    if(this.started){
     this.survival.update(dt);
     this.panels.updateSurvival(this.survival.needs());
+    // The hunger buff is read once per frame, where damage is dealt; the thirst buff
+    // is applied to the step below.
+    this.harvesting.creatures.combat.scale=this.survival.damageBuff;
    }
    if(this.simulationReady&&this.physics&&this.playerCollider){
     const start=performance.now();
     // The gait follows the speed the controls asked for, so the run begins with
     // the input instead of waiting for the physics body to reach a threshold.
-    const applied=this.physics.movePlayer(this.playerCollider,this.playerSystem.movement(dt),PLAYER_SPEED,this.player.clone().normalize(),dt);
+    // A watered player covers half again the ground: the same step, a faster stride.
+    const applied=this.physics.movePlayer(this.playerCollider,this.playerSystem.movement(dt),PLAYER_SPEED*this.survival.speedBuff,this.player.clone().normalize(),dt);
     this.playerSystem.setCommandedSpeed(applied||0);
     this.profiler.mark('move',start);
    }
