@@ -12,6 +12,15 @@ const NOT_A_RESOURCE=new Set(['equippedTool','craftedTools','unlockedDyes','gear
 // water is salt until the fire has boiled it, which is the whole reason for boiling.
 const POT_STATE={empty:'Empty pot',raw:'Salt water',clean:'Clean water'};
 const SLOT_STYLE='min-height:84px;padding:8px;border:1px solid #526477;border-radius:5px;display:flex;flex-direction:column;justify-content:center;gap:4px;background:#172430';
+// A carried-item picture sits above its own words: the slot is the bucket, and the
+// name and state stay readable under it rather than being replaced by the drawing.
+function showPicture(entry,icon){
+ entry.slot.style.backgroundImage=icon?'url('+icon+')':'none';
+ entry.slot.style.backgroundSize=icon?'46px 46px':'auto';
+ entry.slot.style.backgroundPosition=icon?'center 6px':'center';
+ entry.slot.style.backgroundRepeat='no-repeat';
+ entry.slot.style.paddingTop=icon?'54px':'8px';
+}
 const label=id=>id[0].toUpperCase()+id.slice(1);
 export const panelInventory={
  registerInventoryTab(id,label,content){
@@ -204,14 +213,20 @@ export const panelInventory={
     entry.quantity.textContent='Count: '+(inventory.arrows||0)+(ready?' · Tap to craft':'');
    }
    else if(entry.tag==='potWater'){
-    const water=inventory.potWater;
+    // A carried bucket: the picture is the pot with its contents at the brim, so
+    // salt water and boiled water differ by colour as well as by name.
+    const water=inventory.potWater,clean=water==='clean';
     entry.slot.style.display=water?'flex':'none';
-    entry.quantity.textContent=POT_STATE[water]||'Empty pot';
+    showPicture(entry,water?toolIcon(clean?'cleanWater':'saltWater'):null);
+    entry.name.textContent=clean?'Clean water':'Salt water';
+    entry.quantity.textContent=clean?'Drink it':'Boil it on a fire';
    }
    else if(entry.tag==='soup'){
     const soups=inventory.soup||0;
     entry.slot.style.display=soups>0?'flex':'none';
-    entry.quantity.textContent='Soup: '+soups;
+    showPicture(entry,toolIcon('soup'));
+    entry.name.textContent='Soup';
+    entry.quantity.textContent=soups>1?'Bowls: '+soups:'Eat it';
    }
    else if(entry.tag==='logs')entry.quantity.textContent='Count: '+count+' | Strength: '+averageStrength.toFixed(2);
    else if(entry.tag==='fibers'){

@@ -35,6 +35,20 @@ export function buildPot(){
  return group;
 }
 
+// The bucket with something in it, for the inventory picture: the same vessel the
+// hand holds, with its contents shown at the brim. Colour is the whole difference
+// between salt water, boiled water and soup.
+function filled(group,colour,radius,y){
+ const surface=new THREE.Mesh(new THREE.CircleGeometry(radius,14),material(colour));
+ surface.rotation.x=-Math.PI/2;
+ surface.position.y=y;
+ group.add(surface);
+ return group;
+}
+export function buildSaltWater(){return filled(buildPot(),0x74838a,.112,.232);}
+export function buildCleanWater(){return filled(buildPot(),0x49a9d8,.112,.242);}
+export function buildSoup(){return filled(buildBowl(),0x9a6b3c,.118,.143);}
+
 // A bowl: a wide shallow dish, so it is not mistaken for the cup in the hand.
 export function buildBowl(){
  const group=new THREE.Group();
