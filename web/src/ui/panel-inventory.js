@@ -29,6 +29,10 @@ function showPicture(entry,icon){
  entry.slot.style.paddingTop=icon?'54px':'8px';
 }
 const label=id=>id[0].toUpperCase()+id.slice(1);
+// The things a camp cooks with and eats from, in the order a meal needs them: the
+// pot and the pan for the fire, the skewer for one piece of meat, then the cup and
+// the bowl to serve it. They live in their own tab so the tools tab is tools.
+const COOKING_TOOLS=Object.freeze(['pot','pan','skewer','cup','bowl']);
 export const panelInventory={
  registerInventoryTab(id,label,content){
   if(this.inventoryTabs.has(id))throw new Error('Duplicate inventory tab: '+id);
@@ -69,7 +73,7 @@ export const panelInventory={
   this.inventoryTabBar.setAttribute('role','tablist');
   this.inventoryTabBar.style.cssText='display:flex;align-items:flex-end;flex-wrap:wrap;gap:0;margin:0 0 12px;padding:0 4px;border-bottom:2px solid #526477';
   this.inventoryTabContents=document.createElement('div');
-  const toolsPane=document.createElement('div'),weaponsPane=document.createElement('div'),resourcesPane=document.createElement('div'),dyePane=document.createElement('div'),gearPane=document.createElement('div');
+  const toolsPane=document.createElement('div'),cookingPane=document.createElement('div'),weaponsPane=document.createElement('div'),resourcesPane=document.createElement('div'),dyePane=document.createElement('div'),gearPane=document.createElement('div');
   const makeGrid=()=>{
    const grid=document.createElement('div');
    grid.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px';
@@ -103,8 +107,17 @@ export const panelInventory={
   // Craftable tools are fixed slots: they exist whether or not you have one yet.
   // The weapons craft the same way, they just live in their own tab.
   const toolsGrid=makeGrid();
-  for(const id of Object.keys(TOOL_RECIPES).filter(id=>!WEAPON_TOOLS.includes(id)))toolsGrid.append(makeSlot(id,label(id),{interactive:true}));
+  for(const id of Object.keys(TOOL_RECIPES).filter(id=>!WEAPON_TOOLS.includes(id)&&!COOKING_TOOLS.includes(id)))toolsGrid.append(makeSlot(id,label(id),{interactive:true}));
   toolsPane.append(toolsGrid);
+  // The cookware has a tab of its own: the utensils themselves, and under them what
+  // the pot and the pan are holding, since that is what a cook looks at.
+  const cookingGrid=makeGrid();
+  for(const id of COOKING_TOOLS.filter(id=>Object.hasOwn(TOOL_RECIPES,id)))cookingGrid.append(makeSlot(id,label(id),{interactive:true}));
+  const cookingHint=document.createElement('p');
+  cookingHint.textContent='Pot, pan and skewer cook. A cup drinks, a bowl eats.';
+  cookingHint.style.cssText='margin:0 0 8px;color:#9fb3c2;font-size:12px';
+  const cookingContentsGrid=makeGrid();
+  cookingPane.append(cookingHint,cookingGrid,cookingContentsGrid);
   const weaponsGrid=makeGrid();
   for(const id of WEAPON_TOOLS)weaponsGrid.append(makeSlot(id,label(id),{interactive:true}));
   // Arrows are ammunition: a count you spend, not something you equip.
@@ -123,9 +136,9 @@ export const panelInventory={
   this.resourceGrid=makeGrid();
   this.emptyResourcesHint=resourcesHint;
   resourcesPane.append(resourcesHint,this.resourceGrid);
-  // What the vessels are carrying is carried too, so it is listed here beside the
-  // things you pick up. An empty vessel shows no slot at all.
-  const carriedSlot=(id,title,vessel)=>{
+  // What a vessel is holding is carried too, so it gets a slot: in the cooking tab,
+  // under the utensils it belongs to. An empty vessel shows no slot at all.
+  const carriedSlot=(id,title,vessel,grid=this.resourceGrid)=>{
    const slot=document.createElement('button');
    slot.type='button';
    slot.style.cssText=SLOT_STYLE+'cursor:pointer;touch-action:manipulation';
@@ -141,12 +154,12 @@ export const panelInventory={
    const name=document.createElement('strong');name.textContent=title;
    const quantity=document.createElement('span');quantity.style.fontSize='12px';
    slot.append(name,quantity);
-   this.resourceGrid.append(slot);
+   grid.append(slot);
    this.slots.set(id,{slot,name,quantity,isTool:false,tag:id});
   };
-  // The vessels' own slots are the tools above; these are what they are carrying.
-  carriedSlot('potContents','Pot','pot');
-  carriedSlot('panContents','Pan','pan');
+  // The vessels' own slots are the utensils above; these are what they are carrying.
+  carriedSlot('potContents','Pot','pot',cookingContentsGrid);
+  carriedSlot('panContents','Pan','pan',cookingContentsGrid);
   const dyeGrid=document.createElement('div');
   dyeGrid.style.cssText='display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:3px;max-width:420px';
   this.dyeSwatches=[];
@@ -163,6 +176,7 @@ export const panelInventory={
   dyePane.append(dyeHint,dyeGrid);
   this.bottom.content.append(this.inventoryTabBar,this.inventoryTabContents);
   this.registerInventoryTab('tools','Tools',toolsPane);
+  this.registerInventoryTab('cooking','Cooking',cookingPane);
   this.registerInventoryTab('weapons','Weapons',weaponsPane);
   this.registerInventoryTab('resources','Resources',resourcesPane);
   this.registerInventoryTab('dyes','Dyes',dyePane);
