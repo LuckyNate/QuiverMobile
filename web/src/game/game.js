@@ -11,6 +11,7 @@ import {Bonfire} from '../engine/camp/bonfire.js';
 import {Kitchen} from '../engine/camp/kitchen.js';
 import {Building} from '../engine/build/building.js';
 import {GamePanels} from '../ui/game-panels.js';
+import {VesselActions} from '../ui/vessel-actions.js';
 import {Survival} from './survival.js';
 import {StatusReport} from '../gui/status-report.js';
 import {LoadingScreen} from '../gui/loading-screen.js';
@@ -74,6 +75,15 @@ export class Game {
    message:text=>this.panels.print(text)});
   this.harvesting.kitchen=this.kitchen;
   this.harvesting.fire=this.bonfire;
+  // What the vessel in hand can do is offered over the vessel, not over the fire:
+  // the pot drinks and cooks, the bowl eats, and a pot on the fire counts down.
+  this.vesselActions=new VesselActions({app,camera:this.camera,
+   hand:out=>{
+    const anchor=this.playerSystem.visual.jim?.handAnchor;
+    return anchor?anchor.getWorldPosition(out):null;
+   },
+   shared:this.sharedWorld,playerId:'local-owner',kitchen:this.kitchen,
+   atFire:()=>this.bonfire.cookable,isActive:()=>this.started&&this.simulationReady});
   // The pot is filled from the sea that is already in the world, so the handler
   // needs the water's radius rather than a spawned source.
   this.harvesting.water=this.water;
