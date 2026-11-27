@@ -5,14 +5,14 @@
 //
 // The pot is the only vessel: it carries salt water, then boiled water, then the
 // meal cooked in it, one thing at a time, and what it holds sits in the inventory
-// beside everything else carried. Raw water is never drunk, and the pot is what
-// drinks it once boiled. What the pot can do is offered over the pot itself.
+// beside everything else carried. Raw water is never drunk, and the cup is what
+// drinks it once boiled. What a vessel can do is offered over the vessel itself.
 export const POT_STATES=Object.freeze(['raw','clean','soup']);
 // Sitting at a fire with salt water in the pot is the whole of boiling: the fire
 // does the work over this long, and nobody has to tap anything to make it happen.
 export const BOIL_SECONDS=45;
-// A full pot holds this many servings of what was cooked in it. The pot is where
-// the food keeps; a bowl is what it is eaten from, one serving at a time.
+// A full pot holds this many servings of what is in it, water or meal. The pot is
+// where it keeps; a cup drinks a serving and a bowl eats one, one at a time.
 export const SERVINGS_PER_POT=2;
 // What can be cooked in the pot. A recipe says what it takes beyond clean water;
 // the kitchen only ever offers the ones the pack can actually cover.
@@ -31,6 +31,8 @@ export class Kitchen {
  get pot(){const contents=this.inventory.pot;return POT_STATES.includes(contents)?contents:null;}
  // How many servings are left in the pot; zero unless it holds a meal.
  get servings(){return this.pot==='soup'?Math.max(0,this.inventory.potServings||0):0;}
+ // Clean water is served the same way, a cup at a time.
+ get waterServings(){return this.pot==='clean'?Math.max(0,this.inventory.potServings||0):0;}
  has(tool){return this.shared.hasTool(this.playerId,tool);}
  write(patch){return this.shared.updateInventory(this.playerId,patch);}
  say(text){this.message?.(text);}
@@ -59,7 +61,7 @@ export class Kitchen {
   if(this.boilUntil){
    if(now<this.boilUntil)return false;
    this.boilUntil=null;
-   this.write({pot:'clean'});
+   this.write({pot:'clean',potServings:SERVINGS_PER_POT});
    // Clean water is the end of the pot's job, so it leaves the hand: the next
    // question is what to do with the water, not what to be holding.
    this.shared.setEquippedTool(this.playerId,null);
@@ -70,16 +72,17 @@ export class Kitchen {
   if(this.shared.getEquippedTool(this.playerId)!=='pot')return false;
   return this.boil(now);
  }
- // The pot is the cup: what was boiled is drunk from what it was boiled in, which
- // is why the water leaving the hand was the point of the boil.
- canDrink(){return this.pot==='clean';}
+ // The cup is what water is drunk from, one serving at a time out of the pot.
+ canDrink(){return this.waterServings>0&&this.has('cup');}
  drink(){
   if(!this.canDrink())return false;
-  this.write({pot:null,potServings:0});
-  // The empty pot has nothing left to offer, so it leaves the hand with the water.
-  this.shared.setEquippedTool(this.playerId,null);
+  const left=this.waterServings-1;
+  // The last serving empties the pot; until then the rest keeps in it.
+  this.write(left>0?{potServings:left}:{pot:null,potServings:0});
+  // An empty pot leaves nothing to drink from, so the cup comes out of the hand.
+  if(left===0)this.shared.setEquippedTool(this.playerId,null);
   this.onThirst?.();
-  this.say('You drink the boiled water.');
+  this.say(left>0?'You drink a cup of water. '+left+' left in the pot.':'You drink the last of the water.');
   return true;
  }
  canMake(recipe){
