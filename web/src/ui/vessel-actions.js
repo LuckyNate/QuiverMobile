@@ -11,8 +11,10 @@ const ITEM_NAMES={dandies:'Dandies',rawBacon:'Raw bacon'};
 const itemName=key=>ITEM_NAMES[key]||key;
 
 export class VesselActions {
- constructor({app,camera,avatar,shared,playerId='local-owner',kitchen,atFire,isActive}){
-  Object.assign(this,{app,camera,avatar,shared,playerId,kitchen,atFire,isActive});
+ // hand(point) writes the world position of the held vessel into point; the game
+ // supplies it, since the fist that holds the tool belongs to the avatar.
+ constructor({app,camera,hand,shared,playerId='local-owner',kitchen,atFire,isActive}){
+  Object.assign(this,{app,camera,hand,shared,playerId,kitchen,atFire,isActive});
   this.root=document.createElement('div');
   this.root.style.cssText='position:fixed;left:0;top:0;z-index:6;display:none;flex-direction:column-reverse;gap:6px;align-items:center;transform:translate(-50%,-100%)';
   app.append(this.root);
@@ -29,7 +31,7 @@ export class VesselActions {
   const equipped=this.shared.getEquippedTool(this.playerId);
   const actions=this.actionsFor(equipped),note=this.noteFor(equipped);
   if(!actions.length&&!note)return this.hide();
-  const hand=this.avatar.handPoint(this.point);
+  const hand=this.hand(this.point);
   if(!hand||!this.place(hand))return this.hide();
   const signature=actions.map(action=>action.label).join('|')+'#'+note;
   if(signature!==this.signature){
