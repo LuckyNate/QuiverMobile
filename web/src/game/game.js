@@ -71,7 +71,7 @@ export class Game {
   // Cooking belongs to the fire: the world offers the verbs, the kitchen owns the
   // pot and the bowl, and the meters move across the same boundary as damage.
   this.kitchen=new Kitchen({shared:this.sharedWorld,playerId:'local-owner',
-   onThirst:points=>this.survival.drink(points),onHunger:points=>this.survival.eat(points),
+   onThirst:(points,rich)=>this.survival.drink(points,rich),onHunger:(points,rich)=>this.survival.eat(points,rich),
    message:text=>this.panels.print(text)});
   this.harvesting.kitchen=this.kitchen;
   this.harvesting.fire=this.bonfire;

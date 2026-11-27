@@ -23,15 +23,19 @@ export const SERVINGS_PER_POT=2;
 export const USE_DELAY_MS=700;
 // What can be made in the pot. A recipe says what it takes beyond what the pot
 // already holds (`base`, null for an empty pot), how many points of its meter one
-// serving puts back, and whether it is eaten with the bowl or drunk from the cup.
-// The kitchen only ever offers the ones the pack can actually cover.
+// serving puts back, whether it is eaten with the bowl or drunk from the cup, and
+// whether it is a rich enough dish to fill a meter past its brim. The kitchen only
+// ever offers the ones the pack can actually cover.
 export const RECIPES=Object.freeze([
  // A salad is the first meal of a camp: dandies picked on the way home and no fire
- // at all, so hunger can be answered before the first log is cut.
+ // at all, so hunger can be answered before the first log is cut. Lean food: it
+ // fills the belly to the brim and no further.
  {id:'salad',name:'Dandy salad',needs:{dandies:2},base:null,cold:true,restores:2},
- // Soup and tea both start from water already boiled clean.
- {id:'soup',name:'Dandy soup',needs:{dandies:3},base:'clean',restores:4},
- {id:'tea',name:'Dandy tea',needs:{dandies:1},base:'clean',restores:4,drink:true}
+ // Soup and tea both start from water already boiled clean, and both are worth more
+ // than their points: they fill the meter past full, and the surplus drains away
+ // slowly instead of being wasted.
+ {id:'soup',name:'Dandy soup',needs:{dandies:3},base:'clean',restores:4,rich:true},
+ {id:'tea',name:'Dandy tea',needs:{dandies:1},base:'clean',restores:4,drink:true,rich:true}
 ]);
 const recipeFor=id=>RECIPES.find(recipe=>recipe.id===id)||null;
 export class Kitchen {
@@ -118,7 +122,7 @@ export class Kitchen {
   // The last serving empties the pot; until then the rest keeps in it.
   this.write(left>0?{potServings:left}:{pot:null,potServings:0});
   this.afterUse();
-  this.onThirst?.(tea?.restores);
+  this.onThirst?.(tea?.restores,Boolean(tea?.rich));
   this.say(tea
    ?(left>0?'You drink a cup of dandy tea. '+left+' left in the pot.':'You drink the last of the tea.')
    :(left>0?'You drink a cup of water. '+left+' left in the pot.':'You drink the last of the water.'));
@@ -156,7 +160,7 @@ export class Kitchen {
   // The last serving empties the pot; until then the rest keeps in it.
   this.write(left>0?{potServings:left}:{pot:null,potServings:0});
   this.afterUse();
-  this.onHunger?.(meal.restores);
+  this.onHunger?.(meal.restores,Boolean(meal.rich));
   this.say(left>0?'You eat a bowl of '+meal.name.toLowerCase()+'. '+left+' left in the pot.'
    :'You eat the last of the '+meal.name.toLowerCase()+'.');
   return true;
