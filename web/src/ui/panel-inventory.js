@@ -7,10 +7,10 @@ const RESOURCE_NAMES={logs:'4 m Logs',fibers:'Fibers',sticks:'Sticks',stones:'St
 // Unmapped keys still read as words: birchBark -> Birch Bark.
 const resourceName=key=>RESOURCE_NAMES[key]||key.replace(/([a-z0-9])([A-Z])/g,'$1 $2').replace(/^./,c=>c.toUpperCase());
 // Inventory keys that are bookkeeping rather than something you carry in a slot.
-const NOT_A_RESOURCE=new Set(['equippedTool','craftedTools','unlockedDyes','gear','logStrength','fiberQuality','arrows','potWater','soup']);
-// The pot and the bowl carry something, so their slots say what is in them. The
-// water is salt until the fire has boiled it, which is the whole reason for boiling.
-const POT_STATE={empty:'Empty pot',raw:'Salt water',clean:'Clean water'};
+const NOT_A_RESOURCE=new Set(['equippedTool','craftedTools','unlockedDyes','gear','logStrength','fiberQuality','arrows','pot']);
+// The pot carries its contents, so its slot says what is in it: the water is salt
+// until the fire has boiled it, and then it is a meal.
+const POT_STATE={empty:'Empty pot',raw:'Salt water',clean:'Clean water',soup:'Soup'};
 const SLOT_STYLE='min-height:84px;padding:8px;border:1px solid #526477;border-radius:5px;display:flex;flex-direction:column;justify-content:center;gap:4px;background:#172430';
 // A carried-item picture sits above its own words: the slot is the bucket, and the
 // name and state stay readable under it rather than being replaced by the drawing.
@@ -131,8 +131,8 @@ export const panelInventory={
    this.resourceGrid.append(slot);
    this.slots.set(id,{slot,name,quantity,isTool:false,tag:id});
   };
-  carriedSlot('potWater','Pot','pot');
-  carriedSlot('soup','Bowl','bowl');
+  // The pot's own slot is the tool above; this one is what the pot is carrying.
+  carriedSlot('potContents','Pot','pot');
   const dyeGrid=document.createElement('div');
   dyeGrid.style.cssText='display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:3px;max-width:420px';
   this.dyeSwatches=[];
@@ -209,8 +209,7 @@ export const panelInventory={
     entry.quantity.style.display=icon?'none':'block';
     entry.quantity.textContent=active?'Equipped':crafted?'Tap to equip':ready?'Tap to craft':Object.entries(TOOL_RECIPES[id]).map(([item,n])=>resourceName(item)+' '+(inventory[item]||0)+'/'+n).join(' · ');
     const held=active?'Equipped':'Tap to equip';
-    if(id==='pot')entry.quantity.textContent=held+' · '+POT_STATE[inventory.potWater||'empty'];
-    if(id==='bowl')entry.quantity.textContent=held+' · '+((inventory.soup||0)>0?'Soup: '+inventory.soup:'Empty');
+    if(id==='pot')entry.quantity.textContent=held+' · '+POT_STATE[inventory.pot||'empty'];
     const title=entry.name.textContent+(active?' — equipped':crafted?' — tap to equip':'');
     entry.slot.title=title;
     entry.slot.setAttribute('aria-label',title);
@@ -222,21 +221,14 @@ export const panelInventory={
     entry.slot.style.color=ready?'#fff0b3':'#b2b5b7';
     entry.quantity.textContent='Count: '+(inventory.arrows||0)+(ready?' · Tap to craft':'');
    }
-   else if(entry.tag==='potWater'){
-    // A carried bucket: the picture is the pot with its contents at the brim, so
-    // salt water and boiled water differ by colour as well as by name.
-    const water=inventory.potWater,clean=water==='clean';
-    entry.slot.style.display=water?'flex':'none';
-    showPicture(entry,water?toolIcon(clean?'cleanWater':'saltWater'):null);
-    entry.name.textContent=clean?'Clean water':'Salt water';
-    entry.quantity.textContent=clean?'Tap to take it in hand':'Boil it on a fire';
-   }
-   else if(entry.tag==='soup'){
-    const soups=inventory.soup||0;
-    entry.slot.style.display=soups>0?'flex':'none';
-    showPicture(entry,toolIcon('soup'));
-    entry.name.textContent='Soup';
-    entry.quantity.textContent=soups>1?'Bowls: '+soups:'Tap to eat';
+   else if(entry.tag==='potContents'){
+    // A carried pot: the picture is the pot with its contents at the brim, so salt
+    // water, boiled water and soup differ by colour as well as by name.
+    const contents=inventory.pot;
+    entry.slot.style.display=contents?'flex':'none';
+    showPicture(entry,contents?toolIcon(contents==='raw'?'saltWater':contents==='clean'?'cleanWater':'soup'):null);
+    entry.name.textContent=POT_STATE[contents]||'Empty pot';
+    entry.quantity.textContent=contents==='raw'?'Boil it on a fire':contents?'Tap to take it in hand':'';
    }
    else if(entry.tag==='logs')entry.quantity.textContent='Count: '+count+' | Strength: '+averageStrength.toFixed(2);
    else if(entry.tag==='fibers'){
