@@ -3,9 +3,10 @@ export const PLAYER_HEALTH=10;
 // Every meter holds this many points. Capacity is meant to grow with level progress,
 // which is not in place yet, so all of them start at the same ten.
 export const METER_CAPACITY=10;
-// A cup of boiled water and a bowl of soup put points back into their meter. Hunger
-// and thirst fall by one point a minute, so a drink is worth three minutes of quick
-// feet and a bowl four minutes of a sharpened blade.
+// A cup of boiled water and a bowl of soup put points back into their meter. Thirst
+// falls a point a minute and hunger half that, so a belly lasts twice as long as a
+// thirst: a drink is worth three minutes of quick feet and a bowl of soup eight of a
+// sharpened blade. A kitchen may hand over the points its own dish is worth.
 export const DRINK_RESTORES=3;
 export const SOUP_RESTORES=4;
 // While a meter is not empty its buff holds: a fed player hits half again as hard, a
@@ -16,10 +17,12 @@ export const BUFF_MULTIPLIER=1.5;
 // combat writes. Nothing kills the player when a meter empties, because death and
 // respawn rules are still undecided; the drift is slow on purpose so a session shows
 // the meters moving without punishing exploration.
+// Hunger drifts at half the thirst rate, so food carries a player twice as far as
+// water does and a belly is worth the walk to fill.
 const NEEDS=[
  {id:'health',label:'HP',colour:'198,66,66',capacity:METER_CAPACITY,perSecond:0,start:METER_CAPACITY},
  {id:'thirst',label:'T',colour:'74,168,216',capacity:METER_CAPACITY,perSecond:1/60,start:8},
- {id:'hunger',label:'H',colour:'224,163,60',capacity:METER_CAPACITY,perSecond:1/60,start:7},
+ {id:'hunger',label:'H',colour:'224,163,60',capacity:METER_CAPACITY,perSecond:1/120,start:7},
  {id:'warmth',label:'W',colour:'217,102,63',capacity:METER_CAPACITY,perSecond:10/900,start:9},
  // Stamina recovers instead of draining: a full meter that empties in a fight.
  {id:'stamina',label:'S',colour:'111,191,95',capacity:METER_CAPACITY,perSecond:-10/45,start:METER_CAPACITY}
