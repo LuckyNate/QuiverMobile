@@ -7,14 +7,14 @@ const RESOURCE_NAMES={logs:'4 m Logs',fibers:'Fibers',sticks:'Sticks',stones:'St
 // Unmapped keys still read as words: birchBark -> Birch Bark.
 const resourceName=key=>RESOURCE_NAMES[key]||key.replace(/([a-z0-9])([A-Z])/g,'$1 $2').replace(/^./,c=>c.toUpperCase());
 // Inventory keys that are bookkeeping rather than something you carry in a slot.
-const NOT_A_RESOURCE=new Set(['equippedTool','craftedTools','unlockedDyes','gear','logStrength','fiberQuality','arrows','pot','potServings']);
-// The pot carries its contents, so its slot says what is in it: the water is salt
-// until the fire has boiled it, and then it is a dish.
-const POT_STATE={empty:'Empty pot',raw:'Salt water',clean:'Clean water',soup:'Dandy soup',salad:'Dandy salad',tea:'Dandy tea'};
+const NOT_A_RESOURCE=new Set(['equippedTool','craftedTools','unlockedDyes','gear','logStrength','fiberQuality','arrows','pot','potServings','pan','panServings']);
+// The vessels carry their contents, so their slots say what is in them: the water is
+// salt until the fire has boiled it, and then it is a dish.
+const POT_STATE={empty:'Empty pot',raw:'Salt water',clean:'Clean water',soup:'Dandy soup',salad:'Dandy salad',tea:'Dandy tea',grilled:'Grilled meat'};
 // What is eaten from a bowl; tea is served the same way but drunk from a cup.
-const EATEN_STATES=new Set(['soup','salad']);
+const EATEN_STATES=new Set(['soup','salad','grilled']);
 // The picture of the pot with its contents: the same vessel, coloured by what is
-// in it.
+// in it. Anything not listed here is a dish and has a picture of its own.
 const POT_PICTURE={raw:'saltWater',clean:'cleanWater'};
 const SLOT_STYLE='min-height:84px;padding:8px;border:1px solid #526477;border-radius:5px;display:flex;flex-direction:column;justify-content:center;gap:4px;background:#172430';
 // A carried-item picture sits above its own words: the slot is the bucket, and the
@@ -122,7 +122,7 @@ export const panelInventory={
   this.emptyResourcesHint=resourcesHint;
   resourcesPane.append(resourcesHint,this.resourceGrid);
   // What the vessels are carrying is carried too, so it is listed here beside the
-  // things you pick up. An empty pot and an empty bowl show no slot at all.
+  // things you pick up. An empty vessel shows no slot at all.
   const carriedSlot=(id,title,vessel)=>{
    const slot=document.createElement('button');
    slot.type='button';
@@ -142,8 +142,9 @@ export const panelInventory={
    this.resourceGrid.append(slot);
    this.slots.set(id,{slot,name,quantity,isTool:false,tag:id});
   };
-  // The pot's own slot is the tool above; this one is what the pot is carrying.
+  // The vessels' own slots are the tools above; these are what they are carrying.
   carriedSlot('potContents','Pot','pot');
+  carriedSlot('panContents','Pan','pan');
   const dyeGrid=document.createElement('div');
   dyeGrid.style.cssText='display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:3px;max-width:420px';
   this.dyeSwatches=[];
@@ -169,8 +170,9 @@ export const panelInventory={
  }
 ,
  // A vessel only comes to hand when it has something to do: the cup needs clean
- // water or a tea in the pot, the bowl needs a meal. The pot is the carrier itself,
- // so it always comes, and anything that is not a vessel is never refused.
+ // water or a tea in the pot, the bowl needs a meal. The pot and the pan are the
+ // carriers themselves, so they always come, and anything that is not a vessel is
+ // never refused.
  vesselProblem(vessel){
   const kitchen=this.kitchen;
   if(!kitchen)return null;
@@ -232,12 +234,16 @@ export const panelInventory={
     entry.quantity.textContent=active?'Equipped':crafted?'Tap to equip':ready?'Tap to craft':Object.entries(TOOL_RECIPES[id]).map(([item,n])=>resourceName(item)+' '+(inventory[item]||0)+'/'+n).join(' · ');
     const held=active?'Equipped':'Tap to equip';
     const pours=inventory.potServings||0;
-    const servings=EATEN_STATES.has(inventory.pot)?pours:0;
+    // The bowl eats from whichever vessel is holding something eatable, the pot
+    // first, which is the order the kitchen reads them in.
+    const eaten=EATEN_STATES.has(inventory.pot)?'pot':EATEN_STATES.has(inventory.pan)?'pan':null;
+    const servings=eaten?(eaten==='pot'?pours:inventory.panServings||0):0;
     const water=inventory.pot==='clean'?pours:0;
     const tea=inventory.pot==='tea'?pours:0;
     if(id==='pot')entry.quantity.textContent=held+' · '+POT_STATE[inventory.pot||'empty'];
+    if(id==='pan')entry.quantity.textContent=held+' · '+(POT_STATE[inventory.pan]||'Empty pan');
     if(id==='cup')entry.quantity.textContent=held+' · '+(tea>0?'Tea: '+tea+' servings':water>0?'Water: '+water+' servings':'Nothing to drink');
-    if(id==='bowl')entry.quantity.textContent=held+' · '+(servings>0?POT_STATE[inventory.pot]+': '+servings+' servings':'Nothing to eat');
+    if(id==='bowl')entry.quantity.textContent=held+' · '+(servings>0?POT_STATE[inventory[eaten]]+': '+servings+' servings':'Nothing to eat');
     const title=entry.name.textContent+(active?' — equipped':crafted?' — tap to equip':'');
     entry.slot.title=title;
     entry.slot.setAttribute('aria-label',title);
@@ -249,15 +255,15 @@ export const panelInventory={
     entry.slot.style.color=ready?'#fff0b3':'#b2b5b7';
     entry.quantity.textContent='Count: '+(inventory.arrows||0)+(ready?' · Tap to craft':'');
    }
-   else if(entry.tag==='potContents'){
-    // A carried pot: the picture is the pot with its contents at the brim, so salt
+   else if(entry.tag==='potContents'||entry.tag==='panContents'){
+    // A carried vessel: the picture is the vessel with its contents showing, so salt
     // water, boiled water and each dish differ by colour as well as by name.
-    const contents=inventory.pot;
+    const vessel=entry.tag==='potContents'?'pot':'pan';
+    const contents=inventory[vessel];
     entry.slot.style.display=contents?'flex':'none';
-    // Salt water, boiled water and each dish have their own colour at the brim.
     showPicture(entry,toolIcon(contents?(POT_PICTURE[contents]||contents):null));
-    entry.name.textContent=POT_STATE[contents]||'Empty pot';
-    const servings=contents&&contents!=='raw'?(inventory.potServings||0):0;
+    entry.name.textContent=POT_STATE[contents]||(vessel==='pan'?'Empty pan':'Empty pot');
+    const servings=contents&&contents!=='raw'?(inventory[vessel+'Servings']||0):0;
     entry.quantity.textContent=contents==='raw'?'Boil it on a fire'
      :contents?'Servings: '+servings+' · tap to equip':'';
    }
