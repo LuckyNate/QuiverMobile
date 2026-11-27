@@ -11,6 +11,9 @@ export const POT_STATES=Object.freeze(['raw','clean','soup']);
 // Sitting at a fire with salt water in the pot is the whole of boiling: the fire
 // does the work over this long, and nobody has to tap anything to make it happen.
 export const BOIL_SECONDS=45;
+// A full pot holds this many servings of what was cooked in it. The pot is where
+// the food keeps; a bowl is what it is eaten from, one serving at a time.
+export const SERVINGS_PER_POT=2;
 // What can be cooked in the pot. A recipe says what it takes beyond clean water;
 // the kitchen only ever offers the ones the pack can actually cover.
 export const RECIPES=Object.freeze([
@@ -26,6 +29,8 @@ export class Kitchen {
  get inventory(){return this.shared.getInventory(this.playerId);}
  // What is in the pot: 'raw', 'clean', 'soup', or null when it is empty.
  get pot(){const contents=this.inventory.pot;return POT_STATES.includes(contents)?contents:null;}
+ // How many servings are left in the pot; zero unless it holds a meal.
+ get servings(){return this.pot==='soup'?Math.max(0,this.inventory.potServings||0):0;}
  has(tool){return this.shared.hasTool(this.playerId,tool);}
  write(patch){return this.shared.updateInventory(this.playerId,patch);}
  say(text){this.message?.(text);}
@@ -33,7 +38,7 @@ export class Kitchen {
  canFill(){return this.pot===null&&this.has('pot');}
  fill(){
   if(!this.canFill())return false;
-  this.write({pot:'raw'});
+  this.write({pot:'raw',potServings:0});
   this.say('You fill the pot with salt water.');
   return true;
  }
@@ -70,7 +75,7 @@ export class Kitchen {
  canDrink(){return this.pot==='clean';}
  drink(){
   if(!this.canDrink())return false;
-  this.write({pot:null});
+  this.write({pot:null,potServings:0});
   // The empty pot has nothing left to offer, so it leaves the hand with the water.
   this.shared.setEquippedTool(this.playerId,null);
   this.onThirst?.();
@@ -89,22 +94,23 @@ export class Kitchen {
   const recipe=RECIPES.find(entry=>entry.id===id);
   if(!this.canMake(recipe))return false;
   const inventory=this.inventory;
-  const patch={pot:'soup'};
+  const patch={pot:'soup',potServings:SERVINGS_PER_POT};
   for(const [item,count] of Object.entries(recipe.needs))patch[item]=(inventory[item]||0)-count;
   this.write(patch);
-  // The meal stays in the pot, which is already in the hand, so it goes straight
-  // from cooking to eating without being put down.
+  // The meal stays in the pot, which is where it keeps; a bowl is what it is
+  // eaten from, so cooking does not put anything in the hand.
   this.say('You make '+recipe.name.toLowerCase()+'.');
   return true;
  }
- // The meal is eaten from the pot it was cooked in.
- canEat(){return this.pot==='soup';}
+ // A bowl is what a meal is eaten from, one serving at a time out of the pot.
+ canEat(){return this.servings>0&&this.has('bowl');}
  eat(){
   if(!this.canEat())return false;
-  this.write({pot:null});
-  this.shared.setEquippedTool(this.playerId,null);
+  const left=this.servings-1;
+  // The last serving empties the pot; until then the rest keeps in it.
+  this.write(left>0?{potServings:left}:{pot:null,potServings:0});
   this.onHunger?.();
-  this.say('You eat the soup.');
+  this.say(left>0?'You eat a bowl of soup. '+left+' left in the pot.':'You eat the last of the soup.');
   return true;
  }
 }

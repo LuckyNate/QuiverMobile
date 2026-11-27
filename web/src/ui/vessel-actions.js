@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 
 // What the pot in the hand can do, offered over the pot itself: clean water is
-// drunk or cooked with, the meal it holds is eaten, and a pot on the fire shows how
-// long it has left. Only what is possible right now is offered, so the cook button
-// never opens onto an empty list of recipes.
+// drunk or cooked with, the bowl in the hand eats a serving out of what the pot is
+// keeping, and a pot on the fire shows how long it has left. Only what is possible
+// right now is offered, so the cook button never opens onto an empty list of recipes.
 const BUTTON_STYLE='pointer-events:auto;padding:8px 14px;background:#20313f;color:#eaf4ff;border:1px solid #4899e8;border-radius:16px;font:600 13px system-ui;touch-action:manipulation';
 const NOTE_STYLE='pointer-events:none;padding:4px 8px;background:#0c1620cc;color:#cfe6f7;border-radius:10px;font:600 12px system-ui;white-space:nowrap';
 // Ingredient keys as words; anything unlisted still reads as its key.
@@ -61,21 +61,25 @@ export class VesselActions {
   return true;
  }
  actionsFor(equipped){
-  if(equipped!=='pot')return [];
   const kitchen=this.kitchen;
-  // The meal is eaten from the pot it was cooked in.
-  if(kitchen.canEat())return [{label:'Eat',run:()=>kitchen.eat()}];
-  if(kitchen.pot!=='clean')return [];
+  // A bowl eats a serving out of whatever the pot is keeping.
+  if(equipped==='bowl')return kitchen.canEat()?[{label:'Eat',run:()=>kitchen.eat()}]:[];
+  if(equipped!=='pot'||kitchen.pot!=='clean')return [];
   const actions=[{label:'Drink',run:()=>kitchen.drink()}];
   // Cooking needs the fire under the pot and something the pack can cover.
   if(this.atFire()&&kitchen.recipes().length)actions.push({label:'Cook',run:()=>this.openRecipes(kitchen.recipes())});
   return actions;
  }
- // The one thing the pot is waiting for, when it is not something to press.
+ // The one thing the vessel is waiting for, when it is not something to press.
  noteFor(equipped){
+  const kitchen=this.kitchen;
+  // The bowl only speaks when there is something to serve.
+  if(equipped==='bowl')return kitchen.servings>0?'Soup in the pot · '+kitchen.servings:'';
   if(equipped!=='pot')return '';
-  if(this.kitchen.boiling)return 'Boiling · '+Math.ceil(this.kitchen.boilLeft())+'s';
-  return this.kitchen.pot==='raw'?'Boil it on a fire':'';
+  if(kitchen.boiling)return 'Boiling · '+Math.ceil(kitchen.boilLeft())+'s';
+  if(kitchen.pot==='raw')return 'Boil it on a fire';
+  if(kitchen.pot==='soup')return 'Soup · '+kitchen.servings+' · eat from a bowl';
+  return '';
  }
  // Only the recipes the pack can cover are listed; with nothing to cook there is
  // nothing to open.
