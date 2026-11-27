@@ -8,8 +8,9 @@ const RESOURCE_NAMES={logs:'4 m Logs',fibers:'Fibers',sticks:'Sticks',stones:'St
 const resourceName=key=>RESOURCE_NAMES[key]||key.replace(/([a-z0-9])([A-Z])/g,'$1 $2').replace(/^./,c=>c.toUpperCase());
 // Inventory keys that are bookkeeping rather than something you carry in a slot.
 const NOT_A_RESOURCE=new Set(['equippedTool','craftedTools','unlockedDyes','gear','logStrength','fiberQuality','arrows','potWater','soup']);
-// The pot and the bowl carry something, so their slot says what is in them.
-const POT_STATE={empty:'Empty pot',raw:'Raw water',clean:'Clean water'};
+// The pot and the bowl carry something, so their slots say what is in them. The
+// water is salt until the fire has boiled it, which is the whole reason for boiling.
+const POT_STATE={empty:'Empty pot',raw:'Salt water',clean:'Clean water'};
 const SLOT_STYLE='min-height:84px;padding:8px;border:1px solid #526477;border-radius:5px;display:flex;flex-direction:column;justify-content:center;gap:4px;background:#172430';
 const label=id=>id[0].toUpperCase()+id.slice(1);
 export const panelInventory={
@@ -100,6 +101,19 @@ export const panelInventory={
   this.resourceGrid=makeGrid();
   this.emptyResourcesHint=resourcesHint;
   resourcesPane.append(resourcesHint,this.resourceGrid);
+  // What the vessels are carrying is carried too, so it is listed here beside the
+  // things you pick up. An empty pot and an empty bowl show no slot at all.
+  const carriedSlot=(id,title)=>{
+   const slot=document.createElement('div');
+   slot.style.cssText=SLOT_STYLE;slot.style.display='none';
+   const name=document.createElement('strong');name.textContent=title;
+   const quantity=document.createElement('span');quantity.style.fontSize='12px';
+   slot.append(name,quantity);
+   this.resourceGrid.append(slot);
+   this.slots.set(id,{slot,name,quantity,isTool:false,tag:id});
+  };
+  carriedSlot('potWater','Pot');
+  carriedSlot('soup','Bowl');
   const dyeGrid=document.createElement('div');
   dyeGrid.style.cssText='display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:3px;max-width:420px';
   this.dyeSwatches=[];
@@ -188,6 +202,16 @@ export const panelInventory={
     entry.slot.style.backgroundColor=ready?'#796420':'#34383c';
     entry.slot.style.color=ready?'#fff0b3':'#b2b5b7';
     entry.quantity.textContent='Count: '+(inventory.arrows||0)+(ready?' · Tap to craft':'');
+   }
+   else if(entry.tag==='potWater'){
+    const water=inventory.potWater;
+    entry.slot.style.display=water?'flex':'none';
+    entry.quantity.textContent=POT_STATE[water]||'Empty pot';
+   }
+   else if(entry.tag==='soup'){
+    const soups=inventory.soup||0;
+    entry.slot.style.display=soups>0?'flex':'none';
+    entry.quantity.textContent='Soup: '+soups;
    }
    else if(entry.tag==='logs')entry.quantity.textContent='Count: '+count+' | Strength: '+averageStrength.toFixed(2);
    else if(entry.tag==='fibers'){
