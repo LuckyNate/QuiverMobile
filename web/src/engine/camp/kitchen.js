@@ -25,10 +25,11 @@ export const SERVINGS_PER_POT=2;
 // away, which is where the animation goes later.
 export const USE_DELAY_MS=700;
 // What can be made in a vessel. A recipe says which vessel it belongs in, what that
-// vessel must already hold (`base`, null for an empty one), how many points of its
-// meter one serving puts back, whether it is eaten with the bowl or drunk from the
-// cup, and whether it is a rich enough dish to fill a meter past its brim. The
-// kitchen only ever offers the ones the pack can actually cover.
+// vessel must already hold (`base`, null for an empty one), what it takes (resources
+// by the count, or a serving of another dish), how many points of its meter one
+// serving puts back, whether it is eaten with the bowl or drunk from the cup, and
+// whether it is a rich enough dish to fill a meter past its brim. The kitchen only
+// ever offers the ones the pack can actually cover.
 export const RECIPES=Object.freeze([
  // A salad is the first meal of a camp: dandies picked on the way home and no fire
  // at all, so hunger can be answered before the first log is cut. Lean food: it
@@ -36,14 +37,18 @@ export const RECIPES=Object.freeze([
  {id:'salad',name:'Dandy salad',vessel:'pot',needs:{dandies:2},base:null,cold:true,restores:2},
  // Soup and tea both start from water already boiled clean, and both are worth more
  // than their points: they fill the meter past full, and the surplus drains away
- // slowly instead of being wasted.
- {id:'soup',name:'Dandy soup',vessel:'pot',needs:{dandies:3},base:'clean',restores:4,rich:true},
+ // slowly instead of being wasted. A soup wants meat in it, and the meat has to be
+ // cooked already: a serving of the pan's grilled meat, not a raw strip.
+ {id:'soup',name:'Dandy soup',vessel:'pot',needs:{dandies:3,grilled:1},base:'clean',restores:4,rich:true},
  {id:'tea',name:'Dandy tea',vessel:'pot',needs:{dandies:1},base:'clean',restores:4,drink:true,rich:true},
  // The pan is for meat. It takes no water, so it goes straight onto the fire, and
  // what comes out of it is rich: fat carries a belly further than dandies do.
  {id:'grilled',name:'Grilled meat',vessel:'pan',needs:{rawBacon:1},base:null,restores:4,rich:true}
 ]);
 const recipeFor=id=>RECIPES.find(recipe=>recipe.id===id)||null;
+// A dish can be an ingredient as well as a meal, which is how the pan's meat ends up
+// in the pot's soup.
+const asDish=id=>RECIPES.some(recipe=>recipe.id===id);
 export class Kitchen {
  constructor({shared,playerId='local-owner',onThirst=null,onHunger=null,message=null,boilSeconds=BOIL_SECONDS,useDelayMs=USE_DELAY_MS}={}){
   if(!shared)throw new TypeError('Kitchen requires the shared world');
@@ -94,6 +99,12 @@ export class Kitchen {
  // reach of a burning fire with the pot in hand starts it, and the clock finishes
  // it — the player sits down and waits, which is what cooking is.
  boilLeft(now=Date.now()){return this.boilUntil?Math.max(0,(this.boilUntil-now)/1000):0;}
+ // How far the boil has got, 0 at the fire and 1 when it is done, for a timer shown
+ // as a filling label rather than as a number of seconds.
+ boilProgress(now=Date.now()){
+  if(!this.boilUntil)return 0;
+  return Math.min(1,Math.max(0,1-this.boilLeft(now)/this.boilSeconds));
+ }
  get boiling(){return Boolean(this.boilUntil);}
  // The fire has to be lit for any of this; the reach is the fire's own business.
  canBoil(){return this.pot==='raw';}
@@ -146,6 +157,11 @@ export class Kitchen {
    :(left>0?'You drink a cup of water. '+left+' left in the pot.':'You drink the last of the water.'));
   return true;
  }
+ // The vessel, if any, holding at least this many servings of a dish. Meat in the pan
+ // is what a soup is made with, so ingredients are looked for in the vessels first.
+ dishVessel(dish,count=1){
+  return VESSELS.find(vessel=>this.contentsOf(vessel)===dish&&this.servingsOf(vessel)>=count)||null;
+ }
  canMake(recipe){
   if(!recipe)return false;
   const vessel=recipe.vessel||'pot';
@@ -154,7 +170,8 @@ export class Kitchen {
   if(!this.has(vessel))return false;
   if(this.contentsOf(vessel)!==(recipe.base??null))return false;
   const inventory=this.inventory;
-  return Object.entries(recipe.needs).every(([item,count])=>(inventory[item]||0)>=count);
+  return Object.entries(recipe.needs).every(([item,count])=>
+   asDish(item)?Boolean(this.dishVessel(item,count)):(inventory[item]||0)>=count);
  }
  // Only what can be made right now is offered: an option the pack cannot cover
  // is not an option. A dish that needs no cooking is offered away from the fire
@@ -169,10 +186,22 @@ export class Kitchen {
   if(!this.canMake(recipe))return false;
   const vessel=recipe.vessel||'pot';
   const inventory=this.inventory;
+  const patch={};
+  for(const [item,count] of Object.entries(recipe.needs)){
+   // A dish ingredient is spent out of the vessel holding it, serving by serving.
+   if(asDish(item)){
+    const from=this.dishVessel(item,count);
+    const left=this.servingsOf(from)-count;
+    patch[from+'Servings']=Math.max(0,left);
+    if(left<=0)patch[from]=null;
+    continue;
+   }
+   patch[item]=(inventory[item]||0)-count;
+  }
   // The water the dish was made in, or the empty vessel it went into, becomes the
-  // dish itself, served out of the same vessel.
-  const patch={[vessel]:recipe.id,[vessel+'Servings']:SERVINGS_PER_POT};
-  for(const [item,count] of Object.entries(recipe.needs))patch[item]=(inventory[item]||0)-count;
+  // dish itself, served out of the same vessel. Written last, so a vessel that gave
+  // up its last serving still ends up holding what was just made in it.
+  patch[vessel]=recipe.id;patch[vessel+'Servings']=SERVINGS_PER_POT;
   this.write(patch);
   // The dish stays in its vessel, which is where it keeps, and the vessel is put
   // away after the beat like any other used one.

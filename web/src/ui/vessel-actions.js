@@ -7,8 +7,14 @@ import * as THREE from 'three';
 const BUTTON_STYLE='pointer-events:auto;padding:8px 14px;background:#20313f;color:#eaf4ff;border:1px solid #4899e8;border-radius:16px;font:600 13px system-ui;touch-action:manipulation';
 const NOTE_STYLE='pointer-events:none;padding:4px 8px;background:#0c1620cc;color:#cfe6f7;border-radius:10px;font:600 12px system-ui;white-space:nowrap';
 // Ingredient keys as words; anything unlisted still reads as its key.
-const ITEM_NAMES={dandies:'Dandies',rawBacon:'Raw bacon'};
+const ITEM_NAMES={dandies:'Dandies',rawBacon:'Raw bacon',grilled:'Grilled meat'};
 const itemName=key=>ITEM_NAMES[key]||key;
+// A wait is shown as colour filling the label from the left, never as digits: the
+// colour is the clock, and the label says what is being waited for.
+function fillLabel(progress){
+ const percent=Math.round(Math.max(0,Math.min(1,progress))*100);
+ return 'linear-gradient(to right, #a8761f 0 '+percent+'%, #0c1620cc '+percent+'% 100%)';
+}
 
 export class VesselActions {
  // hand(point) writes the world position of the held vessel into point; the game
@@ -33,13 +39,15 @@ export class VesselActions {
   if(!actions.length&&!note)return this.hide();
   const hand=this.hand(this.point);
   if(!hand||!this.place(hand))return this.hide();
-  const signature=actions.map(action=>action.label).join('|')+'#'+note;
+  const timer=this.timerFor(equipped);
+  const signature=actions.map(action=>action.label).join('|')+'#'+note+'#'+(timer===null?'':Math.round(timer*24));
   if(signature!==this.signature){
    this.signature=signature;
    this.root.replaceChildren();
    if(note){
     const label=document.createElement('div');
     label.style.cssText=NOTE_STYLE;label.textContent=note;
+    if(timer!==null)label.style.background=fillLabel(timer);
     this.root.append(label);
    }
    for(const action of actions){
@@ -84,12 +92,18 @@ export class VesselActions {
   if(equipped==='bowl')return kitchen.servings>0?kitchen.mealName+' · '+kitchen.servings:'';
   if(equipped!=='pot'&&equipped!=='pan')return '';
   const contents=kitchen.contentsOf(equipped);
-  if(equipped==='pot'&&kitchen.boiling)return 'Boiling · '+Math.ceil(kitchen.boilLeft())+'s';
+  if(equipped==='pot'&&kitchen.boiling)return 'Boiling';
   if(contents==='raw')return 'Boil it on a fire';
   if(contents==='clean')return 'Clean water · '+kitchen.waterServings+' · drink from a cup';
   const dish=kitchen.dishIn(equipped);
   if(!dish)return equipped==='pan'?'Empty · meat fries here':'Empty · a salad needs only dandies';
   return dish.name+' · '+kitchen.servingsOf(equipped)+(dish.drink?' · drink from a cup':' · eat from a bowl');
+ }
+ // How much of a wait is spent, 0..1, or null when the vessel is not waiting for
+ // anything.
+ timerFor(equipped){
+  if(equipped==='pot'&&this.kitchen.boiling)return this.kitchen.boilProgress();
+  return null;
  }
  // Only the recipes the pack can cover are listed; with nothing to cook there is
  // nothing to open.
