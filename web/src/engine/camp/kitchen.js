@@ -14,17 +14,25 @@ export const BOIL_SECONDS=45;
 // A full pot holds this many servings of what is in it, water or meal. The pot is
 // where it keeps; a cup drinks a serving and a bowl eats one, one at a time.
 export const SERVINGS_PER_POT=2;
+// How long a vessel stays in the hand after it has been used. It is a beat, not a
+// rule: the hand keeps the cup or the bowl just long enough to be seen putting it
+// away, which is where the animation goes later.
+export const USE_DELAY_MS=700;
 // What can be cooked in the pot. A recipe says what it takes beyond clean water;
 // the kitchen only ever offers the ones the pack can actually cover.
 export const RECIPES=Object.freeze([
  {id:'soup',name:'Dandelion soup',needs:{dandies:1,rawBacon:1}}
 ]);
 export class Kitchen {
- constructor({shared,playerId='local-owner',onThirst=null,onHunger=null,message=null,boilSeconds=BOIL_SECONDS}={}){
+ constructor({shared,playerId='local-owner',onThirst=null,onHunger=null,message=null,boilSeconds=BOIL_SECONDS,useDelayMs=USE_DELAY_MS}={}){
   if(!shared)throw new TypeError('Kitchen requires the shared world');
-  Object.assign(this,{shared,playerId,onThirst,onHunger,message,boilSeconds});
+  Object.assign(this,{shared,playerId,onThirst,onHunger,message,boilSeconds,useDelayMs});
   // When this moment passes the water is clean; null means nothing is on the fire.
   this.boilUntil=null;
+  // The vessel to put away once the beat has passed, and the last clock we saw.
+  this.unequipTool=null;
+  this.unequipAt=null;
+  this.now=Date.now();
  }
  get inventory(){return this.shared.getInventory(this.playerId);}
  // What is in the pot: 'raw', 'clean', 'soup', or null when it is empty.
@@ -57,14 +65,26 @@ export class Kitchen {
   this.say('You set the pot on the fire.');
   return true;
  }
+ // A used vessel is put away on this clock rather than in the same instant, so the
+ // hand holds it for a beat. Only the vessel that was used comes out, never whatever
+ // the player has picked up since.
+ afterUse(now=this.now){
+  this.unequipTool=this.shared.getEquippedTool(this.playerId);
+  this.unequipAt=now+this.useDelayMs;
+ }
  update(now=Date.now(),{atFire=false}={}){
+  this.now=now;
+  if(this.unequipAt!==null&&now>=this.unequipAt){
+   const tool=this.unequipTool;
+   this.unequipAt=null;this.unequipTool=null;
+   if(!tool||this.shared.getEquippedTool(this.playerId)===tool)this.shared.setEquippedTool(this.playerId,null);
+  }
   if(this.boilUntil){
    if(now<this.boilUntil)return false;
    this.boilUntil=null;
    this.write({pot:'clean',potServings:SERVINGS_PER_POT});
-   // Clean water is the end of the pot's job, so it leaves the hand: the next
-   // question is what to do with the water, not what to be holding.
-   this.shared.setEquippedTool(this.playerId,null);
+   // Clean water is the end of the pot's job, so it is put away after the beat.
+   this.afterUse(now);
    this.say('The water boils and clears.');
    return true;
   }
@@ -79,8 +99,7 @@ export class Kitchen {
   const left=this.waterServings-1;
   // The last serving empties the pot; until then the rest keeps in it.
   this.write(left>0?{potServings:left}:{pot:null,potServings:0});
-  // An empty pot leaves nothing to drink from, so the cup comes out of the hand.
-  if(left===0)this.shared.setEquippedTool(this.playerId,null);
+  this.afterUse();
   this.onThirst?.();
   this.say(left>0?'You drink a cup of water. '+left+' left in the pot.':'You drink the last of the water.');
   return true;
@@ -100,8 +119,8 @@ export class Kitchen {
   const patch={pot:'soup',potServings:SERVINGS_PER_POT};
   for(const [item,count] of Object.entries(recipe.needs))patch[item]=(inventory[item]||0)-count;
   this.write(patch);
-  // The meal stays in the pot, which is where it keeps; a bowl is what it is
-  // eaten from, so cooking does not put anything in the hand.
+  // The meal stays in the pot, which is where it keeps, and the pot is put away
+  // after the beat like any other used vessel.
   this.say('You make '+recipe.name.toLowerCase()+'.');
   return true;
  }
@@ -112,6 +131,7 @@ export class Kitchen {
   const left=this.servings-1;
   // The last serving empties the pot; until then the rest keeps in it.
   this.write(left>0?{potServings:left}:{pot:null,potServings:0});
+  this.afterUse();
   this.onHunger?.();
   this.say(left>0?'You eat a bowl of soup. '+left+' left in the pot.':'You eat the last of the soup.');
   return true;

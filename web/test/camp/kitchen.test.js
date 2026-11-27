@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {SharedWorld} from '../../src/engine/entity/shared-world.js';
-import {Kitchen,BOIL_SECONDS} from '../../src/engine/camp/kitchen.js';
+import {Kitchen,BOIL_SECONDS,USE_DELAY_MS} from '../../src/engine/camp/kitchen.js';
 
 // The kitchen needs a pack and nothing else — no fire, no scene, no renderer — so
 // the real SharedWorld runs under node against memory storage.
@@ -52,7 +52,9 @@ test('a fire boils the pot on its own clock and the clean pot leaves the hand',(
  assert.equal(kitchen.pot,'clean');
  assert.equal(kitchen.boiling,false);
  assert.equal(shared.getInventory('p').potServings,2,'a boiled pot is two servings');
- assert.equal(shared.getEquippedTool('p'),null,'the cleared pot leaves the hand');
+ assert.equal(shared.getEquippedTool('p'),'pot','the pot stays for the beat');
+ kitchen.update(1000+BOIL_SECONDS*1000+USE_DELAY_MS,{atFire:false});
+ assert.equal(shared.getEquippedTool('p'),null,'and is put away after it');
  assert.deepEqual(eaten.said,['You fill the pot with salt water.','You set the pot on the fire.','The water boils and clears.']);
 });
 
@@ -103,6 +105,9 @@ test('the meal is cooked into the pot and eaten from it',()=>{
  assert.equal(kitchen.eat(),true);
  assert.equal(kitchen.pot,null,'the last serving empties the pot');
  assert.equal(eaten.hunger,2);
+ assert.equal(shared.getEquippedTool('p'),'pot','the used vessel stays for the beat');
+ kitchen.update(kitchen.now+USE_DELAY_MS,{atFire:false});
+ assert.equal(shared.getEquippedTool('p'),null,'and is put away after it');
  assert.equal(kitchen.eat(),false,'an empty pot is not eaten from');
 });
 
@@ -132,11 +137,26 @@ test('a cup drinks one serving of clean water at a time',()=>{
  assert.equal(kitchen.drink(),true);
  assert.equal(shared.getInventory('p').potServings,1,'one cup takes one serving');
  assert.equal(eaten.thirst,1);
- assert.equal(shared.getEquippedTool('p'),'cup','the cup stays in hand with water left');
+ assert.equal(shared.getEquippedTool('p'),'cup','the cup stays for the beat');
+ kitchen.update(kitchen.now+USE_DELAY_MS,{atFire:false});
+ assert.equal(shared.getEquippedTool('p'),null,'and is put away after it');
+ shared.setEquippedTool('p','cup');
  assert.equal(kitchen.drink(),true);
  assert.equal(kitchen.pot,null,'the last serving empties the pot');
- assert.equal(shared.getEquippedTool('p'),null,'an empty pot leaves nothing to hold');
  assert.equal(kitchen.canDrink(),false,'an empty pot holds nothing to drink');
+});
+
+test('only the vessel that was used is put away',()=>{
+ const {shared,kitchen}=setup();
+ kitchen.fill();
+ sitAtFire(kitchen);
+ stock(shared,{craftedTools:['pot','cup','bowl']});
+ shared.setEquippedTool('p','cup');
+ kitchen.drink();
+ // The player picks the pot up before the beat runs out.
+ shared.setEquippedTool('p','pot');
+ kitchen.update(kitchen.now+USE_DELAY_MS,{atFire:false});
+ assert.equal(shared.getEquippedTool('p'),'pot','the pot in hand is not the cup that was used');
 });
 
 test('a pot left on the fire is not boiled twice',()=>{
