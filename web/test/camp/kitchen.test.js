@@ -33,7 +33,7 @@ const sitAtFire=(kitchen,now=1000)=>{
 
 test('every camp starts with its cookware',()=>{
  const {shared}=setup();
- for(const tool of ['cup','pot','bowl'])assert.equal(shared.hasTool('p',tool),true,tool);
+ for(const tool of ['cup','pot','pan','bowl'])assert.equal(shared.hasTool('p',tool),true,tool);
  assert.equal(shared.hasTool('p','axe'),false,'the rest is still earned');
 });
 
@@ -155,6 +155,46 @@ test('the meal is cooked into the pot and eaten from it',()=>{
  kitchen.update(kitchen.now+USE_DELAY_MS,{atFire:false});
  assert.equal(shared.getEquippedTool('p'),null,'and is put away after it');
  assert.equal(kitchen.eat(),false,'an empty pot is not eaten from');
+});
+
+test('the pan is for meat: it fries at the fire and only in the pan',()=>{
+ const {shared,kitchen,eaten}=setup();
+ stock(shared,{rawBacon:2});
+ assert.deepEqual(kitchen.recipes(false),[],'meat needs the fire');
+ assert.deepEqual(kitchen.recipes(true).map(recipe=>recipe.id),['grilled']);
+ assert.deepEqual(kitchen.recipes(true,'pot'),[],'the pot does not fry meat');
+ assert.deepEqual(kitchen.recipes(true,'pan').map(recipe=>recipe.id),['grilled']);
+ // The dish belongs to its vessel: without a pan there is nothing to fry in.
+ stock(shared,{craftedTools:['cup','pot','bowl']});
+ assert.equal(kitchen.cook('grilled'),false,'no pan, no frying');
+ stock(shared,{craftedTools:['cup','pot','pan','bowl']});
+ assert.equal(kitchen.cook('grilled'),true);
+ const inventory=shared.getInventory('p');
+ assert.deepEqual({pan:inventory.pan,panServings:inventory.panServings,pot:inventory.pot,rawBacon:inventory.rawBacon},
+  {pan:'grilled',panServings:2,pot:undefined,rawBacon:1},'the meat went in the pan, never in the pot');
+ assert.equal(kitchen.servings,2,'the pan holds two servings');
+ assert.equal(kitchen.eat(),true);
+ assert.deepEqual(eaten.points,[['hunger',4,true]],'meat is rich: it fills past the brim');
+ assert.equal(shared.getInventory('p').panServings,1,'the rest keeps in the pan');
+ assert.equal(kitchen.servings,1);
+});
+
+test('the pot and the pan keep their own dishes',()=>{
+ const {shared,kitchen}=setup();
+ stock(shared,{dandies:3,rawBacon:1});
+ kitchen.fill();
+ sitAtFire(kitchen);
+ assert.equal(kitchen.cook('soup'),true);
+ assert.equal(kitchen.cook('grilled'),true);
+ const inventory=shared.getInventory('p');
+ assert.deepEqual({pot:inventory.pot,pan:inventory.pan},{pot:'soup',pan:'grilled'});
+ assert.equal(kitchen.mealName,'Dandy soup','the bowl eats the pot first');
+ assert.equal(kitchen.servingsOf('pan'),2,'the pan keeps its own two');
+ kitchen.eat();
+ kitchen.eat();
+ assert.equal(kitchen.pot,null,'the pot is emptied first');
+ assert.equal(kitchen.mealName,'Grilled meat','then the pan is what is left to eat');
+ assert.equal(kitchen.servings,2);
 });
 
 test('a bowl is what a meal is eaten from',()=>{
