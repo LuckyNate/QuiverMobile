@@ -37,7 +37,7 @@ export function buildPot(){
 
 // The pot with something in it, for the inventory picture: the same vessel the
 // hand holds, with its contents shown at the brim. Colour is the whole difference
-// between salt water, boiled water and soup.
+// between salt water, boiled water and a dish.
 function filled(group,colour,radius,y){
  const surface=new THREE.Mesh(new THREE.CircleGeometry(radius,14),material(colour));
  surface.rotation.x=-Math.PI/2;
@@ -47,8 +47,10 @@ function filled(group,colour,radius,y){
 }
 export function buildSaltWater(){return filled(buildPot(),0x74838a,.112,.232);}
 export function buildCleanWater(){return filled(buildPot(),0x49a9d8,.112,.242);}
-// The meal: the same pot it was cooked in, holding something thick and dark.
+// The dishes: the same pot they were made in, holding what was put in it.
 export function buildSoup(){return filled(buildPot(),0x9a6b3c,.112,.232);}
+export function buildSalad(){return filled(buildPot(),0x5f9b3a,.112,.232);}
+export function buildTea(){return filled(buildPot(),0xb4832f,.112,.242);}
 
 // A bowl: a wide shallow dish, so it is not mistaken for the cup in the hand.
 export function buildBowl(){

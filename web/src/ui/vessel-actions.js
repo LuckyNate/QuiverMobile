@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 
 // What the vessel in the hand can do, offered over it: the pot is cooked in and
-// shows how long it has on the fire, the cup drinks a serving of clean water, the
-// bowl eats a serving of the meal. Only what is possible right now is offered, so
-// the cook button never opens onto an empty list of recipes.
+// shows how long it has on the fire, the cup drinks a serving of clean water or
+// tea, the bowl eats a serving of a meal. Only what is possible right now is
+// offered, so the cook button never opens onto an empty list of recipes.
 const BUTTON_STYLE='pointer-events:auto;padding:8px 14px;background:#20313f;color:#eaf4ff;border:1px solid #4899e8;border-radius:16px;font:600 13px system-ui;touch-action:manipulation';
 const NOTE_STYLE='pointer-events:none;padding:4px 8px;background:#0c1620cc;color:#cfe6f7;border-radius:10px;font:600 12px system-ui;white-space:nowrap';
 // Ingredient keys as words; anything unlisted still reads as its key.
@@ -62,25 +62,31 @@ export class VesselActions {
  }
  actionsFor(equipped){
   const kitchen=this.kitchen;
-  // A cup drinks a serving of the clean water, a bowl eats a serving of the meal.
+  // A cup drinks a serving of clean water or tea, a bowl eats a serving of a meal.
   if(equipped==='cup')return kitchen.canDrink()?[{label:'Drink',run:()=>kitchen.drink()}]:[];
   if(equipped==='bowl')return kitchen.canEat()?[{label:'Eat',run:()=>kitchen.eat()}]:[];
-  if(equipped!=='pot'||kitchen.pot!=='clean')return [];
-  // Cooking needs the fire under the pot and something the pack can cover.
-  return this.atFire()&&kitchen.recipes().length?[{label:'Cook',run:()=>this.openRecipes(kitchen.recipes())}]:[];
+  if(equipped!=='pot')return [];
+  // Cooking needs the fire under the pot; a dish that needs no cooking is offered
+  // anywhere, so the first meal can be made before the first log is cut.
+  const recipes=kitchen.recipes(this.atFire());
+  return recipes.length?[{label:'Cook',run:()=>this.openRecipes(recipes)}]:[];
  }
  // The one thing the vessel is waiting for, when it is not something to press.
  noteFor(equipped){
   const kitchen=this.kitchen;
   // The serving vessels only speak when there is something to serve.
-  if(equipped==='cup')return kitchen.waterServings>0?'Clean water · '+kitchen.waterServings+' in the pot':'';
-  if(equipped==='bowl')return kitchen.servings>0?'Soup in the pot · '+kitchen.servings:'';
+  if(equipped==='cup'){
+   if(kitchen.teaServings>0)return 'Dandy tea · '+kitchen.teaServings+' in the pot';
+   return kitchen.waterServings>0?'Clean water · '+kitchen.waterServings+' in the pot':'';
+  }
+  if(equipped==='bowl')return kitchen.servings>0?kitchen.mealName+' · '+kitchen.servings:'';
   if(equipped!=='pot')return '';
   if(kitchen.boiling)return 'Boiling · '+Math.ceil(kitchen.boilLeft())+'s';
   if(kitchen.pot==='raw')return 'Boil it on a fire';
   if(kitchen.pot==='clean')return 'Clean water · '+kitchen.waterServings+' · drink from a cup';
-  if(kitchen.pot==='soup')return 'Soup · '+kitchen.servings+' · eat from a bowl';
-  return '';
+  if(!kitchen.meal)return 'Empty · a salad needs only dandies';
+  const servings=kitchen.meal.drink?kitchen.teaServings:kitchen.servings;
+  return kitchen.mealName+' · '+servings+(kitchen.meal.drink?' · drink from a cup':' · eat from a bowl');
  }
  // Only the recipes the pack can cover are listed; with nothing to cook there is
  // nothing to open.
