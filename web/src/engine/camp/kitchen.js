@@ -4,8 +4,8 @@
 // vessels in it, so they are testable without a renderer, a scene or a fire.
 //
 // The pot is the only thing that carries water: salt from the sea, clean after
-// boiling. Raw water is never drunk. A cup drinks, a bowl cooks and eats, so the
-// vessel in the hand is what decides what tapping the fire means.
+// boiling. Raw water is never drunk, and the pot is what drinks it once boiled.
+// What the vessel in the hand can do is offered over the vessel itself.
 export const POT_STATES=Object.freeze(['raw','clean']);
 // Sitting at a fire with salt water in the pot is the whole of boiling: the fire
 // does the work over this long, and nobody has to tap anything to make it happen.
