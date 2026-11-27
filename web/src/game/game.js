@@ -75,6 +75,9 @@ export class Game {
    message:text=>this.panels.print(text)});
   this.harvesting.kitchen=this.kitchen;
   this.harvesting.fire=this.bonfire;
+  // The inventory refuses to hand over a vessel with nothing to serve, so it asks
+  // the kitchen what the pot is holding.
+  this.panels.kitchen=this.kitchen;
   // What the vessel in hand can do is offered over the vessel, not over the fire:
   // the pot drinks and cooks, the bowl eats, and a pot on the fire counts down.
   this.vesselActions=new VesselActions({app,camera:this.camera,

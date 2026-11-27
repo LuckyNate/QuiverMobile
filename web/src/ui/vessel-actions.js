@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 
-// What the pot in the hand can do, offered over the pot itself: clean water is
-// drunk or cooked with, the bowl in the hand eats a serving out of what the pot is
-// keeping, and a pot on the fire shows how long it has left. Only what is possible
-// right now is offered, so the cook button never opens onto an empty list of recipes.
+// What the vessel in the hand can do, offered over it: the pot is cooked in and
+// shows how long it has on the fire, the cup drinks a serving of clean water, the
+// bowl eats a serving of the meal. Only what is possible right now is offered, so
+// the cook button never opens onto an empty list of recipes.
 const BUTTON_STYLE='pointer-events:auto;padding:8px 14px;background:#20313f;color:#eaf4ff;border:1px solid #4899e8;border-radius:16px;font:600 13px system-ui;touch-action:manipulation';
 const NOTE_STYLE='pointer-events:none;padding:4px 8px;background:#0c1620cc;color:#cfe6f7;border-radius:10px;font:600 12px system-ui;white-space:nowrap';
 // Ingredient keys as words; anything unlisted still reads as its key.
@@ -62,22 +62,23 @@ export class VesselActions {
  }
  actionsFor(equipped){
   const kitchen=this.kitchen;
-  // A bowl eats a serving out of whatever the pot is keeping.
+  // A cup drinks a serving of the clean water, a bowl eats a serving of the meal.
+  if(equipped==='cup')return kitchen.canDrink()?[{label:'Drink',run:()=>kitchen.drink()}]:[];
   if(equipped==='bowl')return kitchen.canEat()?[{label:'Eat',run:()=>kitchen.eat()}]:[];
   if(equipped!=='pot'||kitchen.pot!=='clean')return [];
-  const actions=[{label:'Drink',run:()=>kitchen.drink()}];
   // Cooking needs the fire under the pot and something the pack can cover.
-  if(this.atFire()&&kitchen.recipes().length)actions.push({label:'Cook',run:()=>this.openRecipes(kitchen.recipes())});
-  return actions;
+  return this.atFire()&&kitchen.recipes().length?[{label:'Cook',run:()=>this.openRecipes(kitchen.recipes())}]:[];
  }
  // The one thing the vessel is waiting for, when it is not something to press.
  noteFor(equipped){
   const kitchen=this.kitchen;
-  // The bowl only speaks when there is something to serve.
+  // The serving vessels only speak when there is something to serve.
+  if(equipped==='cup')return kitchen.waterServings>0?'Clean water · '+kitchen.waterServings+' in the pot':'';
   if(equipped==='bowl')return kitchen.servings>0?'Soup in the pot · '+kitchen.servings:'';
   if(equipped!=='pot')return '';
   if(kitchen.boiling)return 'Boiling · '+Math.ceil(kitchen.boilLeft())+'s';
   if(kitchen.pot==='raw')return 'Boil it on a fire';
+  if(kitchen.pot==='clean')return 'Clean water · '+kitchen.waterServings+' · drink from a cup';
   if(kitchen.pot==='soup')return 'Soup · '+kitchen.servings+' · eat from a bowl';
   return '';
  }
