@@ -15,9 +15,11 @@ function setup(){
  shared.join('p',{x:0,y:0,z:0});
  // The pot is in hand at the sea, which is the only way it is ever filled.
  shared.setEquippedTool('p','pot');
- const eaten={thirst:0,hunger:0,said:[]};
+ const eaten={thirst:0,hunger:0,points:[],said:[]};
  const kitchen=new Kitchen({shared,playerId:'p',
-  onThirst:()=>{eaten.thirst++;},onHunger:()=>{eaten.hunger++;},
+  // What the kitchen tells the meters, and how much of it.
+  onThirst:points=>{eaten.thirst++;eaten.points.push(['thirst',points??null]);},
+  onHunger:points=>{eaten.hunger++;eaten.points.push(['hunger',points??null]);},
   message:text=>eaten.said.push(text)});
  return {shared,kitchen,eaten,storage};
 }
@@ -71,29 +73,71 @@ test('a pot that already holds water is not filled again',()=>{
 
 test('only the recipes the pack can cover are offered',()=>{
  const {shared,kitchen}=setup();
- stock(shared,{dandies:1});
  kitchen.fill();
- assert.deepEqual(kitchen.recipes(),[],'raw water is not soup');
+ assert.deepEqual(kitchen.recipes(),[],'raw water is not a dish');
  sitAtFire(kitchen);
- assert.equal(kitchen.recipes().length,0,'no meat, no options');
- stock(shared,{rawBacon:1});
- assert.deepEqual(kitchen.recipes().map(recipe=>recipe.id),['soup']);
+ assert.deepEqual(kitchen.recipes(),[],'no dandies, no options');
+ stock(shared,{dandies:1});
+ assert.deepEqual(kitchen.recipes().map(recipe=>recipe.id),['tea'],'one dandy steeps a tea');
+ stock(shared,{dandies:3});
+ assert.deepEqual(kitchen.recipes().map(recipe=>recipe.id),['soup','tea']);
  kitchen.drink();
  kitchen.drink();
- assert.deepEqual(kitchen.recipes(),[],'an empty pot has nothing to cook in');
+ assert.deepEqual(kitchen.recipes().map(recipe=>recipe.id),['salad'],'an empty pot takes a salad');
+});
+
+test('a dandy salad is the first meal, made with no fire at all',()=>{
+ const {shared,kitchen,eaten}=setup();
+ assert.equal(shared.getEquippedTool('p'),'pot');
+ assert.deepEqual(kitchen.recipes(false),[],'an empty pack makes nothing');
+ stock(shared,{dandies:2});
+ assert.deepEqual(kitchen.recipes(false).map(recipe=>recipe.id),['salad'],'a salad needs no fire');
+ assert.deepEqual(kitchen.recipes(true).map(recipe=>recipe.id),['salad']);
+ assert.equal(kitchen.cook('soup'),false,'no clean water for a soup');
+ assert.equal(kitchen.cook('salad'),true);
+ const inventory=shared.getInventory('p');
+ assert.deepEqual({pot:inventory.pot,dandies:inventory.dandies},{pot:'salad',dandies:0});
+ assert.equal(kitchen.servings,2);
+ assert.equal(kitchen.canDrink(),false,'a salad is not drunk');
+ assert.equal(kitchen.eat(),true);
+ assert.deepEqual(eaten.points,[['hunger',2]],'a salad is worth two points of hunger');
+ assert.equal(kitchen.servings,1,'the rest keeps in the pot');
+});
+
+test('dandy tea is drunk from the cup and is worth more than water',()=>{
+ const {shared,kitchen,eaten}=setup();
+ kitchen.fill();
+ sitAtFire(kitchen);
+ stock(shared,{dandies:1});
+ assert.deepEqual(kitchen.recipes().map(recipe=>recipe.id),['tea']);
+ assert.equal(kitchen.cook('tea'),true);
+ assert.equal(kitchen.teaServings,2);
+ assert.equal(kitchen.servings,0,'tea is not eaten');
+ assert.equal(kitchen.canEat(),false);
+ assert.equal(kitchen.waterServings,0,'the water became the tea');
+ assert.equal(kitchen.canDrink(),true,'the cup drinks it');
+ shared.setEquippedTool('p','cup');
+ assert.equal(kitchen.drink(),true);
+ assert.equal(kitchen.teaServings,1);
+ assert.deepEqual(eaten.points,[['thirst',4]],'tea puts back its own points');
+ assert.equal(shared.getEquippedTool('p'),'cup','the cup stays for the beat');
+ shared.setEquippedTool('p','cup');
+ assert.equal(kitchen.drink(),true);
+ assert.equal(kitchen.pot,null,'the last cup empties the pot');
+ assert.equal(kitchen.canDrink(),false);
 });
 
 test('the meal is cooked into the pot and eaten from it',()=>{
  const {shared,kitchen,eaten}=setup();
- stock(shared,{dandies:2,rawBacon:1});
+ stock(shared,{dandies:4,rawBacon:1});
  kitchen.fill();
  sitAtFire(kitchen);
  // Boiling took the pot out of the hand, so it is taken up again to cook in.
  shared.setEquippedTool('p','pot');
  assert.equal(kitchen.cook('soup'),true);
  const inventory=shared.getInventory('p');
- assert.deepEqual({pot:inventory.pot,dandies:inventory.dandies,rawBacon:inventory.rawBacon},
-  {pot:'soup',dandies:1,rawBacon:0});
+ assert.deepEqual({pot:inventory.pot,dandies:inventory.dandies},
+  {pot:'soup',dandies:1},'three dandies go into a soup');
  assert.equal(shared.getEquippedTool('p'),'pot','cooking puts nothing new in the hand');
  assert.equal(inventory.potServings,2,'a full pot is two servings');
  assert.equal(kitchen.canDrink(),false,'soup is not drunk');
@@ -113,7 +157,7 @@ test('the meal is cooked into the pot and eaten from it',()=>{
 
 test('a bowl is what a meal is eaten from',()=>{
  const {shared,kitchen}=setup();
- stock(shared,{dandies:1,rawBacon:1});
+ stock(shared,{dandies:3});
  kitchen.fill();
  sitAtFire(kitchen);
  kitchen.cook('soup');
